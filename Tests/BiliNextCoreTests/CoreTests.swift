@@ -1,18 +1,24 @@
-import Testing
 import Foundation
+import Testing
+
 @testable import BiliNextCore
 
 @Test func signatureCanonicalization() throws {
-    let key = try WBISigner.mixinKey(image: "7cd084941338484aae1ad9425b84077c", sub: "4932caff0ff746eab6f01bf08b70ac45")
+    let key = try WBISigner.mixinKey(
+        image: "7cd084941338484aae1ad9425b84077c", sub: "4932caff0ff746eab6f01bf08b70ac45")
     #expect(key == "ea1db124af3c7062474693fa704f4ff8")
-    let signed = WBISigner.sign(["foo": "114", "bar": "514", "baz": "1919810"], key: key, timestamp: 1702204169)
+    let signed = WBISigner.sign(
+        ["foo": "114", "bar": "514", "baz": "1919810"], key: key, timestamp: 1_702_204_169)
     #expect(signed["w_rid"] == "6149fdadf571698ca7e6a567265cd0ee")
     #expect(WBISigner.query(["q": "中 文+"]) == "q=%E4%B8%AD%20%E6%96%87%2B")
     #expect(WBISigner.sign(["q": "a!'()*b"], key: key, timestamp: 0)["q"] == "ab")
 }
 
 @Test func subtitleOverlapsAndGaps() {
-    let cues = [Cue(id: 0, start: 1, end: 3, text: "第一句"), Cue(id: 1, start: 2, end: 4, text: "重叠"), Cue(id: 2, start: 8, end: 9, text: "停顿以后")]
+    let cues = [
+        Cue(id: 0, start: 1, end: 3, text: "第一句"), Cue(id: 1, start: 2, end: 4, text: "重叠"),
+        Cue(id: 2, start: 8, end: 9, text: "停顿以后"),
+    ]
     #expect(cues.filter { $0.contains(2.5) }.map(\.id) == [0, 1])
     #expect(cues.filter { $0.contains(4) }.isEmpty)
     let groups = Cue.paragraphs(cues)
@@ -35,7 +41,9 @@ func publicAPISmoke() async throws {
 
 @Test func historyPaginationKeepsCursorEvenForNonVideoRows() {
     let cursor: [String: Any] = ["max": 19, "view_at": 123, "business": "archive"]
-    let response: [String: Any] = ["list": [["title": "直播", "history": ["business": "live", "bvid": ""]]], "cursor": cursor]
+    let response: [String: Any] = [
+        "list": [["title": "直播", "history": ["business": "live", "bvid": ""]]], "cursor": cursor,
+    ]
     let first = LibraryParser.history(response, previousCursor: nil)
     #expect(first.videos.isEmpty)
     #expect(first.next != nil)
@@ -43,7 +51,14 @@ func publicAPISmoke() async throws {
 }
 
 @Test func cloudHistoryPreservesPartAndCompletedSentinel() {
-    let data: [String: Any] = ["list": [["title": "样例", "progress": -1, "view_at": 123, "history": ["business": "archive", "bvid": "BV1234567890", "cid": 42, "oid": 12]]]]
+    let data: [String: Any] = [
+        "list": [
+            [
+                "title": "样例", "progress": -1, "view_at": 123,
+                "history": ["business": "archive", "bvid": "BV1234567890", "cid": 42, "oid": 12],
+            ]
+        ]
+    ]
     let result = LibraryParser.history(data, previousCursor: nil)
     #expect(result.videos.first?.progress == -1)
     #expect(result.videos.first?.historyCID == 42)
@@ -51,12 +66,16 @@ func publicAPISmoke() async throws {
 }
 
 @Test func libraryResponseShapesAndPagination() {
-    let media: [String: Any] = ["type": 2, "id": 12, "bvid": "BV1234567890", "upper": ["name": "作者"], "title": "样例"]
-    let favorites = LibraryParser.favorites(["medias": [media, ["type": 12]], "has_more": true], page: 1)
+    let media: [String: Any] = [
+        "type": 2, "id": 12, "bvid": "BV1234567890", "upper": ["name": "作者"], "title": "样例",
+    ]
+    let favorites = LibraryParser.favorites(
+        ["medias": [media, ["type": 12]], "has_more": true], page: 1)
     #expect(favorites.videos.count == 1)
     #expect(favorites.videos.first?.author == "作者")
     #expect(favorites.next == "2")
-    let later = LibraryParser.watchLater(["list": [["bvid": "BV1234567890", "aid": 12]], "count": 21], page: 1)
+    let later = LibraryParser.watchLater(
+        ["list": [["bvid": "BV1234567890", "aid": 12]], "count": 21], page: 1)
     #expect(later.next == "2")
     #expect(LibraryParser.watchLater(["list": [], "count": 21], page: 2).next == nil)
 }
@@ -64,9 +83,9 @@ func publicAPISmoke() async throws {
 @Test(.enabled(if: ProcessInfo.processInfo.environment["BILINEXT_AUTH_TEST"] == "1"))
 func authenticatedLibrarySmoke() async throws {
     #if DEBUG
-    let api = BilibiliAPI(credentialStorage: .developmentFile)
+        let api = BilibiliAPI(credentialStorage: .developmentFile)
     #else
-    let api = BilibiliAPI()
+        let api = BilibiliAPI()
     #endif
     let me = try await api.profile()
     let folders = try await api.favoriteFolders(mid: me.id)
@@ -78,19 +97,20 @@ func authenticatedLibrarySmoke() async throws {
 }
 
 #if DEBUG
-@Test func developmentStoragePermissionsAndLogout() throws {
-    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-    defer { try? FileManager.default.removeItem(at: directory) }
-    let store = DevelopmentSessionStore(directory: directory)
-    #expect(try store.read() == nil)
-    let fixture = Data("[{\"test\":true}]".utf8)
-    try store.write(fixture)
-    #expect(try store.read() == fixture)
-    let folder = try FileManager.default.attributesOfItem(atPath: directory.path)
-    let file = try FileManager.default.attributesOfItem(atPath: store.file.path)
-    #expect((folder[.posixPermissions] as? NSNumber)?.intValue == 0o700)
-    #expect((file[.posixPermissions] as? NSNumber)?.intValue == 0o600)
-    try store.clear()
-    #expect(try store.read() == Data("[]".utf8))
-}
+    @Test func developmentStoragePermissionsAndLogout() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = DevelopmentSessionStore(directory: directory)
+        #expect(try store.read() == nil)
+        let fixture = Data("[{\"test\":true}]".utf8)
+        try store.write(fixture)
+        #expect(try store.read() == fixture)
+        let folder = try FileManager.default.attributesOfItem(atPath: directory.path)
+        let file = try FileManager.default.attributesOfItem(atPath: store.file.path)
+        #expect((folder[.posixPermissions] as? NSNumber)?.intValue == 0o700)
+        #expect((file[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+        try store.clear()
+        #expect(try store.read() == Data("[]".utf8))
+    }
 #endif

@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 @main
 struct BiliNextApp: App {
@@ -10,7 +10,10 @@ struct BiliNextApp: App {
                 .frame(minWidth: 940, minHeight: 600)
                 .task { await model.start() }
                 .onAppear { NSApp.activate(ignoringOtherApps: true) }
-                .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in model.saveSession() }
+                .onReceive(
+                    NotificationCenter.default.publisher(
+                        for: NSApplication.willTerminateNotification)
+                ) { _ in model.saveSession() }
         }
         .defaultSize(width: 1220, height: 780)
         .windowStyle(.hiddenTitleBar)
@@ -18,10 +21,13 @@ struct BiliNextApp: App {
             CommandGroup(after: .newItem) {
                 Button("下载管理") { model.downloadsPresented = true }.keyboardShortcut("j")
                 Button("搜索视频") { model.navigate("搜索") }.keyboardShortcut("l")
-                Button("关闭视频标签") { if let id = model.selected { model.close(id) } }.keyboardShortcut("w")
+                Button("关闭视频标签") { if let id = model.selected { model.close(id) } }
+                    .keyboardShortcut("w")
                     .disabled(model.selected == nil)
-                Button("恢复关闭的标签") { model.undoClose() }.keyboardShortcut("t", modifiers: [.command, .shift])
-                    .disabled(model.closed.isEmpty)
+                Button("恢复关闭的标签") { model.undoClose() }.keyboardShortcut(
+                    "t", modifiers: [.command, .shift]
+                )
+                .disabled(model.closed.isEmpty)
             }
         }
     }

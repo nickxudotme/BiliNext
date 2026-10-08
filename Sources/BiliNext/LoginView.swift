@@ -1,6 +1,6 @@
-import SwiftUI
-import CoreImage.CIFilterBuiltins
 import BiliNextCore
+import CoreImage.CIFilterBuiltins
+import SwiftUI
 
 struct LoginView: View {
     @ObservedObject var model: AppModel
@@ -11,11 +11,23 @@ struct LoginView: View {
     @State private var failed = false
     var body: some View {
         VStack(spacing: 20) {
-            HStack { Text("登录 B 站").font(.title2.bold()); Spacer(); Button { dismiss() } label: { Image(systemName: "xmark") }.buttonStyle(.plain).accessibilityLabel("关闭") }
+            HStack {
+                Text("登录 B 站").font(.title2.bold())
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                }.buttonStyle(.plain).accessibilityLabel("关闭")
+            }
             Text("使用哔哩哔哩手机客户端扫码确认").foregroundStyle(.secondary)
             Group {
-                if let image { Image(nsImage: image).interpolation(.none).resizable().scaledToFit().padding(12).background(.white, in: RoundedRectangle(cornerRadius: 12)) }
-                else { ProgressView() }
+                if let image {
+                    Image(nsImage: image).interpolation(.none).resizable().scaledToFit().padding(12)
+                        .background(.white, in: RoundedRectangle(cornerRadius: 12))
+                } else {
+                    ProgressView()
+                }
             }.frame(width: 220, height: 220)
             Text(status).font(.callout).multilineTextAlignment(.center)
             if failed { Button("刷新二维码") { retry = UUID() }.buttonStyle(.glass) }
@@ -24,12 +36,17 @@ struct LoginView: View {
             .task(id: retry) { await login() }
     }
     private func login() async {
-        failed = false; image = nil; status = "正在生成二维码…"
+        failed = false
+        image = nil
+        status = "正在生成二维码…"
         do {
             let code = try await model.api.loginCode()
             guard !Task.isCancelled else { return }
-            let filter = CIFilter.qrCodeGenerator(); filter.message = Data(code.url.utf8)
-            if let output = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 8, y: 8)), let cg = CIContext().createCGImage(output, from: output.extent) {
+            let filter = CIFilter.qrCodeGenerator()
+            filter.message = Data(code.url.utf8)
+            if let output = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 8, y: 8)),
+                let cg = CIContext().createCGImage(output, from: output.extent)
+            {
                 image = NSImage(cgImage: cg, size: NSSize(width: 220, height: 220))
             }
             status = "等待扫码"
@@ -40,12 +57,25 @@ struct LoginView: View {
                 switch result {
                 case .waiting: status = "等待扫码"
                 case .scanned: status = "已扫码，请在手机上确认"
-                case .expired: status = "二维码已过期"; failed = true; image = nil; return
-                case .success: await model.loggedIn(); return
+                case .expired:
+                    status = "二维码已过期"
+                    failed = true
+                    image = nil
+                    return
+                case .success:
+                    await model.loggedIn()
+                    return
                 }
             }
-            status = "二维码已过期"; failed = true; image = nil
-        } catch is CancellationError { }
-        catch { if !Task.isCancelled { status = error.localizedDescription; failed = true; image = nil } }
+            status = "二维码已过期"
+            failed = true
+            image = nil
+        } catch is CancellationError {} catch {
+            if !Task.isCancelled {
+                status = error.localizedDescription
+                failed = true
+                image = nil
+            }
+        }
     }
 }
