@@ -3,13 +3,6 @@ import BiliNextCore
 import SwiftUI
 import WebKit
 
-struct SessionTab: Identifiable, Codable {
-    var id: String { video.bvid }
-    var video: Video
-    var cid: Int64?
-    var position: Double = 0
-}
-
 @MainActor
 final class AppModel: ObservableObject {
     #if DEBUG
@@ -22,18 +15,6 @@ final class AppModel: ObservableObject {
     @Published var officialCore = false
     @Published var officialPlayerStatus = ""
     weak var officialWebView: WKWebView?
-    func switchPlayer() {
-        saveSession()
-        player.pause()
-        playing = false
-        if officialCore {
-            officialWebView?.evaluateJavaScript("window.biliPlayer?.pause()")
-            officialCore = false
-            seek(time)
-        } else {
-            officialCore = true
-        }
-    }
     let player = AVPlayer()
     let danmaku = DanmakuModel()
     let downloads = DownloadManager()
@@ -98,16 +79,12 @@ final class AppModel: ObservableObject {
     private var history = ["动态"]
     private var historyIndex = 0
     private var lastSaved = Date.distantPast
-    private let sessionURL: URL
+    private let sessionStore = SessionStore()
+
+    // MARK: - Lifecycle
 
     init() {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[
-            0
-        ].appendingPathComponent("BiliNext", isDirectory: true)
-        sessionURL = base.appendingPathComponent("session.json")
-        if let data = try? Data(contentsOf: sessionURL),
-            let saved = try? JSONDecoder().decode([SessionTab].self, from: data)
-        {
+        if let saved = try? sessionStore.read() {
             tabs = saved
         }
         observer = player.addPeriodicTimeObserver(
@@ -132,6 +109,8 @@ final class AppModel: ObservableObject {
         profile = try? await api.profile()
         refresh()
     }
+    // MARK: - Browsing and library
+
     var canBack: Bool { historyIndex > 0 }
     var canForward: Bool { historyIndex < history.count - 1 }
     func navigate(_ destination: String) {
@@ -281,6 +260,41 @@ final class AppModel: ObservableObject {
             loading = false
         }
     }
+    func selectFolder(_ id: Int64) {
+        guard id != folderID else { return }
+        folderID = id
+        refresh()
+    }
+    func changeWatchLater(_ video: Video, remove: Bool = false) {
+        guard profile != nil else {
+            loginPresented = true
+            return
+        }
+        guard !libraryBusy.contains(video.id) else { return }
+        libraryBusy.insert(video.id)
+        Task {
+            defer { libraryBusy.remove(video.id) }
+            do {
+                if remove {
+                    guard let aid = video.aid else {
+                        throw APIError(code: -1, message: "无法识别视频编号，请刷新列表")
+                    }
+                    try await api.removeFromWatchLater(aid: aid)
+                    removedLater = video
+                    toast = "已从稍后再看移除"
+                } else {
+                    try await api.addToWatchLater(bvid: video.bvid)
+                    if removedLater?.id == video.id { removedLater = nil }
+                    toast = "已加入稍后再看"
+                }
+                cachedLists.removeValue(forKey: "稍后再看")
+                if menu == "稍后再看" && selected == nil { refresh() }
+            } catch { toast = error.localizedDescription }
+        }
+    }
+
+    // MARK: - Tabs and session
+
     func open(_ video: Video, background: Bool = false) {
         if !tabs.contains(where: { $0.id == video.id }) {
             tabs.append(
@@ -292,6 +306,60 @@ final class AppModel: ObservableObject {
             saveSession()
         } else {
             activate(video.id)
+        }
+    }
+    func close(_ id: String) {
+        saveSession()
+        closed = tabs.filter { $0.id == id }
+        let index = tabs.firstIndex(where: { $0.id == id }) ?? 0
+        tabs.removeAll { $0.id == id }
+        if mediaID == id { stopMedia() }
+        if selected == id {
+            selected = nil
+            if !tabs.isEmpty { activate(tabs[min(index, tabs.count - 1)].id) } else { refresh() }
+        }
+        saveSession()
+    }
+    func clearTabs() {
+        saveSession()
+        closed = tabs
+        tabs = []
+        selected = nil
+        stopMedia()
+        saveSession()
+        refresh()
+    }
+    func undoClose() {
+        for tab in closed where !tabs.contains(where: { $0.id == tab.id }) { tabs.append(tab) }
+        closed = []
+        saveSession()
+    }
+    func saveSession() {
+        if officialCore || player.currentItem?.status == .readyToPlay,
+            let index = tabs.firstIndex(where: { $0.id == mediaID })
+        {
+            let seconds = officialCore ? time : player.currentTime().seconds
+            if seconds.isFinite { tabs[index].position = max(0, seconds) }
+            tabs[index].cid = pageID
+        }
+        do {
+            try sessionStore.write(tabs)
+            lastSaved = Date()
+        } catch { toast = "标签恢复记录保存失败：\(error.localizedDescription)" }
+    }
+
+    // MARK: - Media playback
+
+    func switchPlayer() {
+        saveSession()
+        player.pause()
+        playing = false
+        if officialCore {
+            officialWebView?.evaluateJavaScript("window.biliPlayer?.pause()")
+            officialCore = false
+            seek(time)
+        } else {
+            officialCore = true
         }
     }
     func activate(_ id: String, force: Bool = false) {
@@ -490,27 +558,6 @@ final class AppModel: ObservableObject {
             if !Task.isCancelled, generation == videoGeneration { videoLoading = false }
         }
     }
-    func selectTrack(_ id: String) {
-        guard let track = tracks.first(where: { $0.id == id }) else { return }
-        subtitleTask?.cancel()
-        let generation = UUID()
-        subtitleGeneration = generation
-        trackID = id
-        cues = []
-        subtitleError = nil
-        subtitleLoading = true
-        subtitleTask = Task {
-            do {
-                let result = try await api.subtitles(track)
-                guard !Task.isCancelled, generation == subtitleGeneration else { return }
-                cues = result
-            } catch {
-                guard !Task.isCancelled, generation == subtitleGeneration else { return }
-                subtitleError = error.localizedDescription
-            }
-            subtitleLoading = false
-        }
-    }
     func seek(_ seconds: Double) {
         if officialCore {
             if seconds.isFinite {
@@ -549,32 +596,6 @@ final class AppModel: ObservableObject {
         danmaku.update(time: time, duration: duration, api: api)
     }
     func isPlaying(_ id: String) -> Bool { id == mediaID && playing }
-    func close(_ id: String) {
-        saveSession()
-        closed = tabs.filter { $0.id == id }
-        let index = tabs.firstIndex(where: { $0.id == id }) ?? 0
-        tabs.removeAll { $0.id == id }
-        if mediaID == id { stopMedia() }
-        if selected == id {
-            selected = nil
-            if !tabs.isEmpty { activate(tabs[min(index, tabs.count - 1)].id) } else { refresh() }
-        }
-        saveSession()
-    }
-    func clearTabs() {
-        saveSession()
-        closed = tabs
-        tabs = []
-        selected = nil
-        stopMedia()
-        saveSession()
-        refresh()
-    }
-    func undoClose() {
-        for tab in closed where !tabs.contains(where: { $0.id == tab.id }) { tabs.append(tab) }
-        closed = []
-        saveSession()
-    }
     private func stopMedia() {
         videoTask?.cancel()
         subtitleTask?.cancel()
@@ -593,53 +614,33 @@ final class AppModel: ObservableObject {
         duration = 0
         buffering = false
     }
-    func saveSession() {
-        if officialCore || player.currentItem?.status == .readyToPlay,
-            let index = tabs.firstIndex(where: { $0.id == mediaID })
-        {
-            let seconds = officialCore ? time : player.currentTime().seconds
-            if seconds.isFinite { tabs[index].position = max(0, seconds) }
-            tabs[index].cid = pageID
-        }
-        do {
-            try FileManager.default.createDirectory(
-                at: sessionURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try JSONEncoder().encode(tabs).write(to: sessionURL, options: .atomic)
-            lastSaved = Date()
-        } catch { toast = "标签恢复记录保存失败：\(error.localizedDescription)" }
-    }
-    func selectFolder(_ id: Int64) {
-        guard id != folderID else { return }
-        folderID = id
-        refresh()
-    }
-    func changeWatchLater(_ video: Video, remove: Bool = false) {
-        guard profile != nil else {
-            loginPresented = true
-            return
-        }
-        guard !libraryBusy.contains(video.id) else { return }
-        libraryBusy.insert(video.id)
-        Task {
-            defer { libraryBusy.remove(video.id) }
+
+    // MARK: - Subtitles
+
+    func selectTrack(_ id: String) {
+        guard let track = tracks.first(where: { $0.id == id }) else { return }
+        subtitleTask?.cancel()
+        let generation = UUID()
+        subtitleGeneration = generation
+        trackID = id
+        cues = []
+        subtitleError = nil
+        subtitleLoading = true
+        subtitleTask = Task {
             do {
-                if remove {
-                    guard let aid = video.aid else {
-                        throw APIError(code: -1, message: "无法识别视频编号，请刷新列表")
-                    }
-                    try await api.removeFromWatchLater(aid: aid)
-                    removedLater = video
-                    toast = "已从稍后再看移除"
-                } else {
-                    try await api.addToWatchLater(bvid: video.bvid)
-                    if removedLater?.id == video.id { removedLater = nil }
-                    toast = "已加入稍后再看"
-                }
-                cachedLists.removeValue(forKey: "稍后再看")
-                if menu == "稍后再看" && selected == nil { refresh() }
-            } catch { toast = error.localizedDescription }
+                let result = try await api.subtitles(track)
+                guard !Task.isCancelled, generation == subtitleGeneration else { return }
+                cues = result
+            } catch {
+                guard !Task.isCancelled, generation == subtitleGeneration else { return }
+                subtitleError = error.localizedDescription
+            }
+            subtitleLoading = false
         }
     }
+
+    // MARK: - Login
+
     func loggedIn() async {
         profile = try? await api.profile()
         cachedLists.removeAll()

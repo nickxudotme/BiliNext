@@ -10,4 +10,5 @@ let package = Package(
         .target(name: "BiliNextCore"),
         .executableTarget(name: "BiliNext", dependencies: ["BiliNextCore"]),
         .testTarget(name: "BiliNextCoreTests", dependencies: ["BiliNextCore"]),
+        .testTarget(name: "BiliNextTests", dependencies: ["BiliNext"]),
     ], swiftLanguageModes: [.v5])
