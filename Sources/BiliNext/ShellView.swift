@@ -22,8 +22,7 @@ struct ShellView: View {
                 model.selected == nil
             ).accessibilityHidden(model.selected != nil)
             if model.selected != nil {
-                PlaybackView(
-                    model: model, navigationPinned: pinned, showNavigation: { revealed.toggle() })
+                PlaybackView(model: model, navigationOverlayVisible: !pinned && revealed)
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.leading, pinned ? drawerWidth : 0)
@@ -41,9 +40,7 @@ struct ShellView: View {
                     .geometryGroup()
                     .background {
                         RoundedRectangle(cornerRadius: pinned ? 0 : 14, style: .continuous)
-                            .fill(.clear)
-                            .glassEffect(
-                                .regular, in: RoundedRectangle(cornerRadius: pinned ? 0 : 14))
+                            .fill(Color(nsColor: .underPageBackgroundColor))
                     }
                     .clipShape(RoundedRectangle(cornerRadius: pinned ? 0 : 14, style: .continuous))
                     .overlay {
@@ -239,13 +236,7 @@ struct ShellView: View {
     }
 
     private func updatePointer(_ point: NSPoint?) {
-        let zone: Int
-        if let point, point.x >= -drawerWidth {
-            // The external activation area is exactly one drawer width.
-            zone = point.x < 0 ? 1 : (point.x <= (drawerWidth + (pinned ? 0 : 4)) ? 2 : 0)
-        } else {
-            zone = 0
-        }
+        let zone = DrawerActivation.zone(x: point?.x, width: drawerWidth, pinned: pinned)
         hovering = zone == 2 && (pinned || revealed)
         guard pointerZone != zone else { return }
         pointerZone = zone

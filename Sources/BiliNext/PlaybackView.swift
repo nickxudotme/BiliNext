@@ -23,69 +23,126 @@ private enum PlaybackPanel: String, CaseIterable, Identifiable {
 
 struct PlaybackView: View {
     @ObservedObject var model: AppModel
-    var navigationPinned = false
-    var showNavigation: () -> Void = {}
+    var navigationOverlayVisible = false
     @State private var panel = PlaybackPanel.info
+    @State private var playerWidth: CGFloat = 0
+    @State private var pointer: NSPoint?
+    @State private var hoveringVideo = false
+    @State private var hoveringDetails = false
+    @State private var idle = false
+    @State private var idleTask: Task<Void, Never>?
+
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 14) {
-                if !navigationPinned {
-                    TrafficLights().frame(width: 56, height: 24)
-                    Button(action: showNavigation) { Image(systemName: "sidebar.left") }
-                        .buttonStyle(.plain).help("显示侧栏").accessibilityLabel("显示侧栏")
+        HSplitView {
+            player
+                .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+                .onGeometryChange(for: CGFloat.self) {
+                    $0.size.width
+                } action: {
+                    playerWidth = $0
                 }
-                Button {
-                    model.navigate(model.menu)
-                } label: {
-                    Label("返回浏览", systemImage: "chevron.left")
-                }
-                .buttonStyle(.plain).foregroundStyle(.secondary)
-                Text(model.detail?.video.title ?? "正在加载视频…").font(.callout).lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer(minLength: 4)
-                Menu {
-                    Button(model.officialCore ? "使用原播放器" : "使用本机官方核心") { model.switchPlayer() }
-                        .disabled(model.pageID == nil)
-                    if let id = model.selected,
-                        let url = URL(string: "https://www.bilibili.com/video/\(id)")
-                    {
-                        Link("在浏览器打开", destination: url)
+                .overlay(alignment: .trailing) {
+                    Button {
+                        model.theater.toggle()
+                        idle = false
+                        updateCursor()
+                    } label: {
+                        Image(systemName: model.theater ? "chevron.left" : "chevron.right")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 28, height: 64)
+                            .background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
                     }
-                } label: {
-                    Image(systemName: "ellipsis")
-                }.menuStyle(.borderlessButton).frame(width: 24).help("播放选项")
-                Button {
-                    model.theater.toggle()
-                } label: {
-                    Image(systemName: "sidebar.right")
+                    .buttonStyle(.plain)
+                    .help(model.theater ? "展开视频详情" : "收起视频详情")
+                    .accessibilityLabel(model.theater ? "展开视频详情" : "收起视频详情")
+                    .padding(.trailing, 6)
+                    .opacity(hoveringDetails || (hoveringVideo && !idle) ? 1 : 0)
+                    .allowsHitTesting(hoveringDetails || (hoveringVideo && !idle))
+                    .accessibilityHidden(!(hoveringDetails || (hoveringVideo && !idle)))
                 }
-                .buttonStyle(.plain).help(model.theater ? "显示视频信息" : "隐藏视频信息")
-                .accessibilityLabel(model.theater ? "显示视频信息" : "隐藏视频信息")
-            }.padding(.horizontal, 16).frame(height: 48).background(.bar)
-            HSplitView {
-                player.frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
-                if !model.theater {
-                    VStack(spacing: 0) {
+            if !model.theater {
+                VStack(spacing: 0) {
+                    HStack {
                         Picker("视频侧栏", selection: $panel) {
                             ForEach(PlaybackPanel.allCases) { tab in Text(tab.rawValue).tag(tab) }
-                        }.pickerStyle(.segmented).labelsHidden().padding(12)
-                        Divider().opacity(0.5)
-                        Group {
-                            switch panel {
-                            case .info: VideoInformationView(model: model)
-                            case .comments:
-                                VideoCommunityView(model: model, section: "评论").id(model.selected)
-                            case .related:
-                                VideoCommunityView(model: model, section: "相关推荐").id(model.selected)
-                            case .transcript: TranscriptView(model: model)
-                            case .danmaku: DanmakuListView(model: model)
-                            }
-                        }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    }.frame(minWidth: 310, idealWidth: 360, maxWidth: 420, maxHeight: .infinity)
-                        .background(.regularMaterial)
-                }
+                        }.pickerStyle(.segmented).labelsHidden()
+                        playbackOptions
+                    }.padding(12)
+                    Divider().opacity(0.5)
+                    Group {
+                        switch panel {
+                        case .info: VideoInformationView(model: model)
+                        case .comments:
+                            VideoCommunityView(model: model, section: "评论").id(model.selected)
+                        case .related:
+                            VideoCommunityView(model: model, section: "相关推荐").id(model.selected)
+                        case .transcript: TranscriptView(model: model)
+                        case .danmaku: DanmakuListView(model: model)
+                        }
+                    }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }.frame(minWidth: 310, idealWidth: 360, maxWidth: 420, maxHeight: .infinity)
+                    .background(.regularMaterial)
             }
-        }.frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(DrawerPointerTracker(externalWidth: 0, onPosition: trackPointer))
+        .onChange(of: model.playing) { _, _ in
+            idle = false
+            scheduleIdle()
+            updateCursor()
+        }
+        .onChange(of: navigationOverlayVisible) { _, _ in
+            let current = pointer
+            pointer = nil
+            trackPointer(current)
+        }
+        .onDisappear {
+            idleTask?.cancel()
+            NSCursor.setHiddenUntilMouseMoves(false)
+        }
+    }
+
+    private var playbackOptions: some View {
+        Menu {
+            Button("返回浏览") { model.navigate(model.menu) }
+            Button(model.officialCore ? "使用原播放器" : "使用本机官方核心") { model.switchPlayer() }
+                .disabled(model.pageID == nil)
+            if let id = model.selected,
+                let url = URL(string: "https://www.bilibili.com/video/\(id)")
+            {
+                Link("在浏览器打开", destination: url)
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+        }
+        .menuStyle(.borderlessButton).frame(width: 20).help("播放选项")
+    }
+
+    private func trackPointer(_ next: NSPoint?) {
+        guard next != pointer else { return }
+        pointer = next
+        let next = navigationOverlayVisible && (next?.x ?? 999) < 224 ? nil : next
+        hoveringVideo = next.map { $0.x >= 0 && $0.x < playerWidth } ?? false
+        hoveringDetails = next.map { $0.x >= playerWidth && !model.theater } ?? false
+        idle = false
+        scheduleIdle()
+        updateCursor()
+    }
+
+    private func scheduleIdle() {
+        idleTask?.cancel()
+        guard model.officialCore, hoveringVideo && model.playing else { return }
+        idleTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2.5))
+            guard !Task.isCancelled, hoveringVideo, model.playing else { return }
+            idle = true
+            updateCursor()
+        }
+    }
+
+    private func updateCursor() {
+        NSCursor.setHiddenUntilMouseMoves(idle && hoveringVideo && model.playing)
     }
     private var player: some View {
         ZStack {
@@ -99,7 +156,10 @@ struct PlaybackView: View {
                         ).allowsHitTesting(false)
                 }
             } else {
-                CustomPlayerView(model: model, danmaku: model.danmaku)
+                CustomPlayerView(model: model, danmaku: model.danmaku) { visible in
+                    idle = !visible && hoveringVideo && model.playing
+                    updateCursor()
+                }
             }
         }
     }

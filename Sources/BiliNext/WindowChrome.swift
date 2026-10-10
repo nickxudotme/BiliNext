@@ -142,3 +142,13 @@ struct DrawerPointerTracker: NSViewRepresentable {
         }
     }
 }
+
+// Include a narrow interior strip because a fullscreen pointer cannot travel
+// past the left screen edge. The rest of the sidebar keeps an open drawer alive.
+enum DrawerActivation {
+    static func zone(x: CGFloat?, width: CGFloat, pinned: Bool) -> Int {
+        guard let x, x >= -width else { return 0 }
+        if x <= 3 { return 1 }
+        return x <= width + (pinned ? 0 : 4) ? 2 : 0
+    }
+}

@@ -34,12 +34,21 @@ struct VideoSurface: NSViewRepresentable {
 struct CustomPlayerView: View {
     @ObservedObject var model: AppModel
     @ObservedObject private var clock: PlaybackClock
-    init(model: AppModel, danmaku: DanmakuModel) {
+    init(
+        model: AppModel, danmaku: DanmakuModel,
+        onControlsVisibility: @escaping (Bool) -> Void = { _ in }
+    ) {
+        self.onControlsVisibility = onControlsVisibility
         self.model = model
         self.danmaku = danmaku
         self.clock = model.playbackClock
     }
 
+    var onControlsVisibility: (Bool) -> Void
+    private var controlsVisible: Bool {
+        controls || !model.playing || scrubbing || settings || volumeSettings || qualitySettings
+            || rateSettings
+    }
     @ObservedObject var danmaku: DanmakuModel
     @State private var controls = true
     @State private var scrubbing = false
@@ -96,7 +105,7 @@ struct CustomPlayerView: View {
                     maxWidth: .infinity, maxHeight: .infinity
                 ).background(.black.opacity(0.8))
             }
-            if controls || !model.playing || scrubbing || settings {
+            if controlsVisible {
                 VStack {
                     Spacer()
                     controlsBar
@@ -134,7 +143,12 @@ struct CustomPlayerView: View {
             danmaku.enabled.toggle()
             return .handled
         }
-        .onAppear { scrubTime = model.time }
+        .onAppear {
+            scrubTime = model.time
+            onControlsVisibility(true)
+        }
+        .onChange(of: controlsVisible) { _, value in onControlsVisibility(value) }
+        .onChange(of: model.playing) { _, _ in revealControls() }
         .onChange(of: model.time) { _, value in if !scrubbing { scrubTime = value } }
         .onChange(of: scrubTime) { _, value in
             if !scrubbing && model.duration > 0 && abs(value - model.time) > 1 { model.seek(value) }
