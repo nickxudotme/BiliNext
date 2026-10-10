@@ -1,0 +1,232 @@
+import AppKit
+import BiliNextCore
+import CMPV
+import OpenGL.GL3
+import SwiftUI
+
+/// One libmpv instance per retained playback tab; preview remains a separate muted AVPlayer.
+@MainActor
+final class MPVPlayer {
+    let handle: OpaquePointer
+    private var poll: Timer?
+    private(set) var loaded = false
+    private(set) var failure: String?
+    private var reported = false
+    var onUpdate: ((Double, Double, Bool, Bool) -> Void)?
+    var time: Double { number("time-pos") }
+    var duration: Double { number("duration") }
+    var playing: Bool { loaded && !flag("pause") && !flag("eof-reached") }
+    var volume: Double {
+        get { number("volume") / 100 }
+        set { set("volume", String(max(0, min(1, newValue)) * 100)) }
+    }
+    var muted: Bool {
+        get { flag("mute") }
+        set { set("mute", newValue ? "yes" : "no") }
+    }
+    var speed = 1.0 {
+        didSet { set("speed", String(speed)) }
+    }
+    init(videoOutput: String = "libmpv") throws {
+        guard let core = mpv_create() else { throw MPVError(message: "无法创建 mpv 播放器") }
+        handle = core
+        let options = [
+            "config": "no", "terminal": "no", "vo": videoOutput, "hwdec": "videotoolbox",
+            "idle": "yes", "keep-open": "yes", "pause": "yes", "osc": "no",
+            "input-default-bindings": "no", "load-scripts": "no", "sub-auto": "no",
+            "cache": "yes", "cache-secs": "30", "demuxer-max-bytes": "67108864",
+            "demuxer-readahead-secs": "30", "network-timeout": "15",
+            "user-agent": "Mozilla/5.0", "referrer": "https://www.bilibili.com/",
+        ]
+        for (key, value) in options { mpv_set_option_string(core, key, value) }
+        let result = mpv_initialize(core)
+        guard result >= 0 else {
+            mpv_terminate_destroy(core)
+            throw MPVError(message: String(cString: mpv_error_string(result)))
+        }
+        poll = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.update() }
+        }
+    }
+    deinit {
+        poll?.invalidate()
+        mpv_terminate_destroy(handle)
+    }
+    func load(_ playback: Playback, position: Double, autoplay: Bool) throws {
+        failure = nil
+        reported = false
+        loaded = false
+        set("pause", autoplay ? "no" : "yes")
+        // mpv accepts an independently fetched audio stream without a local HLS bridge.
+        let source = playback.videoStream?.urls.first ?? playback.url
+        let audio = playback.audioStream?.urls.first
+        let options = "start=\(max(0, position)),speed=\(speed)"
+        let media: String
+        if let audio {
+            let tracks = [source, audio].map { url in
+                let text = url.absoluteString
+                return "%\(text.utf8.count)%" + text
+            }
+            media = "edl://" + tracks.joined(separator: ";!new_stream;")
+        } else {
+            media = source.absoluteString
+        }
+        try command(["loadfile", media, "replace", "-1", options])
+    }
+    func pause() { set("pause", "yes") }
+    func play() { set("pause", "no") }
+    func stop() {
+        try? command(["stop"])
+        loaded = false
+    }
+    func seek(_ value: Double) {
+        guard value.isFinite else { return }
+        try? command(["seek", String(max(0, value)), "absolute+exact"])
+    }
+    func set(_ name: String, _ value: String) { mpv_set_property_string(handle, name, value) }
+    func number(_ name: String) -> Double {
+        var result = 0.0
+        mpv_get_property(handle, name, MPV_FORMAT_DOUBLE, &result)
+        return result.isFinite ? result : 0
+    }
+    func text(_ name: String) -> String {
+        guard let value = mpv_get_property_string(handle, name) else { return "" }
+        defer { mpv_free(value) }
+        return String(cString: value)
+    }
+    func flag(_ name: String) -> Bool {
+        var result: Int32 = 0
+        mpv_get_property(handle, name, MPV_FORMAT_FLAG, &result)
+        return result != 0
+    }
+    private func command(_ arguments: [String]) throws {
+        let strings = arguments.map { strdup($0) }
+        defer { for string in strings { free(string) } }
+        var pointers = strings.map { UnsafePointer<CChar>($0) } + [nil]
+        let result = mpv_command_async(handle, 0, &pointers)
+        if result < 0 { throw MPVError(message: String(cString: mpv_error_string(result))) }
+    }
+    private func update() {
+        while let event = mpv_wait_event(handle, 0), event.pointee.event_id != MPV_EVENT_NONE {
+            switch event.pointee.event_id {
+            case MPV_EVENT_FILE_LOADED: loaded = true
+            case MPV_EVENT_END_FILE:
+                if let data = event.pointee.data?.assumingMemoryBound(to: mpv_event_end_file.self),
+                    data.pointee.error < 0
+                {
+                    failure = String(cString: mpv_error_string(data.pointee.error))
+                }
+            case MPV_EVENT_COMMAND_REPLY:
+                if event.pointee.error < 0 {
+                    failure = String(cString: mpv_error_string(event.pointee.error))
+                }
+            default: break
+            }
+        }
+        if loaded && time > 0 && !reported {
+            reported = true
+            NSLog(
+                "mpv playback: %@; decoder=%@; %.0fx%.0f; audio=%.0fch; muted=%@",
+                text("mpv-version"), text("hwdec-current"), number("video-params/w"),
+                number("video-params/h"), number("audio-params/channel-count"), muted ? "yes" : "no"
+            )
+        }
+        onUpdate?(time, duration, playing, flag("paused-for-cache") || (!loaded && failure == nil))
+    }
+}
+
+struct MPVError: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+}
+
+struct MPVSurface: NSViewRepresentable {
+    let player: MPVPlayer
+    func makeNSView(context: Context) -> Surface { Surface(player: player)! }
+    func updateNSView(_ view: Surface, context: Context) {}
+    static func dismantleNSView(_ view: Surface, coordinator: ()) { view.releaseRenderer() }
+
+    final class Surface: NSOpenGLView {
+        let player: MPVPlayer
+        var renderer: OpaquePointer?
+        init?(player: MPVPlayer) {
+            self.player = player
+            let attributes: [NSOpenGLPixelFormatAttribute] = [
+                UInt32(NSOpenGLPFAOpenGLProfile), UInt32(NSOpenGLProfileVersion3_2Core),
+                UInt32(NSOpenGLPFAAccelerated), UInt32(NSOpenGLPFADoubleBuffer), 0,
+            ]
+            super.init(frame: .zero, pixelFormat: NSOpenGLPixelFormat(attributes: attributes)!)
+            wantsBestResolutionOpenGLSurface = true
+        }
+        required init?(coder: NSCoder) { fatalError() }
+        override func prepareOpenGL() {
+            super.prepareOpenGL()
+            guard renderer == nil else { return }
+            openGLContext?.makeCurrentContext()
+            var initialization = mpv_opengl_init_params(
+                get_proc_address: { _, name in
+                    guard let name else { return nil }
+                    return dlsym(UnsafeMutableRawPointer(bitPattern: -2), name)
+                }, get_proc_address_ctx: nil)
+            "opengl".withCString { api in
+                withUnsafeMutablePointer(to: &initialization) { gl in
+                    var parameters = [
+                        mpv_render_param(
+                            type: MPV_RENDER_PARAM_API_TYPE,
+                            data: UnsafeMutableRawPointer(mutating: api)),
+                        mpv_render_param(type: MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, data: gl),
+                        mpv_render_param(type: MPV_RENDER_PARAM_INVALID, data: nil),
+                    ]
+                    let result = mpv_render_context_create(&renderer, player.handle, &parameters)
+                    if result < 0 { NSLog("mpv renderer: %s", mpv_error_string(result)) }
+                }
+            }
+            if let renderer {
+                mpv_render_context_set_update_callback(
+                    renderer,
+                    { context in
+                        guard let context else { return }
+                        let view = Unmanaged<Surface>.fromOpaque(context).takeUnretainedValue()
+                        DispatchQueue.main.async { [weak view] in view?.needsDisplay = true }
+                    }, Unmanaged.passUnretained(self).toOpaque())
+            }
+        }
+        override func draw(_ dirtyRect: NSRect) {
+            openGLContext?.makeCurrentContext()
+            guard let renderer else { return }
+            let size = convertToBacking(bounds).size
+            var fbo = mpv_opengl_fbo(
+                fbo: 0, w: Int32(size.width), h: Int32(size.height), internal_format: 0)
+            var flip: Int32 = 1
+            var block: Int32 = 0
+            withUnsafeMutablePointer(to: &fbo) { buffer in
+                withUnsafeMutablePointer(to: &flip) { orientation in
+                    var parameters = [
+                        mpv_render_param(type: MPV_RENDER_PARAM_OPENGL_FBO, data: buffer),
+                        mpv_render_param(type: MPV_RENDER_PARAM_FLIP_Y, data: orientation),
+                        mpv_render_param(type: MPV_RENDER_PARAM_INVALID, data: nil),
+                    ]
+                    withUnsafeMutablePointer(to: &block) { wait in
+                        parameters.insert(
+                            mpv_render_param(
+                                type: MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME, data: wait), at: 2)
+                        mpv_render_context_render(renderer, &parameters)
+                    }
+                }
+            }
+            openGLContext?.flushBuffer()
+        }
+        override func reshape() {
+            super.reshape()
+            needsDisplay = true
+        }
+        func releaseRenderer() {
+            guard let renderer else { return }
+            openGLContext?.makeCurrentContext()
+            mpv_render_context_set_update_callback(renderer, nil, nil)
+            mpv_render_context_free(renderer)
+            self.renderer = nil
+        }
+        deinit { releaseRenderer() }
+    }
+}

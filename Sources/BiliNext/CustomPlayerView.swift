@@ -73,9 +73,14 @@ struct CustomPlayerView: View {
 
     var body: some View {
         ZStack {
-            VideoSurface(player: model.player)
+            if let mpv = model.mpv {
+                MPVSurface(player: mpv)
+            } else {
+                VideoSurface(player: model.player)
+            }
             DanmakuCanvas(
-                player: model.player, model: danmaku, time: model.time, playing: model.playing,
+                player: model.player, mpv: model.mpv, model: danmaku, time: model.time,
+                playing: model.playing,
                 opacity: opacity, fontSize: fontSize, area: area, speed: dmSpeed, blocked: blocked,
                 rolling: rolling, fixed: fixed
             )
@@ -242,14 +247,14 @@ struct CustomPlayerView: View {
                 Button {
                     volumeSettings.toggle()
                 } label: {
-                    Image(systemName: model.player.volume == 0 ? "speaker.slash" : "speaker.wave.2")
+                    Image(systemName: model.playerVolume == 0 ? "speaker.slash" : "speaker.wave.2")
                 }.help("音量")
                     .popover(isPresented: $volumeSettings) {
                         Slider(
                             value: Binding(
-                                get: { Double(model.player.volume) },
+                                get: { model.playerVolume },
                                 set: {
-                                    model.player.volume = Float($0)
+                                    model.playerVolume = $0
                                     model.objectWillChange.send()
                                 }), in: 0...1
                         ).frame(width: 140).padding(20).accessibilityLabel("音量")

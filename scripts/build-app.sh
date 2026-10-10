@@ -28,6 +28,10 @@ cat > "$app_dir/Contents/Info.plist" <<'PLIST'
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PLIST
+python3 scripts/bundle-mpv.py "$app_dir"
+for library in "$app_dir"/Contents/Frameworks/*.dylib; do
+    codesign --force --sign "$signing_identity" "$library"
+done
 codesign --force --sign "$signing_identity" "$app_dir"
-codesign --verify --strict "$app_dir"
+codesign --verify --deep --strict "$app_dir"
 printf '%s\n' "$app_dir"

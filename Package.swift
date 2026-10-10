@@ -7,8 +7,9 @@ let package = Package(
         .executable(name: "BiliNext", targets: ["BiliNext"])
     ],
     targets: [
+        .systemLibrary(name: "CMPV", pkgConfig: "mpv", providers: [.brew(["mpv"])]),
         .target(name: "BiliNextCore"),
-        .executableTarget(name: "BiliNext", dependencies: ["BiliNextCore"]),
+        .executableTarget(name: "BiliNext", dependencies: ["BiliNextCore", "CMPV"]),
         .testTarget(name: "BiliNextCoreTests", dependencies: ["BiliNextCore"]),
         .testTarget(name: "BiliNextTests", dependencies: ["BiliNext"]),
     ], swiftLanguageModes: [.v5])

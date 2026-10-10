@@ -1,4 +1,5 @@
 import AVFoundation
+import AppKit
 import BiliNextCore
 import Foundation
 import Testing
@@ -6,7 +7,7 @@ import Testing
 @testable import BiliNext
 
 @MainActor
-@Test(.enabled(if: ProcessInfo.processInfo.environment["BILINEXT_DASH_TEST"] == "1"))
+@Test(.enabled(if: ProcessInfo.processInfo.environment["BILINEXT_MPV_TEST"] == "1"))
 func playbackTabSwitchRetainsLoadedMedia() async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -22,35 +23,91 @@ func playbackTabSwitchRetainsLoadedMedia() async throws {
         workspace.selected = nil
         workspace.clearTabs()
     }
+    var surfaces: [String: MPVSurface.Surface] = [:]
     func waitForPlayback(_ page: AppModel) async throws {
         for _ in 0..<200 {
-            if page.playerError != nil || page.player.currentTime().seconds > 1 { break }
+            if let core = page.mpv, surfaces[page.selected ?? ""] == nil {
+                let surface = try #require(MPVSurface.Surface(player: core))
+                surface.setFrameSize(NSSize(width: 640, height: 360))
+                surface.prepareOpenGL()
+                surfaces[page.selected ?? ""] = surface
+            }
+            surfaces[page.selected ?? ""]?.draw(.zero)
+            if page.playerError != nil || (page.mpv?.time ?? 0) > 1 { break }
             try await Task.sleep(for: .milliseconds(200))
         }
         #expect(page.playerError == nil)
-        #expect(page.player.currentItem?.status == .readyToPlay)
-        #expect(page.player.currentTime().seconds > 1)
+        #expect(page.mpv?.loaded == true)
+        #expect((page.mpv?.time ?? 0) > 1)
     }
     workspace.activate(first.id, autoplay: true)
     try await waitForPlayback(a)
-    let item = try #require(a.player.currentItem)
+    let item = try #require(a.mpv)
     a.setRate(1.5)
     a.seek(30)
     try await Task.sleep(for: .seconds(1))
     workspace.activate(second.id, autoplay: true)
-    let position = a.player.currentTime().seconds
+    let position = a.mpv?.time ?? 0
     try await waitForPlayback(b)
-    #expect(a.player.rate == 0)
-    #expect(a.player.currentItem === item)
-    #expect(abs(a.player.currentTime().seconds - position) < 0.5)
+    #expect(a.mpv?.playing == false)
+    #expect(a.mpv === item)
+    #expect(abs((a.mpv?.time ?? 0) - position) < 0.5)
     workspace.activate(first.id, autoplay: true)
-    #expect(a.player.currentItem === item)
+    #expect(a.mpv === item)
     #expect(a.playbackRate == 1.5)
-    #expect(b.player.rate == 0)
+    #expect(b.mpv?.playing == false)
     #expect(workspace.playbackInstances.count == 2)
+    a.togglePlayback()
+    let savedPosition = a.mpv?.time ?? 0
+    a.selectQuality(64)
+    for _ in 0..<200 {
+        surfaces[first.id]?.draw(.zero)
+        if !a.videoLoading { break }
+        try await Task.sleep(for: .milliseconds(100))
+    }
+    #expect(a.playerError == nil)
+    #expect(a.qualityID == 64)
+    #expect(a.mpv === item)
+    #expect(a.mpv?.playing == false)
+    #expect(abs((a.mpv?.time ?? 0) - savedPosition) < 1)
+    a.selectQuality(80)
+    a.selectQuality(64)
+    for _ in 0..<200 {
+        surfaces[first.id]?.draw(.zero)
+        if !a.videoLoading { break }
+        try await Task.sleep(for: .milliseconds(100))
+    }
+    #expect(a.qualityID == 64)
+    #expect(a.playerError == nil)
+
     workspace.close(second.id)
     #expect(workspace.playbackInstances.count == 1)
-    #expect(a.player.currentItem === item)
+    #expect(a.mpv === item)
+    if ProcessInfo.processInfo.environment["BILINEXT_MPV_4K_TEST"] == "1" {
+        a.selectQuality(120)
+        for _ in 0..<200 {
+            surfaces[first.id]?.draw(.zero)
+            if !a.videoLoading { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        #expect(a.playerError == nil)
+        #expect(a.qualityID == 120)
+        a.togglePlayback()
+        for _ in 0..<100 {
+            surfaces[first.id]?.draw(.zero)
+            if (a.mpv?.number("video-params/w") ?? 0) >= 3840
+                && a.mpv?.text("hwdec-current") == "videotoolbox"
+            {
+                break
+            }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        #expect((a.mpv?.number("video-params/w") ?? 0) >= 3840)
+        #expect(a.mpv?.text("hwdec-current") == "videotoolbox")
+        print(
+            "MPV 4K: \(a.playbackCodec), width=\(a.mpv?.number("video-params/w") ?? 0), hardware=\(a.mpv?.text("hwdec-current") ?? "")"
+        )
+    }
     print(
         "Persistent tabs: two muted players, same loaded item and position retained, inactive page paused, close released only its player"
     )

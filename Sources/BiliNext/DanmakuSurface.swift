@@ -6,6 +6,7 @@ import SwiftUI
 
 struct DanmakuCanvas: View {
     let player: AVPlayer
+    let mpv: MPVPlayer?
     @ObservedObject var model: DanmakuModel
     let time: Double
     let playing: Bool
@@ -21,7 +22,7 @@ struct DanmakuCanvas: View {
     var body: some View {
         GeometryReader { geometry in
             DanmakuSurface(
-                player: player, placements: placements, layoutID: layoutID,
+                player: player, mpv: mpv, placements: placements, layoutID: layoutID,
                 playing: playing && model.enabled, enabled: model.enabled, time: time,
                 opacity: opacity, fontSize: fontSize, fixed: fixed
             )
@@ -74,6 +75,7 @@ struct DanmakuCanvas: View {
 
 struct DanmakuSurface: NSViewRepresentable {
     let player: AVPlayer
+    let mpv: MPVPlayer?
     let placements: [DanmakuPlacement]
     let layoutID: UUID
     let playing: Bool
@@ -91,7 +93,8 @@ struct DanmakuSurface: NSViewRepresentable {
             for label in view.labels.values { label.removeFromSuperlayer() }
             view.labels.removeAll()
         }
-        view.player = player
+        view.player = mpv == nil ? player : nil
+        view.mpv = mpv
         view.fontSize = fontSize
         view.fixed = fixed
         view.layer?.opacity = Float(opacity)
@@ -100,7 +103,9 @@ struct DanmakuSurface: NSViewRepresentable {
         view.enabled = enabled
         view.displayLink?.isPaused = !playing
         view.render(
-            time: player.currentItem?.status == .readyToPlay ? player.currentTime().seconds : time)
+            time: mpv?.time
+                ?? (player.currentItem?.status == .readyToPlay
+                    ? player.currentTime().seconds : time))
     }
     static func dismantleNSView(_ view: Surface, coordinator: ()) {
         view.displayLink?.invalidate()
@@ -109,6 +114,7 @@ struct DanmakuSurface: NSViewRepresentable {
     final class Surface: NSView {
         override var isFlipped: Bool { true }
         var player: AVPlayer?
+        weak var mpv: MPVPlayer?
         var items: [DanmakuPlacement] = []
         var labels: [String: CALayer] = [:]
         var layoutID: UUID?
@@ -156,7 +162,13 @@ struct DanmakuSurface: NSViewRepresentable {
                 displayLink = link
             }
         }
-        @objc private func tick() { if let player { render(time: player.currentTime().seconds) } }
+        @objc private func tick() {
+            if let mpv {
+                render(time: mpv.time)
+            } else if let player {
+                render(time: player.currentTime().seconds)
+            }
+        }
         private func lowerBound(_ value: Double) -> Int {
             var low = 0
             var high = items.count
@@ -208,7 +220,7 @@ struct DanmakuSurface: NSViewRepresentable {
             guard time.isFinite, enabled else { return }
             let host = CACurrentMediaTime()
             let advancing = running && (player == nil || player?.timeControlStatus == .playing)
-            let rate: Float = advancing ? (player?.rate ?? 1) : 0
+            let rate: Float = advancing ? Float(mpv?.speed ?? Double(player?.rate ?? 1)) : 0
             let scale = window?.backingScaleFactor ?? 2
             let expected = lastTime + (host - lastHost) * Double(lastRate)
             let resync =

@@ -17,6 +17,12 @@ final class AppModel: ObservableObject {
     @Published var officialPlayerStatus = ""
     weak var officialWebView: WKWebView?
     let player = AVPlayer()
+    @Published private(set) var mpv: MPVPlayer?
+    private var awaitingMPVLoad = false
+    var playerVolume: Double {
+        get { mpv?.volume ?? Double(player.volume) }
+        set { if let mpv { mpv.volume = newValue } else { player.volume = Float(newValue) } }
+    }
     let danmaku = DanmakuModel()
     let downloads: DownloadManager
     @Published private(set) var playbackInstances: [String: AppModel] = [:]
@@ -121,7 +127,7 @@ final class AppModel: ObservableObject {
             forInterval: CMTime(seconds: 0.25, preferredTimescale: 600), queue: .main
         ) { [weak self] value in
             Task { @MainActor in
-                guard let self, !self.officialCore else { return }
+                guard let self, !self.officialCore, self.mpv == nil else { return }
                 self.updatePlayback(
                     time: value.seconds, duration: self.player.currentItem?.duration.seconds ?? 0,
                     playing: self.player.rate != 0,
@@ -423,18 +429,20 @@ final class AppModel: ObservableObject {
             if let video = instance.detail?.video { snapshot[index].video = video }
             snapshot[index].cid = instance.pageID ?? snapshot[index].cid
             let seconds =
-                instance.officialCore ? instance.time : instance.player.currentTime().seconds
-            if instance.officialCore || instance.player.currentItem?.status == .readyToPlay,
+                instance.officialCore
+                ? instance.time : instance.mpv?.time ?? instance.player.currentTime().seconds
+            if instance.officialCore || instance.mpv?.loaded == true
+                || instance.player.currentItem?.status == .readyToPlay,
                 seconds.isFinite
             {
                 snapshot[index].position = max(0, seconds)
             }
         }
         if updateTabs { tabs = snapshot }
-        if officialCore || player.currentItem?.status == .readyToPlay,
+        if officialCore || mpv?.loaded == true || player.currentItem?.status == .readyToPlay,
             let index = snapshot.firstIndex(where: { $0.id == mediaID })
         {
-            let seconds = officialCore ? time : player.currentTime().seconds
+            let seconds = officialCore ? time : (mpv?.time ?? player.currentTime().seconds)
             if seconds.isFinite { snapshot[index].position = max(0, seconds) }
             snapshot[index].cid = pageID
             if updateTabs { tabs = snapshot }
@@ -453,6 +461,7 @@ final class AppModel: ObservableObject {
                 instance.qualitySwitchState = (state.position, false)
             }
             instance.player.pause()
+            instance.mpv?.pause()
             instance.officialWebView?.evaluateJavaScript("window.biliPlayer?.pause()")
             instance.playbackIntent = false
             instance.playing = false
@@ -528,6 +537,7 @@ final class AppModel: ObservableObject {
 
     func switchPlayer() {
         saveSession()
+        mpv?.pause()
         player.pause()
         playing = false
         if officialCore {
@@ -558,6 +568,7 @@ final class AppModel: ObservableObject {
         }
         saveSession()
         officialCore = false
+        mpv?.pause()
         player.pause()
         playing = false
         videoTask?.cancel()
@@ -567,6 +578,7 @@ final class AppModel: ObservableObject {
         let generation = UUID()
         videoGeneration = generation
         subtitleGeneration = UUID()
+        mpv?.stop()
         player.replaceCurrentItem(with: nil)
         mediaLoader?.invalidate()
         mediaLoader = nil
@@ -620,7 +632,9 @@ final class AppModel: ObservableObject {
     func selectPage(_ cid: Int64) {
         guard let id = selected, cid != pageID else { return }
         saveSession()
+        mpv?.pause()
         player.pause()
+        mpv?.stop()
         player.replaceCurrentItem(with: nil)
         mediaLoader?.invalidate()
         mediaLoader = nil
@@ -672,6 +686,56 @@ final class AppModel: ObservableObject {
                 subtitleLoading = false
             }
         }
+        do {
+            let source = try await api.playback(
+                bvid: id, cid: cid, quality: 80, episodeID: detail?.video.episodeID)
+            guard !Task.isCancelled, generation == videoGeneration else { return }
+            let core = try ensureMPV()
+            quality = source.quality
+            qualityID = source.qualityID
+            playbackCodec = "mpv · " + (source.videoStream?.codec ?? "MP4")
+            qualities = source.qualities
+            playbackIntent = autoplay && playbackTabActive
+            core.speed = playbackRate
+            awaitingMPVLoad = true
+            try core.load(source, position: position, autoplay: playbackIntent)
+        } catch {
+            guard !Task.isCancelled, generation == videoGeneration else { return }
+            playerError = error.localizedDescription
+            videoLoading = false
+        }
+    }
+
+    private func ensureMPV() throws -> MPVPlayer {
+        if let mpv { return mpv }
+        let core = try MPVPlayer()
+        core.muted = player.isMuted || CommandLine.arguments.contains("--mute")
+        core.volume = Double(player.volume)
+        core.onUpdate = { [weak self, weak core] time, duration, playing, buffering in
+            guard let self, let core, !self.officialCore else { return }
+            self.updatePlayback(
+                time: time, duration: duration, playing: playing, buffering: buffering)
+            if self.awaitingMPVLoad && core.loaded {
+                self.awaitingMPVLoad = false
+                self.videoLoading = false
+            }
+            if let failure = core.failure {
+                self.playerError = failure
+                self.videoLoading = false
+            }
+            if self.playbackTabActive { self.updateDanmaku() }
+            if core.loaded && self.playbackTabActive && Date().timeIntervalSince(self.lastSaved) > 5
+            {
+                self.saveSession(updateTabs: false)
+            }
+        }
+        mpv = core
+        return core
+    }
+
+    private func loadAVMedia(
+        id: String, cid: Int64, position: Double, generation: UUID, autoplay: Bool
+    ) async {
         do {
             let (playback, item) = try await playableMedia(id: id, cid: cid, quality: 80)
             guard !Task.isCancelled, generation == videoGeneration else { return }
@@ -795,21 +859,39 @@ final class AppModel: ObservableObject {
         _ value: Int, allowAV1: Bool = true, allowHEVC: Bool = true,
         force: Bool = false
     ) {
-        guard let id = mediaID, let cid = pageID, force || value != qualityID else { return }
+        guard let id = mediaID, let cid = pageID, force || value != qualityID || videoLoading else {
+            return
+        }
         qualityTask?.cancel()
         let generation = videoGeneration
         let request = UUID()
         qualityGeneration = request
-        let current = player.currentTime().seconds
+        let current = mpv?.time ?? player.currentTime().seconds
         let position = qualitySwitchState?.position ?? (current.isFinite ? current : time)
-        let resume = qualitySwitchState?.resume ?? (player.rate != 0)
+        let resume = qualitySwitchState?.resume ?? (mpv?.playing ?? (player.rate != 0))
         qualitySwitchState = (position, resume)
         playbackIntent = resume
+        mpv?.pause()
         player.pause()
         videoLoading = true
         playerError = nil
         qualityTask = Task { [self] in
             do {
+                if let mpv {
+                    let source = try await api.playback(
+                        bvid: id, cid: cid, quality: value, episodeID: detail?.video.episodeID)
+                    guard !Task.isCancelled, generation == videoGeneration,
+                        request == qualityGeneration
+                    else { return }
+                    quality = source.quality
+                    qualityID = source.qualityID
+                    qualities = source.qualities
+                    playbackCodec = "mpv · " + (source.videoStream?.codec ?? "MP4")
+                    awaitingMPVLoad = true
+                    try mpv.load(source, position: position, autoplay: resume && playbackTabActive)
+                    qualitySwitchState = nil
+                    return
+                }
                 let (result, item) = try await playableMedia(
                     id: id, cid: cid, quality: value,
                     allowAV1: allowAV1, allowHEVC: allowHEVC)
@@ -849,12 +931,21 @@ final class AppModel: ObservableObject {
             }
             return
         }
+        if let mpv {
+            mpv.seek(seconds)
+            return
+        }
         player.seek(
             to: CMTime(seconds: seconds, preferredTimescale: 600), toleranceBefore: .zero,
             toleranceAfter: .zero)
     }
     /// Let AVPlayer build a safety buffer and resume automatically after network stalls.
     func startBufferedPlayback() {
+        if let mpv {
+            mpv.speed = playbackRate
+            mpv.play()
+            return
+        }
         player.automaticallyWaitsToMinimizeStalling = true
         player.defaultRate = Float(playbackRate)
         player.play()
@@ -871,7 +962,14 @@ final class AppModel: ObservableObject {
             )
             return
         }
+        if let mpv {
+            playbackIntent = !playbackIntent
+            if playbackIntent { mpv.play() } else { mpv.pause() }
+            playing = playbackIntent
+            return
+        }
         if playbackIntent || player.timeControlStatus != .paused {
+            mpv?.pause()
             player.pause()
             playbackIntent = false
         } else {
@@ -886,7 +984,8 @@ final class AppModel: ObservableObject {
             officialWebView?.evaluateJavaScript("window.biliPlayer?.setPlaybackRate(\(value));")
             return
         }
-        if playing { player.rate = Float(value) }
+        mpv?.speed = value
+        if mpv == nil && playing { player.rate = Float(value) }
     }
     func updateDanmaku() {
         guard !officialCore else { return }
@@ -903,7 +1002,9 @@ final class AppModel: ObservableObject {
         qualitySwitchState = nil
         videoGeneration = UUID()
         subtitleGeneration = UUID()
+        mpv?.pause()
         player.pause()
+        mpv?.stop()
         player.replaceCurrentItem(with: nil)
         mediaLoader?.invalidate()
         mediaLoader = nil

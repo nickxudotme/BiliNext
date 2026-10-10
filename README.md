@@ -1,10 +1,10 @@
 # BiliNext
 
-原生 macOS Bilibili 客户端开发版。最低 macOS 26，SwiftUI + AppKit；使用 AVPlayer 播放 DASH 分离流与单段 MP4；原生高画质实现和验证见 [DASH 播放记录](docs/NATIVE-DASH-PLAYBACK.md)。
+原生 macOS Bilibili 客户端开发版。最低 macOS 26，SwiftUI + AppKit；主播放器使用 libmpv 直接播放 DASH 分离流与 MP4，悬停预览使用 AVPlayer；实现和验证见 [mpv 播放记录](docs/MPV-PLAYBACK.md)，旧方案见 [DASH 播放记录](docs/NATIVE-DASH-PLAYBACK.md)。
 
 ## 构建
 
-需要 Xcode 和持久的代码签名证书。在本机运行 `security find-identity -v -p codesigning`，将选定证书的 SHA-1 写入项目根目录 `.signing-identity`，或设置 `BILINEXT_SIGNING_IDENTITY`。该本机配置已加入 `.gitignore`。
+需要 Xcode、`brew install mpv pkgconf` 和持久的代码签名证书。运行库打包与 macOS 26 兼容要求见 [mpv 构建说明](docs/MPV-PLAYBACK.md)。在本机运行 `security find-identity -v -p codesigning`，将选定证书的 SHA-1 写入项目根目录 `.signing-identity`，或设置 `BILINEXT_SIGNING_IDENTITY`。该本机配置已加入 `.gitignore`。
 
 ```sh
 bash scripts/build-app.sh
@@ -32,7 +32,7 @@ swift test
 - 视频收藏夹编辑、点赞／取消、投币入口；账号写操作仅由用户按钮触发。
 - 卡片右键加入／移除稍后再看；移除后的撤销是重新加入，顺序可能变化。
 - 视频标签、Command 后台打开、关闭与撤销、重启恢复、本地续播；恢复与切换保持暂停。
-- 自定义播放器控件：进度、倍速、音量、剧场／全屏、清晰度切换并保留位置；AVPlayer 仅作为底层媒体引擎，公共 ResourceLoader 负责 CDN 请求头与字节范围读取。
+- 自定义播放器控件：进度、倍速、音量、剧场／全屏、清晰度切换并保留位置；libmpv 作为主媒体引擎，直接处理视频／音频、CDN 请求头、缓存和硬解。
 - 分段弹幕：滚动、顶部、底部；暂停与跳转同步；字号、透明度、区域、速度、关键词屏蔽；固定和滚动弹幕分区以避免重叠。
 - 下载当前分 P 的单段 MP4：进度、取消、重试、文件打开、Finder 定位、下载记录；退出应用后需重新下载未完成任务。
 - Transcript 选轨、逐句／段落、搜索、时间跳转、跟随与暂停跟随、复制时间引用。
