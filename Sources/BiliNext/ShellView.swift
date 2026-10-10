@@ -6,6 +6,7 @@ struct ShellView: View {
     private let drawerWidth: CGFloat = 220
     @State private var pinned = true
     @State private var fullScreen = false
+    @State private var pinnedBeforePlaybackFullscreen: Bool?
     @State private var revealed = false
     @State private var hovering = false
     @State private var hoveredTab: String?
@@ -45,6 +46,23 @@ struct ShellView: View {
             .padding(.leading, pinned ? drawerWidth : 0)
             .background(Color(nsColor: .windowBackgroundColor))
             .background(WindowChrome { fullScreen = $0 })
+            .onChange(of: fullScreen) { _, entered in
+                if entered && model.selected != nil {
+                    pinnedBeforePlaybackFullscreen = pinned
+                    revealTask?.cancel()
+                    hideTask?.cancel()
+                    pinned = false
+                    revealed = false
+                    pointerZone = -1
+                } else if !entered, let previous = pinnedBeforePlaybackFullscreen {
+                    revealTask?.cancel()
+                    hideTask?.cancel()
+                    pinned = previous
+                    revealed = false
+                    pointerZone = -1
+                    pinnedBeforePlaybackFullscreen = nil
+                }
+            }
             .background(
                 DrawerPointerTracker(externalWidth: drawerWidth) { point in updatePointer(point) }
             )
