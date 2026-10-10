@@ -39,8 +39,13 @@ struct ShellView: View {
                     // travel with the panel instead of adopting its final layout.
                     .geometryGroup()
                     .background {
-                        RoundedRectangle(cornerRadius: pinned ? 0 : 14, style: .continuous)
-                            .fill(Color(nsColor: .underPageBackgroundColor))
+                        if pinned {
+                            Rectangle().fill(Color(nsColor: .underPageBackgroundColor))
+                        } else {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(.clear)
+                                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14))
+                        }
                     }
                     .clipShape(RoundedRectangle(cornerRadius: pinned ? 0 : 14, style: .continuous))
                     .overlay {
