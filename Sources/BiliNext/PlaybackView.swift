@@ -117,11 +117,11 @@ struct PlaybackView: View {
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 14, weight: .semibold))
-                .frame(width: 32, height: 32)
+                .frame(width: 36, height: 36)
                 .contentShape(Circle())
         }
         .menuStyle(.borderlessButton).menuIndicator(.hidden)
-        .fixedSize()
+        .frame(width: 36, height: 36)
         .glassEffect(.regular.interactive(), in: Circle())
         .help("播放选项").accessibilityLabel("播放选项")
     }
