@@ -63,12 +63,12 @@ struct PlaybackView: View {
                 }
             if !model.theater {
                 VStack(spacing: 0) {
-                    HStack {
-                        Picker("视频侧栏", selection: $panel) {
-                            ForEach(PlaybackPanel.allCases) { tab in Text(tab.rawValue).tag(tab) }
-                        }.pickerStyle(.segmented).labelsHidden()
-                        playbackOptions
-                    }.padding(12)
+                    GlassEffectContainer(spacing: 6) {
+                        HStack(spacing: 8) {
+                            PlaybackPanelSwitcher(selection: $panel)
+                            playbackOptions
+                        }
+                    }.padding(.horizontal, 12).padding(.vertical, 8)
                     Divider().opacity(0.5)
                     Group {
                         switch panel {
@@ -83,6 +83,7 @@ struct PlaybackView: View {
                     }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }.frame(minWidth: 310, idealWidth: 360, maxWidth: 420, maxHeight: .infinity)
                     .background(.regularMaterial)
+                    .ignoresSafeArea(.container, edges: .top)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -115,8 +116,14 @@ struct PlaybackView: View {
             }
         } label: {
             Image(systemName: "ellipsis")
+                .font(.system(size: 14, weight: .semibold))
+                .frame(width: 32, height: 32)
+                .contentShape(Circle())
         }
-        .menuStyle(.borderlessButton).frame(width: 20).help("播放选项")
+        .menuStyle(.borderlessButton).menuIndicator(.hidden)
+        .fixedSize()
+        .glassEffect(.regular.interactive(), in: Circle())
+        .help("播放选项").accessibilityLabel("播放选项")
     }
 
     private func trackPointer(_ next: NSPoint?) {
@@ -162,6 +169,43 @@ struct PlaybackView: View {
                 }
             }
         }
+    }
+}
+
+private struct PlaybackPanelSwitcher: View {
+    @Binding var selection: PlaybackPanel
+    @Namespace private var highlight
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(PlaybackPanel.allCases) { tab in
+                Button {
+                    withAnimation(reduceMotion ? nil : .smooth(duration: 0.22)) {
+                        selection = tab
+                    }
+                } label: {
+                    Text(tab.rawValue)
+                        .font(.system(size: 12, weight: selection == tab ? .semibold : .medium))
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 28)
+                        .contentShape(Capsule())
+                        .background {
+                            if selection == tab {
+                                Capsule().fill(.primary.opacity(0.12))
+                                    .matchedGeometryEffect(id: "selection", in: highlight)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selection == tab ? [.isSelected] : [])
+            }
+        }
+        .padding(4)
+        .glassEffect(.regular, in: Capsule())
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("视频详情栏目")
     }
 }
 

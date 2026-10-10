@@ -40,7 +40,7 @@ struct ShellView: View {
                     .geometryGroup()
                     .background {
                         if pinned {
-                            Rectangle().fill(Color(nsColor: .underPageBackgroundColor))
+                            Rectangle().fill(.clear).glassEffect(.regular, in: Rectangle())
                         } else {
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
                                 .fill(.clear)
@@ -102,41 +102,47 @@ struct ShellView: View {
 
     private var sidebar: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 4) {
-                TrafficLights().frame(width: 56, height: 24)
-                Button {
-                    revealTask?.cancel()
-                    hideTask?.cancel()
-                    pinned.toggle()
-                    revealed = false
-                    pointerZone = -1
-                } label: {
-                    Image(systemName: "sidebar.left").frame(width: 26, height: 28)
+            GlassEffectContainer(spacing: 6) {
+                HStack(spacing: 4) {
+                    TrafficLights().frame(width: 56, height: 24)
+                    Button {
+                        revealTask?.cancel()
+                        hideTask?.cancel()
+                        pinned.toggle()
+                        revealed = false
+                        pointerZone = -1
+                    } label: {
+                        Image(systemName: "sidebar.left").frame(width: 26, height: 28)
+                    }
+                    .glassEffect(.regular.interactive(), in: Circle())
+                    .help(pinned ? "隐藏侧栏" : "固定侧栏")
+                    .accessibilityLabel(pinned ? "隐藏侧栏" : "固定侧栏")
+                    Spacer(minLength: 0)
+                    HStack(spacing: 2) {
+                        Button {
+                            model.moveHistory(-1)
+                        } label: {
+                            Image(systemName: "arrow.left").frame(width: 24, height: 28)
+                        }
+                        .disabled(!model.canBack).accessibilityLabel("后退")
+                        Button {
+                            model.moveHistory(1)
+                        } label: {
+                            Image(systemName: "arrow.right").frame(width: 24, height: 28)
+                        }
+                        .disabled(!model.canForward).accessibilityLabel("前进")
+                        Button {
+                            model.refresh()
+                        } label: {
+                            Image(systemName: "arrow.clockwise").frame(width: 24, height: 28)
+                        }
+                        .accessibilityLabel("刷新")
+                    }.padding(.horizontal, 3)
+                        .glassEffect(.regular.interactive(), in: Capsule())
                 }
-                .help(pinned ? "隐藏侧栏" : "固定侧栏")
-                .accessibilityLabel(pinned ? "隐藏侧栏" : "固定侧栏")
-                Spacer(minLength: 0)
-                Button {
-                    model.moveHistory(-1)
-                } label: {
-                    Image(systemName: "arrow.left").frame(width: 24, height: 28)
-                }
-                .disabled(!model.canBack).accessibilityLabel("后退")
-                Button {
-                    model.moveHistory(1)
-                } label: {
-                    Image(systemName: "arrow.right").frame(width: 24, height: 28)
-                }
-                .disabled(!model.canForward).accessibilityLabel("前进")
-                Button {
-                    model.refresh()
-                } label: {
-                    Image(systemName: "arrow.clockwise").frame(width: 24, height: 28)
-                }
-                .accessibilityLabel("刷新")
+                .font(.system(size: 14)).buttonStyle(.plain)
+                .frame(height: 44).padding(.horizontal, 10)
             }
-            .font(.system(size: 14)).buttonStyle(.plain)
-            .frame(height: 44).padding(.horizontal, 10)
             VStack(spacing: 2) {
                 ForEach(menus, id: \.0) { item in
                     Button {
