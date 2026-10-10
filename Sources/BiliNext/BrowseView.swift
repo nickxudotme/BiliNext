@@ -14,6 +14,7 @@ struct AvatarView: View {
 
 struct BrowseView: View {
     @ObservedObject var model: AppModel
+    @State private var bottomVisible = false
     @FocusState private var searching: Bool
     var body: some View {
         VStack(spacing: 0) {
@@ -192,10 +193,17 @@ struct BrowseView: View {
                     if model.hasMore {
                         Button(model.loading ? "加载中…" : "加载更多") { model.refresh(more: true) }
                             .disabled(model.loading).padding(20)
+                            .onScrollVisibilityChange { visible in
+                                bottomVisible = visible
+                                if visible { model.loadMoreIfNeeded() }
+                            }
                     }
                 }.id(model.menu)
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .onChange(of: model.loading) { _, loading in
+                if !loading && bottomVisible { model.loadMoreIfNeeded() }
+            }
             .onChange(of: model.menu) { _, menu in if menu == "搜索" { searching = true } }
     }
 }

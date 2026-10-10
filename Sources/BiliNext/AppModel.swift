@@ -83,11 +83,12 @@ final class AppModel: ObservableObject {
     private var history = ["动态"]
     private var historyIndex = 0
     private var lastSaved = Date.distantPast
-    private let sessionStore = SessionStore()
+    private let sessionStore: SessionStore
 
     // MARK: - Lifecycle
 
-    init() {
+    init(sessionStore: SessionStore = SessionStore()) {
+        self.sessionStore = sessionStore
         if let saved = try? sessionStore.read() {
             tabs = saved
         }
@@ -258,6 +259,7 @@ final class AppModel: ObservableObject {
                     }
                 }
                 guard !Task.isCancelled, generation == browseGeneration else { return }
+                let previousCount = videos.count
                 var seen = Set<String>()
                 videos = ((more ? videos : []) + result).filter { seen.insert($0.id).inserted }
                 cachedLists[
@@ -266,12 +268,22 @@ final class AppModel: ObservableObject {
                 offset = next
                 page = requestedPage
                 hasMore = moreAvailable
+                if more && videos.count == previousCount && (next == nil || next == requestedOffset)
+                {
+                    hasMore = false
+                }
             } catch {
                 guard !Task.isCancelled, generation == browseGeneration else { return }
                 browseError = error.localizedDescription
             }
             loading = false
         }
+    }
+    func loadMoreIfNeeded() {
+        guard selected == nil, hasMore, !loading, browseError == nil, !videos.isEmpty else {
+            return
+        }
+        refresh(more: true)
     }
     func selectFolder(_ id: Int64) {
         guard id != folderID else { return }
@@ -318,7 +330,7 @@ final class AppModel: ObservableObject {
             toast = "已加入侧栏"
             saveSession()
         } else {
-            activate(video.id)
+            activate(video.id, autoplay: true)
         }
     }
     func close(_ id: String) {
@@ -335,12 +347,18 @@ final class AppModel: ObservableObject {
     }
     func clearTabs() {
         saveSession()
-        closed = tabs
-        tabs = []
-        selected = nil
-        stopMedia()
-        saveSession()
-        refresh()
+        if let selected, tabs.contains(where: { $0.id == selected }) {
+            closed = tabs.filter { $0.id != selected }
+            tabs.removeAll { $0.id != selected }
+            saveSession()
+        } else {
+            closed = tabs
+            tabs = []
+            selected = nil
+            stopMedia()
+            saveSession()
+            refresh()
+        }
     }
     func undoClose() {
         for tab in closed where !tabs.contains(where: { $0.id == tab.id }) { tabs.append(tab) }
@@ -377,10 +395,19 @@ final class AppModel: ObservableObject {
             officialCore = true
         }
     }
-    func activate(_ id: String, force: Bool = false) {
+    func activate(_ id: String, force: Bool = false, autoplay: Bool = false) {
         guard tabs.contains(where: { $0.id == id }) else { return }
         selected = id
-        if mediaID == id && !force { return }
+        if mediaID == id && !force {
+            if autoplay {
+                if officialCore {
+                    officialWebView?.evaluateJavaScript("window.biliPlayer?.play()")
+                } else {
+                    player.playImmediately(atRate: Float(playbackRate))
+                }
+            }
+            return
+        }
         saveSession()
         officialCore = false
         player.pause()
@@ -430,7 +457,8 @@ final class AppModel: ObservableObject {
                 else { throw APIError(code: -1, message: "视频没有可播放的分 P") }
                 pageID = page.cid
                 await loadMedia(
-                    id: id, cid: page.cid, position: saved?.position ?? 0, generation: generation)
+                    id: id, cid: page.cid, position: saved?.position ?? 0, generation: generation,
+                    autoplay: autoplay)
             } catch {
                 guard !Task.isCancelled, generation == videoGeneration else { return }
                 playerError = error.localizedDescription
@@ -462,7 +490,9 @@ final class AppModel: ObservableObject {
         }
         videoTask = Task { await loadMedia(id: id, cid: cid, position: 0, generation: generation) }
     }
-    private func loadMedia(id: String, cid: Int64, position: Double, generation: UUID) async {
+    private func loadMedia(
+        id: String, cid: Int64, position: Double, generation: UUID, autoplay: Bool = false
+    ) async {
         videoLoading = true
         playerError = nil
         subtitleLoading = true
@@ -512,6 +542,8 @@ final class AppModel: ObservableObject {
             if position > 0 {
                 await player.seek(to: CMTime(seconds: position, preferredTimescale: 600))
             }
+            guard !Task.isCancelled, generation == videoGeneration, selected == id else { return }
+            if autoplay { player.playImmediately(atRate: Float(playbackRate)) }
         } catch {
             guard !Task.isCancelled, generation == videoGeneration else { return }
             playerError = error.localizedDescription

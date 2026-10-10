@@ -166,7 +166,7 @@ struct ShellView: View {
                 if hovering && !model.tabs.isEmpty {
                     Button("clear") { model.clearTabs() }
                         .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary)
-                        .help("清空打开的标签，可撤销")
+                        .help(model.selected == nil ? "清空打开的标签，可撤销" : "清空其他标签，保留当前视频，可撤销")
                 }
             }.frame(height: 24).padding(.horizontal, 14)
             ScrollView {
@@ -199,12 +199,14 @@ struct ShellView: View {
                                     : hoveredTab == tab.id ? Color.primary.opacity(0.04) : .clear,
                                 in: RoundedRectangle(cornerRadius: 6)
                             )
-                            .contentShape(Rectangle()).onTapGesture { model.activate(tab.id) }
+                            .contentShape(Rectangle()).onTapGesture {
+                                model.activate(tab.id, autoplay: true)
+                            }
                             .onHover { inside in hoveredTab = inside ? tab.id : nil }
                             .accessibilityElement(children: .contain)
                             .accessibilityLabel(tab.video.title)
                             .accessibilityAddTraits(.isButton)
-                            .accessibilityAction { model.activate(tab.id) }
+                            .accessibilityAction { model.activate(tab.id, autoplay: true) }
                             .help(tab.video.title)
                             .contextMenu {
                                 Button("关闭标签") { model.close(tab.id) }
