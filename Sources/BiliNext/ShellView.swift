@@ -236,12 +236,12 @@ struct ShellView: View {
                         Button("退出登录") { Task { await model.logout() } }
                     } label: {
                         Image(systemName: "ellipsis")
-                            .font(.system(size: 14, weight: .semibold))
-                            .frame(width: 28, height: 28)
+                            .font(.system(size: 12, weight: .medium))
+                            .frame(width: 20, height: 20)
                             .contentShape(Circle())
                     }
                     .menuStyle(.borderlessButton).menuIndicator(.hidden)
-                    .frame(width: 28, height: 28)
+                    .frame(width: 20, height: 20)
                     .glassEffect(.regular.interactive(), in: Circle())
                     .help("账户选项").accessibilityLabel("账户选项")
                 } else {
