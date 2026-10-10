@@ -596,7 +596,9 @@ final class AppModel: ObservableObject {
                 await player.seek(to: CMTime(seconds: position, preferredTimescale: 600))
                 guard !Task.isCancelled, generation == videoGeneration else { return }
                 if resume { player.playImmediately(atRate: Float(playbackRate)) }
-                if result.qualityID != value { toast = "此视频当前可用清晰度为" + result.quality }
+                if result.qualityID != value {
+                    toast = "请求的清晰度未返回，当前使用" + result.quality + "。当前取流格式或账号权限可能受限。"
+                }
             } catch {
                 if !Task.isCancelled, generation == videoGeneration {
                     playerError = error.localizedDescription
