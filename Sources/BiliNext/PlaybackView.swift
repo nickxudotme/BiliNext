@@ -54,7 +54,7 @@ struct PlaybackView: View {
                             .frame(width: 28, height: 64)
                             .background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(InteractionButtonStyle())
                     .help(model.theater ? "展开视频详情" : "收起视频详情")
                     .accessibilityLabel(model.theater ? "展开视频详情" : "收起视频详情")
                     .padding(.trailing, 6)
@@ -129,6 +129,7 @@ struct PlaybackView: View {
                 .contentShape(Circle())
         }
         .menuStyle(.borderlessButton).menuIndicator(.hidden)
+        .modifier(MenuHoverFeedback())
         .frame(width: 36, height: 36)
         .glassEffect(.regular.interactive(), in: Circle())
         .help("播放选项").accessibilityLabel("播放选项")
@@ -208,7 +209,7 @@ private struct PlaybackPanelSwitcher: View {
                             }
                         }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(InteractionButtonStyle())
                 .accessibilityAddTraits(selection == tab ? [.isSelected] : [])
             }
         }
@@ -241,7 +242,7 @@ private struct VideoInformationView: View {
                             Image(systemName: "chevron.right").font(.caption).foregroundStyle(
                                 .tertiary)
                         }.contentShape(Rectangle())
-                    }.buttonStyle(.plain).disabled(video.ownerID == nil)
+                    }.buttonStyle(InteractionButtonStyle()).disabled(video.ownerID == nil)
                     VStack(alignment: .leading, spacing: 8) {
                         Text(video.title).font(.title3.weight(.semibold)).textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
@@ -288,7 +289,7 @@ private struct VideoInformationView: View {
                         } label: {
                             Image(systemName: "square.and.arrow.up")
                         }.help("复制当前时间链接").accessibilityLabel("复制当前时间链接")
-                    }.buttonStyle(.borderless).font(.title3).frame(maxWidth: .infinity)
+                    }.buttonStyle(InteractionButtonStyle()).font(.title3).frame(maxWidth: .infinity)
                     Divider()
                     if !detail.description.isEmpty {
                         Text(detail.description).font(.callout).lineSpacing(5).textSelection(
@@ -314,7 +315,7 @@ private struct VideoInformationView: View {
                                                 ? Color.accentColor.opacity(0.1)
                                                 : Color.primary.opacity(0.035),
                                             in: RoundedRectangle(cornerRadius: 8))
-                                }.buttonStyle(.plain).foregroundStyle(
+                                }.buttonStyle(InteractionButtonStyle()).foregroundStyle(
                                     model.pageID == page.cid ? Color.accentColor : .primary)
                             }
                         }
@@ -380,7 +381,7 @@ private struct DanmakuListView: View {
                                 Text(item.text).font(.callout).frame(
                                     maxWidth: .infinity, alignment: .leading)
                             }.padding(.vertical, 9).contentShape(Rectangle())
-                        }.buttonStyle(.plain).help("跳转到 \(timestamp(item.time))")
+                        }.buttonStyle(InteractionButtonStyle()).help("跳转到 \(timestamp(item.time))")
                         Divider().opacity(0.3)
                     }
                     if items.isEmpty && !loading && error == nil {

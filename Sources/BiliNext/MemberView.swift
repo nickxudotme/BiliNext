@@ -60,7 +60,7 @@ struct MemberView: View {
                                 Text(video.title).font(.callout).lineLimit(2).frame(
                                     height: 36, alignment: .top)
                             }.frame(maxWidth: .infinity, alignment: .leading)
-                        }.buttonStyle(.plain)
+                        }.buttonStyle(InteractionButtonStyle(kind: .row))
                     }
                 }
                 if loading {

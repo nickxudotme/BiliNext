@@ -144,51 +144,9 @@ struct BrowseView: View {
                         alignment: .leading, spacing: 26
                     ) {
                         ForEach(model.videos) { video in
-                            Button {
-                                model.open(
-                                    video, background: NSEvent.modifierFlags.contains(.command))
-                            } label: {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Color.primary.opacity(0.04).aspectRatio(
-                                        16 / 10, contentMode: .fit
-                                    )
-                                    .overlay {
-                                        AsyncImage(url: video.cover) { image in
-                                            image.resizable().scaledToFill()
-                                        } placeholder: {
-                                            Image(systemName: "play.rectangle").font(.largeTitle)
-                                                .foregroundStyle(.tertiary)
-                                        }
-                                    }
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                                    Text(video.title).font(.system(size: 14, weight: .medium))
-                                        .lineLimit(2).frame(height: 38, alignment: .topLeading)
-                                    HStack(spacing: 6) {
-                                        AvatarView(url: video.avatar).frame(width: 16, height: 16)
-                                        Text(video.author).lineLimit(1)
-                                    }
-                                    .font(.system(size: 12)).foregroundStyle(.secondary)
-                                    if let viewed = video.viewedAt {
-                                        HStack {
-                                            Text(
-                                                viewed,
-                                                format: .dateTime.month().day().hour().minute())
-                                            Spacer()
-                                            if let progress = video.progress {
-                                                Text(
-                                                    progress < 0
-                                                        ? "已看完" : "看到 " + timestamp(progress))
-                                            }
-                                        }.font(.caption2).foregroundStyle(.tertiary)
-                                    }
-                                }.contentShape(Rectangle())
-                            }.buttonStyle(.plain)
-                                .contextMenu {
-                                    Button("在后台标签打开") { model.open(video, background: true) }
-                                    Button(model.menu == "稍后再看" ? "从稍后再看移除" : "加入稍后再看") {
-                                        model.changeWatchLater(video, remove: model.menu == "稍后再看")
-                                    }.disabled(model.libraryBusy.contains(video.id))
-                                }
+                            VideoCardView(
+                                video: video, model: model,
+                                preview: model.hoverPreview, isActive: isActive)
                         }
                     }.padding(.horizontal, 28).padding(.vertical, 12)
                     if model.hasMore {

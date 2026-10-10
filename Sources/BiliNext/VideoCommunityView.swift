@@ -51,7 +51,7 @@ struct VideoCommunityView: View {
                                     }
                                     Spacer()
                                 }.contentShape(Rectangle())
-                            }.buttonStyle(.plain)
+                            }.buttonStyle(InteractionButtonStyle(kind: .row))
                         }
                     } else {
                         if count > 0 {
@@ -157,7 +157,8 @@ private struct CommentThreadView: View {
                             Label(
                                 loadedPage == 0 ? "展开全部 \(comment.replyCount) 条回复" : "加载更多回复",
                                 systemImage: "arrow.turn.down.right")
-                        }.buttonStyle(.plain).font(.caption).foregroundStyle(Color.accentColor)
+                        }.buttonStyle(InteractionButtonStyle(kind: .row)).font(.caption)
+                            .foregroundStyle(Color.accentColor)
                             .disabled(loading)
                     }
                     if loading { ProgressView().controlSize(.small) }
@@ -172,8 +173,9 @@ private struct CommentThreadView: View {
                         } label: {
                             RoundedRectangle(cornerRadius: 1).fill(.quaternary).frame(width: 2)
                                 .frame(width: 12).contentShape(Rectangle())
-                        }.buttonStyle(.plain).help("折叠整个讨论").accessibilityLabel(
-                            "折叠 \(comment.author) 的讨论")
+                        }.buttonStyle(InteractionButtonStyle(kind: .row)).help("折叠整个讨论")
+                            .accessibilityLabel(
+                                "折叠 \(comment.author) 的讨论")
                     }
             }
             Divider().opacity(0.5).padding(.top, 6)
@@ -234,7 +236,7 @@ private struct CommentContent: View {
                 } label: {
                     Image(systemName: collapsed ? "plus.circle" : "minus.circle").foregroundStyle(
                         .tertiary)
-                }.buttonStyle(.plain).help(collapsed ? "展开讨论" : "折叠讨论")
+                }.buttonStyle(InteractionButtonStyle(kind: .row)).help(collapsed ? "展开讨论" : "折叠讨论")
                     .accessibilityLabel("\(collapsed ? "展开" : "折叠") \(comment.author) 的评论")
                 AvatarView(url: comment.avatar).frame(width: 20, height: 20)
                 Text(comment.author).font(.caption.weight(.medium)).lineLimit(1)

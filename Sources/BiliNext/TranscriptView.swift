@@ -82,7 +82,7 @@ struct TranscriptView: View {
                                 proxy.scrollTo(id, anchor: .center)
                             }
                         }.font(.caption)
-                    }.buttonStyle(.plain)
+                    }.buttonStyle(InteractionButtonStyle(kind: .row))
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 8) {
                             ForEach(groups, id: \.first!.id) { group in
@@ -91,7 +91,7 @@ struct TranscriptView: View {
                                         Button(timestamp(first.start)) { model.seek(first.start) }
                                             .font(.caption.monospacedDigit()).foregroundStyle(
                                                 .secondary
-                                            ).buttonStyle(.plain)
+                                            ).buttonStyle(InteractionButtonStyle(kind: .row))
                                         Text(
                                             group.map(\.text).joined(
                                                 separator: paragraphs ? " " : "")

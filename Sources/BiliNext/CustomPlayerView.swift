@@ -265,7 +265,7 @@ struct CustomPlayerView: View {
                 } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                 }.help("全屏 · F").accessibilityLabel("全屏")
-            }.font(.system(size: 13)).buttonStyle(.plain).foregroundStyle(.white)
+            }.font(.system(size: 13)).buttonStyle(InteractionButtonStyle()).foregroundStyle(.white)
         }.padding(.horizontal, 16).padding(.top, 30).padding(.bottom, 14)
             .background(
                 LinearGradient(

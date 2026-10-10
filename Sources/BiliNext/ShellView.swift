@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ShellView: View {
     @ObservedObject var model: AppModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let drawerWidth: CGFloat = 220
     @State private var pinned = true
     @State private var fullScreen = false
@@ -177,7 +178,7 @@ struct ShellView: View {
                     }.padding(.horizontal, 3)
                         .glassEffect(.regular.interactive(), in: Capsule())
                 }
-                .font(.system(size: 14)).buttonStyle(.plain)
+                .font(.system(size: 14)).buttonStyle(InteractionButtonStyle())
                 .frame(height: 44).padding(.horizontal, 10)
             }
             VStack(spacing: 2) {
@@ -195,14 +196,15 @@ struct ShellView: View {
                                 model.menu == item.0 && model.selected == nil
                                     ? Color.primary.opacity(0.075) : .clear,
                                 in: RoundedRectangle(cornerRadius: 6))
-                    }.buttonStyle(.plain)
+                    }.buttonStyle(InteractionButtonStyle(kind: .row))
                 }
             }.padding(.horizontal, 8)
             HStack(spacing: 8) {
                 Rectangle().fill(.primary.opacity(0.10)).frame(height: 1)
                 if hovering && !model.tabs.isEmpty {
                     Button("clear") { model.clearTabs() }
-                        .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary)
+                        .buttonStyle(InteractionButtonStyle()).font(.system(size: 11))
+                        .foregroundStyle(.secondary)
                         .help(model.selected == nil ? "清空打开的标签，可撤销" : "清空其他标签，保留当前视频，可撤销")
                 }
             }.frame(height: 24).padding(.horizontal, 14)
@@ -218,7 +220,7 @@ struct ShellView: View {
                                     model.togglePlayback()
                                 } label: {
                                     Image(systemName: "speaker.wave.2.fill").font(.system(size: 10))
-                                }.buttonStyle(.plain).help("暂停")
+                                }.buttonStyle(InteractionButtonStyle()).help("暂停")
                             }
                             if hoveredTab == tab.id {
                                 Button {
@@ -226,7 +228,8 @@ struct ShellView: View {
                                 } label: {
                                     Image(systemName: "xmark").font(.system(size: 9))
                                 }
-                                .buttonStyle(.plain).help("关闭标签").accessibilityLabel(
+                                .buttonStyle(InteractionButtonStyle(destructive: true)).help("关闭标签")
+                                .accessibilityLabel(
                                     "关闭 \(tab.video.title)")
                             }
                         }.padding(.horizontal, 10).frame(height: 32)
@@ -235,6 +238,10 @@ struct ShellView: View {
                                     ? Color.primary.opacity(0.09)
                                     : hoveredTab == tab.id ? Color.primary.opacity(0.04) : .clear,
                                 in: RoundedRectangle(cornerRadius: 6)
+                            )
+                            .animation(
+                                reduceMotion ? nil : .easeOut(duration: 0.16),
+                                value: hoveredTab == tab.id
                             )
                             .contentShape(Rectangle()).onTapGesture {
                                 model.activate(tab.id, autoplay: true)
@@ -259,7 +266,8 @@ struct ShellView: View {
             }
             if !model.closed.isEmpty {
                 Button("撤销关闭") { model.undoClose() }
-                    .buttonStyle(.plain).foregroundStyle(.secondary).padding(12)
+                    .buttonStyle(InteractionButtonStyle(kind: .row)).foregroundStyle(.secondary)
+                    .padding(12)
                     .keyboardShortcut("z", modifiers: .command)
             }
         }
@@ -280,11 +288,13 @@ struct ShellView: View {
                             .contentShape(Circle())
                     }
                     .menuStyle(.borderlessButton).menuIndicator(.hidden)
+                    .modifier(MenuHoverFeedback())
                     .frame(width: 20, height: 20)
                     .glassEffect(.regular.interactive(), in: Circle())
                     .help("账户选项").accessibilityLabel("账户选项")
                 } else {
-                    Button("登录 B 站") { model.loginPresented = true }.buttonStyle(.plain)
+                    Button("登录 B 站") { model.loginPresented = true }.buttonStyle(
+                        InteractionButtonStyle())
                     Spacer()
                 }
             }.font(.system(size: 12)).padding(14)

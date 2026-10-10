@@ -7,6 +7,7 @@ import WebKit
 @MainActor
 final class AppModel: ObservableObject {
     let api: BilibiliAPI
+    let hoverPreview: HoverPreview
     #if DEBUG
         let credentialNotice = "开发版：本机会话文件未加密，仅当前用户可读写"
     #else
@@ -101,13 +102,15 @@ final class AppModel: ObservableObject {
 
     init(
         sessionStore: SessionStore = SessionStore(), managesPlaybackTabs: Bool = true,
-        downloads: DownloadManager? = nil, api: BilibiliAPI? = nil
+        downloads: DownloadManager? = nil, api: BilibiliAPI? = nil,
+        hoverPreview: HoverPreview? = nil
     ) {
         #if DEBUG
             self.api = api ?? BilibiliAPI(credentialStorage: .developmentFile)
         #else
             self.api = api ?? BilibiliAPI()
         #endif
+        self.hoverPreview = hoverPreview ?? HoverPreview(api: self.api)
         self.sessionStore = sessionStore
         self.managesPlaybackTabs = managesPlaybackTabs
         self.downloads = downloads ?? DownloadManager()
@@ -154,6 +157,7 @@ final class AppModel: ObservableObject {
             tabOwner.navigate(destination)
             return
         }
+        hoverPreview.stop()
         suspendPlaybackTabs()
         selected = nil
         menu = destination
@@ -488,7 +492,8 @@ final class AppModel: ObservableObject {
     func browseInstance(for destination: String) -> AppModel {
         if let existing = browseInstances[destination] { return existing }
         let instance = AppModel(
-            sessionStore: sessionStore, managesPlaybackTabs: false, downloads: downloads, api: api)
+            sessionStore: sessionStore, managesPlaybackTabs: false, downloads: downloads, api: api,
+            hoverPreview: hoverPreview)
         instance.menu = destination
         connectPage(instance, key: "browse:" + destination)
         browseInstances[destination] = instance
@@ -498,7 +503,8 @@ final class AppModel: ObservableObject {
     func playbackInstance(for tab: SessionTab) -> AppModel {
         if let existing = playbackInstances[tab.id] { return existing }
         let instance = AppModel(
-            sessionStore: sessionStore, managesPlaybackTabs: false, downloads: downloads, api: api)
+            sessionStore: sessionStore, managesPlaybackTabs: false, downloads: downloads, api: api,
+            hoverPreview: hoverPreview)
         instance.tabs = [tab]
         instance.menu = menu
         connectPage(instance, key: tab.id)
@@ -508,6 +514,7 @@ final class AppModel: ObservableObject {
 
     private func activatePlaybackTab(_ id: String, force: Bool, autoplay: Bool) {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
+        hoverPreview.stop()
         saveSession()
         suspendPlaybackTabs(except: id)
         let instance = playbackInstance(for: tab)

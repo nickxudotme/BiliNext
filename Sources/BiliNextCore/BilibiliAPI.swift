@@ -230,6 +230,21 @@ public actor BilibiliAPI {
     func video(_ d: [String: Any]) -> Video? {
         guard let bvid = d["bvid"] as? String, !bvid.isEmpty else { return nil }
         let owner = d["owner"] as? [String: Any] ?? [:]
+        let stat = d["stat"] as? [String: Any] ?? [:]
+        func count(_ value: Any?) -> String? {
+            if let value = value as? NSNumber { return value.stringValue }
+            return value as? String
+        }
+        let duration =
+            (d["duration"] as? NSNumber)?.doubleValue
+            ?? (d["duration"] as? String ?? d["duration_text"] as? String).flatMap {
+                text -> Double? in
+                let parts = text.split(separator: ":").compactMap { Double($0) }
+                guard !parts.isEmpty, parts.count == text.split(separator: ":").count else {
+                    return nil
+                }
+                return parts.reduce(0) { $0 * 60 + $1 }
+            }
         let title = (d["title"] as? String ?? "未命名视频").replacingOccurrences(
             of: "<[^>]+>", with: "", options: .regularExpression
         ).replacingOccurrences(of: "&amp;", with: "&").replacingOccurrences(
@@ -240,8 +255,10 @@ public actor BilibiliAPI {
             cover: secureURL(d["pic"] as? String ?? d["cover"] as? String ?? ""),
             avatar: secureURL(owner["face"] as? String ?? ""),
             aid: (d["aid"] as? NSNumber)?.int64Value,
-            duration: (d["duration"] as? NSNumber)?.doubleValue,
-            ownerID: (owner["mid"] as? NSNumber)?.int64Value ?? (d["mid"] as? NSNumber)?.int64Value)
+            duration: duration,
+            ownerID: (owner["mid"] as? NSNumber)?.int64Value ?? (d["mid"] as? NSNumber)?.int64Value,
+            viewCount: count(stat["view"] ?? stat["play"] ?? d["play"] ?? d["view"]),
+            danmakuCount: count(stat["danmaku"] ?? d["video_review"] ?? d["danmaku"]))
     }
     public func popular(page: Int = 1) async throws -> [Video] {
         let d = try await request(

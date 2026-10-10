@@ -24,7 +24,8 @@ struct ActivityView: View {
                                     Text(activity.author).font(.headline)
                                     Text(activity.time).font(.caption).foregroundStyle(.secondary)
                                 }
-                            }.buttonStyle(.plain).disabled(activity.mid == nil)
+                            }.buttonStyle(InteractionButtonStyle(kind: .row)).disabled(
+                                activity.mid == nil)
                             Spacer()
                             if let link = activity.link {
                                 Link(destination: link) {
@@ -59,7 +60,7 @@ struct ActivityView: View {
                                     Text(video.title).font(.callout).lineLimit(3)
                                     Spacer()
                                 }.contentShape(Rectangle())
-                            }.buttonStyle(.plain)
+                            }.buttonStyle(InteractionButtonStyle(kind: .row))
                         }
                         if !activity.images.isEmpty {
                             LazyVGrid(

@@ -14,10 +14,13 @@ public struct Video: Identifiable, Codable, Equatable, Sendable {
     public let historyCID: Int64?
     public let ownerID: Int64?
     public let episodeID: Int64?
+    public let viewCount: String?
+    public let danmakuCount: String?
     public init(
         bvid: String, title: String, author: String = "", cover: URL? = nil, avatar: URL? = nil,
         aid: Int64? = nil, duration: Double? = nil, progress: Double? = nil, viewedAt: Date? = nil,
-        historyCID: Int64? = nil, ownerID: Int64? = nil, episodeID: Int64? = nil
+        historyCID: Int64? = nil, ownerID: Int64? = nil, episodeID: Int64? = nil,
+        viewCount: String? = nil, danmakuCount: String? = nil
     ) {
         self.bvid = bvid
         self.title = title
@@ -31,6 +34,8 @@ public struct Video: Identifiable, Codable, Equatable, Sendable {
         self.historyCID = historyCID
         self.ownerID = ownerID
         self.episodeID = episodeID
+        self.viewCount = viewCount
+        self.danmakuCount = danmakuCount
     }
     public static func extractBVID(_ text: String) -> String? {
         guard let range = text.range(of: #"BV[0-9A-Za-z]{10}"#, options: .regularExpression) else {
