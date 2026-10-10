@@ -237,11 +237,11 @@ struct ShellView: View {
                     } label: {
                         Image(systemName: "ellipsis")
                             .font(.system(size: 14, weight: .semibold))
-                            .frame(width: 36, height: 36)
+                            .frame(width: 28, height: 28)
                             .contentShape(Circle())
                     }
                     .menuStyle(.borderlessButton).menuIndicator(.hidden)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 28, height: 28)
                     .glassEffect(.regular.interactive(), in: Circle())
                     .help("账户选项").accessibilityLabel("账户选项")
                 } else {
