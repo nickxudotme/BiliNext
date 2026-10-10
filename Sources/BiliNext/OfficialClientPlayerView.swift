@@ -115,11 +115,11 @@ struct OfficialClientPlayerView: NSViewRepresentable {
             if let status = state["status"] as? String { model.officialPlayerStatus = status }
             if state["action"] as? String == "login" { model.loginPresented = true }
             guard let time = state["time"] as? Double, time.isFinite, time >= 0 else { return }
-            model.time = time
-            model.duration = state["duration"] as? Double ?? 0
-            model.playing = state["playing"] as? Bool ?? false
+            model.updatePlayback(
+                time: time, duration: state["duration"] as? Double ?? 0,
+                playing: state["playing"] as? Bool ?? false)
             if Date().timeIntervalSince(lastSave) > 5 {
-                model.saveSession()
+                model.saveSession(updateTabs: false)
                 lastSave = Date()
             }
         }

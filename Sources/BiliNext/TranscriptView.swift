@@ -4,6 +4,12 @@ import SwiftUI
 
 struct TranscriptView: View {
     @ObservedObject var model: AppModel
+    @ObservedObject private var clock: PlaybackClock
+    init(model: AppModel) {
+        self.model = model
+        self.clock = model.playbackClock
+    }
+
     @State private var query = ""
     @State private var paragraphs = false
     @State private var following = true
@@ -21,7 +27,8 @@ struct TranscriptView: View {
         }
     }
     private var activeGroup: Int? {
-        groups.first(where: { group in group.contains { activeIDs.contains($0.id) } })?.first?.id
+        let ids = activeIDs
+        return groups.first(where: { group in group.contains { ids.contains($0.id) } })?.first?.id
     }
     var body: some View {
         let groups = self.groups

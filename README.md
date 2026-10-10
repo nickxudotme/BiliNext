@@ -71,3 +71,7 @@ swift test
 ## 项目维护
 
 开发和验证约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。本目录是独立 Git 仓库；上层目录用于组织参考资料与原型。标签记录仍保存到 `~/Library/Application Support/BiliNext/session.json`，由应用内部 `SessionStore` 负责读写。
+
+## 渲染优化
+
+2026-10-10：隔离播放时间通知，避免评论和外壳跟随计时器刷新；弹幕使用缓存文字位图与系统图层动画。改动、验证和性能测量边界见 [渲染优化记录](docs/RENDERING-PERFORMANCE.md)。

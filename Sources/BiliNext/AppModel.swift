@@ -55,7 +55,11 @@ final class AppModel: ObservableObject {
     @Published var cues: [Cue] = []
     @Published var subtitleError: String?
     @Published var subtitleLoading = false
-    @Published var time = 0.0
+    let playbackClock = PlaybackClock()
+    var time: Double {
+        get { playbackClock.time }
+        set { playbackClock.update(newValue) }
+    }
     @Published var playing = false
     @Published var quality = ""
     @Published var qualityID = 64
@@ -92,15 +96,24 @@ final class AppModel: ObservableObject {
         ) { [weak self] value in
             Task { @MainActor in
                 guard let self, !self.officialCore else { return }
-                self.time = value.seconds.isFinite ? value.seconds : 0
-                self.playing = self.player.rate != 0
-                let length = self.player.currentItem?.duration.seconds ?? 0
-                self.duration = length.isFinite ? max(0, length) : 0
-                self.buffering = self.player.timeControlStatus == .waitingToPlayAtSpecifiedRate
+                self.updatePlayback(
+                    time: value.seconds, duration: self.player.currentItem?.duration.seconds ?? 0,
+                    playing: self.player.rate != 0,
+                    buffering: self.player.timeControlStatus == .waitingToPlayAtSpecifiedRate)
                 self.updateDanmaku()
-                if Date().timeIntervalSince(self.lastSaved) > 5 { self.saveSession() }
+                if Date().timeIntervalSince(self.lastSaved) > 5 {
+                    self.saveSession(updateTabs: false)
+                }
             }
         }
+    }
+
+    func updatePlayback(time: Double, duration: Double, playing: Bool, buffering: Bool? = nil) {
+        self.time = time
+        let length = duration.isFinite ? max(0, duration) : 0
+        if self.duration != length { self.duration = length }
+        if self.playing != playing { self.playing = playing }
+        if let buffering, self.buffering != buffering { self.buffering = buffering }
     }
 
     func start() async {
@@ -334,16 +347,18 @@ final class AppModel: ObservableObject {
         closed = []
         saveSession()
     }
-    func saveSession() {
+    func saveSession(updateTabs: Bool = true) {
+        var snapshot = tabs
         if officialCore || player.currentItem?.status == .readyToPlay,
-            let index = tabs.firstIndex(where: { $0.id == mediaID })
+            let index = snapshot.firstIndex(where: { $0.id == mediaID })
         {
             let seconds = officialCore ? time : player.currentTime().seconds
-            if seconds.isFinite { tabs[index].position = max(0, seconds) }
-            tabs[index].cid = pageID
+            if seconds.isFinite { snapshot[index].position = max(0, seconds) }
+            snapshot[index].cid = pageID
+            if updateTabs { tabs = snapshot }
         }
         do {
-            try sessionStore.write(tabs)
+            try sessionStore.write(snapshot)
             lastSaved = Date()
         } catch { toast = "标签恢复记录保存失败：\(error.localizedDescription)" }
     }

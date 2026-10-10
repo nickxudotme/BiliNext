@@ -138,10 +138,11 @@ private struct CommentThreadView: View {
     @State private var more = true
     @State private var loading = false
     @State private var error: String?
-    private var branches: [CommentBranch] {
+    @State private var branches: [CommentBranch] = []
+    private func rebuildBranches() {
         var seen = Set<Int64>()
         let combined = (replies + comment.replies).filter { seen.insert($0.id).inserted }
-        return CommentBranch.forest(combined, rootID: comment.id)
+        branches = CommentBranch.forest(combined, rootID: comment.id)
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -176,26 +177,28 @@ private struct CommentThreadView: View {
                     }
             }
             Divider().opacity(0.5).padding(.top, 6)
-        }.task(id: request) {
-            guard request > 0 else { return }
-            loading = true
-            error = nil
-            do {
-                let result = try await api.comments(
-                    aid: aid, page: loadedPage + 1, root: comment.id)
-                guard !Task.isCancelled else { return }
-                var seen = Set<Int64>()
-                replies = (replies + result.comments).filter { seen.insert($0.id).inserted }
-                loadedPage += 1
-                more = result.hasMore
-                loading = false
-            } catch {
-                if !Task.isCancelled {
-                    self.error = error.localizedDescription
+        }.onAppear { rebuildBranches() }
+            .task(id: request) {
+                guard request > 0 else { return }
+                loading = true
+                error = nil
+                do {
+                    let result = try await api.comments(
+                        aid: aid, page: loadedPage + 1, root: comment.id)
+                    guard !Task.isCancelled else { return }
+                    var seen = Set<Int64>()
+                    replies = (replies + result.comments).filter { seen.insert($0.id).inserted }
+                    loadedPage += 1
+                    rebuildBranches()
+                    more = result.hasMore
                     loading = false
+                } catch {
+                    if !Task.isCancelled {
+                        self.error = error.localizedDescription
+                        loading = false
+                    }
                 }
             }
-        }
     }
 }
 

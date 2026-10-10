@@ -1,5 +1,6 @@
 import AVKit
 import BiliNextCore
+import Combine
 import SwiftUI
 
 private enum PlaybackPanel: String, CaseIterable, Identifiable {
@@ -222,12 +223,19 @@ private struct VideoInformationView: View {
 
 private struct DanmakuListView: View {
     @ObservedObject var model: AppModel
+    private let clock: PlaybackClock
+    @State private var segment: Int
+    init(model: AppModel) {
+        self.model = model
+        self.clock = model.playbackClock
+        self._segment = State(initialValue: Int(max(0, model.time) / 360) + 1)
+    }
+
     @State private var items: [Danmaku] = []
     @State private var query = ""
     @State private var loading = false
     @State private var error: String?
     @State private var retry = 0
-    private var segment: Int { Int(max(0, model.time) / 360) + 1 }
     var body: some View {
         VStack(spacing: 12) {
             HStack {
@@ -266,22 +274,26 @@ private struct DanmakuListView: View {
                     }
                 }
             }
-        }.padding(16).task(id: "\(model.pageID ?? 0):\(segment):\(retry)") {
-            items = []
-            error = nil
-            guard let cid = model.pageID else { return }
-            loading = true
-            do {
-                let result = try await model.api.danmaku(cid: cid, segment: segment)
-                guard !Task.isCancelled else { return }
-                items = result
-                loading = false
-            } catch {
-                if !Task.isCancelled {
-                    self.error = error.localizedDescription
+        }.padding(16)
+            .onReceive(clock.$time.map { Int(max(0, $0) / 360) + 1 }.removeDuplicates()) {
+                segment = $0
+            }
+            .task(id: "\(model.pageID ?? 0):\(segment):\(retry)") {
+                items = []
+                error = nil
+                guard let cid = model.pageID else { return }
+                loading = true
+                do {
+                    let result = try await model.api.danmaku(cid: cid, segment: segment)
+                    guard !Task.isCancelled else { return }
+                    items = result
                     loading = false
+                } catch {
+                    if !Task.isCancelled {
+                        self.error = error.localizedDescription
+                        loading = false
+                    }
                 }
             }
-        }
     }
 }

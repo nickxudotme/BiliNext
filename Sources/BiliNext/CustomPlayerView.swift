@@ -1,7 +1,6 @@
 import AVFoundation
 import AppKit
 import BiliNextCore
-import CoreText
 import SwiftUI
 
 struct VideoSurface: NSViewRepresentable {
@@ -34,6 +33,13 @@ struct VideoSurface: NSViewRepresentable {
 
 struct CustomPlayerView: View {
     @ObservedObject var model: AppModel
+    @ObservedObject private var clock: PlaybackClock
+    init(model: AppModel, danmaku: DanmakuModel) {
+        self.model = model
+        self.danmaku = danmaku
+        self.clock = model.playbackClock
+    }
+
     @ObservedObject var danmaku: DanmakuModel
     @State private var controls = true
     @State private var scrubbing = false
@@ -304,197 +310,5 @@ struct CustomPlayerView: View {
     private func toggleFullscreen() {
         model.theater = true
         NSApp.keyWindow?.toggleFullScreen(nil)
-    }
-}
-
-struct DanmakuCanvas: View {
-    let player: AVPlayer
-    @ObservedObject var model: DanmakuModel
-    let time: Double
-    let playing: Bool
-    let opacity: Double
-    let fontSize: Double
-    let area: Double
-    let speed: Double
-    let blocked: String
-    let rolling: Bool
-    let fixed: Bool
-    @State private var placements: [DanmakuPlacement] = []
-    @State private var layoutID = UUID()
-    var body: some View {
-        GeometryReader { geometry in
-            DanmakuSurface(
-                player: player, placements: placements, layoutID: layoutID,
-                playing: playing && model.enabled, enabled: model.enabled, time: time,
-                opacity: opacity, fontSize: fontSize, fixed: fixed
-            )
-            .task(
-                id:
-                    "\(geometry.size):\(fontSize):\(area):\(speed):\(blocked):\(rolling):\(fixed):\(model.revision)"
-            ) {
-                let comments = model.comments
-                let viewport = Double(geometry.size.width)
-                let height = Double(geometry.size.height)
-                let fontName = NSFont.systemFont(ofSize: fontSize, weight: .semibold).fontName
-                let work = Task.detached(priority: .userInitiated) { () -> [DanmakuPlacement] in
-                    let words = blocked.components(separatedBy: CharacterSet(charactersIn: ",，\n"))
-                        .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-                    let items = comments.filter { $0.mode >= 4 ? fixed : rolling }
-                    let filtered = items.filter { comment in
-                        !words.contains { comment.text.localizedCaseInsensitiveContains($0) }
-                    }
-                    let font = CTFontCreateWithName(fontName as CFString, fontSize, nil)
-                    var widths: [String: Double] = [:]
-                    let reserved: Double = fixed ? 4 * (fontSize + 8) : 0
-                    let lanes = max(1, Int((height - 80 - reserved) * area / (fontSize + 8)))
-                    return DanmakuLayout.arrange(
-                        filtered, viewport: viewport, lanes: lanes, duration: 8 / speed
-                    ) { comment -> Double in
-                        if let width = widths[comment.text] { return width }
-                        let line = CTLineCreateWithAttributedString(
-                            NSAttributedString(
-                                string: comment.text,
-                                attributes: [
-                                    NSAttributedString.Key(kCTFontAttributeName as String): font
-                                ]))
-                        let width = ceil(CTLineGetTypographicBounds(line, nil, nil, nil)) + 4
-                        widths[comment.text] = width
-                        return width
-                    }
-                }
-                let result = await withTaskCancellationHandler {
-                    await work.value
-                } onCancel: {
-                    work.cancel()
-                }
-                guard !Task.isCancelled else { return }
-                placements = result
-                layoutID = UUID()
-            }
-        }.clipped().accessibilityHidden(true)
-    }
-}
-
-private struct DanmakuSurface: NSViewRepresentable {
-    let player: AVPlayer
-    let placements: [DanmakuPlacement]
-    let layoutID: UUID
-    let playing: Bool
-    let enabled: Bool
-    let time: Double
-    let opacity: Double
-    let fontSize: Double
-    let fixed: Bool
-    func makeNSView(context: Context) -> Surface { Surface() }
-    func updateNSView(_ view: Surface, context: Context) {
-        if view.layoutID != layoutID {
-            view.layoutID = layoutID
-            view.items = placements
-            view.maximumDuration = placements.map(\.duration).max() ?? 0
-            for label in view.labels.values { label.removeFromSuperlayer() }
-            view.labels.removeAll()
-        }
-        view.player = player
-        view.fontSize = fontSize
-        view.fixed = fixed
-        view.layer?.opacity = Float(opacity)
-        view.layer?.isHidden = !enabled
-        view.running = playing
-        view.displayLink?.isPaused = !playing
-        view.render(time: time)
-    }
-    static func dismantleNSView(_ view: Surface, coordinator: ()) {
-        view.displayLink?.invalidate()
-        view.displayLink = nil
-    }
-    final class Surface: NSView {
-        override var isFlipped: Bool { true }
-        var player: AVPlayer?
-        var items: [DanmakuPlacement] = []
-        var labels: [String: CATextLayer] = [:]
-        var layoutID: UUID?
-        var maximumDuration = 0.0
-        var fontSize = 20.0
-        var fixed = true
-        var running = false
-        var displayLink: CADisplayLink?
-        override init(frame: NSRect) {
-            super.init(frame: frame)
-            wantsLayer = true
-            layer?.masksToBounds = true
-        }
-        required init?(coder: NSCoder) { fatalError() }
-        override func hitTest(_ point: NSPoint) -> NSView? { nil }
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            displayLink?.invalidate()
-            displayLink = nil
-            if window != nil {
-                let link = self.displayLink(target: self, selector: #selector(tick))
-                link.add(to: .main, forMode: .common)
-                link.isPaused = !running
-                displayLink = link
-            }
-        }
-        @objc private func tick() { if let player { render(time: player.currentTime().seconds) } }
-        private func lowerBound(_ value: Double) -> Int {
-            var low = 0
-            var high = items.count
-            while low < high {
-                let middle = (low + high) / 2
-                if items[middle].comment.time < value { low = middle + 1 } else { high = middle }
-            }
-            return low
-        }
-        func render(time: Double) {
-            guard time.isFinite else { return }
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            var active = Set<String>()
-            var index = lowerBound(time - maximumDuration)
-            while index < items.count && items[index].comment.time <= time {
-                let item = items[index]
-                index += 1
-                guard item.visible(at: time) else { continue }
-                active.insert(item.id)
-                let text: CATextLayer
-                if let cached = labels[item.id] {
-                    text = cached
-                } else {
-                    text = CATextLayer()
-                    text.contentsScale = window?.backingScaleFactor ?? 2
-                    text.anchorPoint = .zero
-                    text.bounds = CGRect(x: 0, y: 0, width: item.width + 4, height: fontSize + 8)
-                    let c = item.comment.color
-                    let color = NSColor(
-                        red: Double(c >> 16 & 255) / 255, green: Double(c >> 8 & 255) / 255,
-                        blue: Double(c & 255) / 255, alpha: 1)
-                    text.string = NSAttributedString(
-                        string: item.comment.text,
-                        attributes: [
-                            .font: NSFont.systemFont(ofSize: fontSize, weight: .semibold),
-                            .foregroundColor: color,
-                        ])
-                    text.shadowColor = NSColor.black.cgColor
-                    text.shadowOpacity = 0.95
-                    text.shadowRadius = 1
-                    text.shadowOffset = CGSize(width: 1, height: 1)
-                    text.shouldRasterize = true
-                    text.rasterizationScale = text.contentsScale
-                    layer?.addSublayer(text)
-                    labels[item.id] = text
-                }
-                let row =
-                    Double(item.lane + (item.comment.mode < 4 && fixed ? 2 : 0)) * (fontSize + 8)
-                    + 10
-                text.position = CGPoint(
-                    x: item.x(at: time, viewport: bounds.width),
-                    y: max(8, item.comment.mode == 4 ? bounds.height - row - fontSize - 80 : row))
-            }
-            for id in Array(labels.keys) where !active.contains(id) {
-                labels.removeValue(forKey: id)?.removeFromSuperlayer()
-            }
-            CATransaction.commit()
-        }
     }
 }
