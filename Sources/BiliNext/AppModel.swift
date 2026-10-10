@@ -551,7 +551,7 @@ final class AppModel: ObservableObject {
                     officialWebView?.evaluateJavaScript("window.biliPlayer?.play()")
                 } else {
                     playbackIntent = true
-                    player.playImmediately(atRate: Float(playbackRate))
+                    startBufferedPlayback()
                 }
             }
             return
@@ -689,7 +689,7 @@ final class AppModel: ObservableObject {
             guard !Task.isCancelled, generation == videoGeneration, selected == id,
                 player.currentItem === item
             else { return }
-            if autoplay && playbackTabActive { player.playImmediately(atRate: Float(playbackRate)) }
+            if autoplay && playbackTabActive { startBufferedPlayback() }
         } catch {
             guard !Task.isCancelled, generation == videoGeneration else { return }
             playerError = error.localizedDescription
@@ -766,6 +766,7 @@ final class AppModel: ObservableObject {
             mediaLoader = nil
             dashLoader?.invalidate()
             dashLoader = loader
+            item.preferredForwardBufferDuration = 15
             return item
         }
         dashLoader?.invalidate()
@@ -773,7 +774,9 @@ final class AppModel: ObservableObject {
         mediaLoader?.invalidate()
         let loader = MediaResourceLoader(url: playback.url)
         mediaLoader = loader
-        return AVPlayerItem(asset: loader.asset)
+        let item = AVPlayerItem(asset: loader.asset)
+        item.preferredForwardBufferDuration = 15
+        return item
     }
 
     private func observeDuration(_ item: AVPlayerItem, generation: UUID) {
@@ -823,7 +826,7 @@ final class AppModel: ObservableObject {
                 guard !Task.isCancelled, generation == videoGeneration, request == qualityGeneration
                 else { return }
                 if resume && playbackTabActive {
-                    player.playImmediately(atRate: Float(playbackRate))
+                    startBufferedPlayback()
                 }
                 if result.qualityID != value {
                     toast = "请求的清晰度未返回，当前使用" + result.quality + "。当前取流格式或账号权限可能受限。"
@@ -850,6 +853,13 @@ final class AppModel: ObservableObject {
             to: CMTime(seconds: seconds, preferredTimescale: 600), toleranceBefore: .zero,
             toleranceAfter: .zero)
     }
+    /// Let AVPlayer build a safety buffer and resume automatically after network stalls.
+    func startBufferedPlayback() {
+        player.automaticallyWaitsToMinimizeStalling = true
+        player.defaultRate = Float(playbackRate)
+        player.play()
+    }
+
     func togglePlayback() {
         if managesPlaybackTabs {
             if let selected { playbackInstances[selected]?.togglePlayback() }
@@ -861,13 +871,14 @@ final class AppModel: ObservableObject {
             )
             return
         }
-        if player.rate == 0 {
-            player.playImmediately(atRate: Float(playbackRate))
-        } else {
+        if playbackIntent || player.timeControlStatus != .paused {
             player.pause()
+            playbackIntent = false
+        } else {
+            playbackIntent = true
+            startBufferedPlayback()
         }
-        playing = player.rate != 0
-        playbackIntent = playing
+        playing = playbackIntent
     }
     func setRate(_ value: Double) {
         playbackRate = value
