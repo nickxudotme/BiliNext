@@ -1,6 +1,7 @@
 # 开发约定
 
 - 使用 Swift；应用界面位于 `Sources/BiliNext`，接口和领域模型位于 `Sources/BiliNextCore`。
+- `AppModel.swift` 保留共享状态与生命周期；浏览、标签与会话、播放、字幕、登录实现分别位于 `AppModel+*.swift`。扩展共享的成员使用模块内部访问级别，其余辅助方法保持 `private`。这些文件仍共同实现同一个 ObservableObject，不引入新的状态源或订阅层。
 - Swift 文件采用四空格缩进、100 字符目标行宽；复杂条件和多条操作展开写。文件名与主要类型对应。
 - 格式化：`xcrun swift-format format --in-place --recursive --configuration .swift-format Package.swift Sources Tests`。
 - 格式检查：`bash scripts/check-format.sh`。使用当前 Xcode 自带工具，不额外安装格式工具。
@@ -8,3 +9,5 @@
 - 修改窗口、播放器或导航后，使用 `bash scripts/build-app.sh` 的签名 App 验证实际交互；检查标签切换、关闭撤销、重启恢复、暂停与字幕跳转。记录未验证项。
 - 默认测试不访问真实账号；账号写操作必须由用户操作或明确授权触发。
 - 不提交 `.build`、`build`、`.signing-identity`、凭据和本机会话数据。参考项目原位置保留，源码来源和许可证审查要求继续有效。
+
+- 当前验收入口为 `docs/VALIDATION.md`；专题文档保留带日期的历史证据，README 不重复维护测试数量。
