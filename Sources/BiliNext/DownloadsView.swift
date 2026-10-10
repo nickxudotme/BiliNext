@@ -55,7 +55,8 @@ final class DownloadManager: ObservableObject {
         preparation[id] = Task { [self] in
             do {
                 let playback = try await api.playback(
-                    bvid: video.bvid, cid: cid, quality: quality, episodeID: video.episodeID)
+                    bvid: video.bvid, cid: cid, quality: quality, episodeID: video.episodeID,
+                    preferDASH: false)
                 guard !Task.isCancelled else { return }
                 let directory = FileManager.default.urls(
                     for: .downloadsDirectory, in: .userDomainMask)[0].appendingPathComponent(

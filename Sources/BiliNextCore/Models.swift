@@ -121,6 +121,15 @@ public struct Playback: Sendable {
     public let quality: String
     public let qualityID: Int
     public let qualities: [PlaybackQuality]
+    public let videoStream: PlaybackStream?
+    public let audioStream: PlaybackStream?
+}
+public struct PlaybackStream: Sendable {
+    public let urls: [URL]
+    public let codec: String
+    public let bandwidth: Int
+    public let initialization: ClosedRange<Int64>
+    public let index: ClosedRange<Int64>
 }
 public struct APIError: LocalizedError, Sendable {
     public let code: Int

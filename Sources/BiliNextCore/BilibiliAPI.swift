@@ -298,31 +298,35 @@ public actor BilibiliAPI {
         }
         return VideoDetail(video: v, pages: pages, description: d["desc"] as? String ?? "")
     }
-    public func playback(bvid: String, cid: Int64, quality: Int = 64, episodeID: Int64? = nil)
+    public func playback(
+        bvid: String, cid: Int64, quality: Int = 80, episodeID: Int64? = nil,
+        preferDASH: Bool = true
+    )
         async throws -> Playback
     {
         var params = [
-            "bvid": bvid, "cid": "\(cid)", "qn": String(quality), "fnval": "1", "platform": "html5",
-            "high_quality": "1",
+            "bvid": bvid, "cid": "\(cid)", "qn": String(quality),
+            "fnval": preferDASH ? "4048" : "1",
+            "fnver": "0", "fourk": "1",
         ]
+        if !preferDASH {
+            params["platform"] = "html5"
+            params["high_quality"] = "1"
+        }
         if let episodeID { params["ep_id"] = String(episodeID) }
         let d = try await request(
             episodeID == nil ? "/x/player/wbi/playurl" : "/pgc/player/web/playurl", params: params,
             signed: episodeID == nil)
-        let segments = d["durl"] as? [[String: Any]] ?? []
-        guard segments.count == 1, let url = secureURL(segments.first?["url"] as? String ?? "")
-        else {
-            throw APIError(code: -1, message: "当前视频未提供单段 MP4；本阶段播放器暂不支持此媒体格式")
+        do {
+            return try PlaybackParser.parse(d, preferredQuality: quality)
+        } catch {
+            try Task.checkCancellation()
+            guard preferDASH else { throw error }
+            // A response without compatible indexed streams may still offer a complete MP4.
+            // API/permission errors above are surfaced directly, never retried here.
+            return try await playback(
+                bvid: bvid, cid: cid, quality: quality, episodeID: episodeID, preferDASH: false)
         }
-        let actual = (d["quality"] as? NSNumber)?.intValue ?? 0
-        let ids = d["accept_quality"] as? [Int] ?? [actual]
-        let labels = d["accept_description"] as? [String] ?? []
-        let choices = ids.enumerated().map { index, value in
-            PlaybackQuality(value: value, label: index < labels.count ? labels[index] : "\(value)")
-        }
-        return Playback(
-            url: url, quality: choices.first(where: { $0.value == actual })?.label ?? "\(actual)",
-            qualityID: actual, qualities: choices)
     }
     public func subtitleTracks(bvid: String, cid: Int64) async throws -> [SubtitleTrack] {
         let d = try await request(

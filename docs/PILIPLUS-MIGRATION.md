@@ -120,7 +120,7 @@
 | `sponsor_block` | 待逐项迁移／验收 |
 | `subscription` | 待逐项迁移／验收 |
 | `subscription_detail` | 待逐项迁移／验收 |
-| `video` | 自定义播放器、弹幕、画面字幕、分 P、清晰度及评论/相关推荐已实现；DASH、HDR、画中画等待做 |
+| `video` | 自定义播放器、弹幕、画面字幕、分 P、清晰度及评论/相关推荐已实现；DASH SDR 分轨已接入并实测 4K；HDR、画中画等待做 |
 | `webdav` | 待逐项迁移／验收 |
 | `webview` | 待逐项迁移／验收 |
 | `whisper` | 待逐项迁移／验收 |

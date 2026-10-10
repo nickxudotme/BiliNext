@@ -65,12 +65,14 @@ final class AppModel: ObservableObject {
     @Published var qualityID = 64
     @Published var qualities: [PlaybackQuality] = []
     private var qualityTask: Task<Void, Never>?
+    private var qualitySwitchState: (position: Double, resume: Bool)?
     private var browseTask: Task<Void, Never>?
     private var videoTask: Task<Void, Never>?
     private var subtitleTask: Task<Void, Never>?
     private var mediaID: String?
     private var observer: Any?
     private var mediaLoader: MediaResourceLoader?
+    private var dashLoader: DASHResourceLoader?
     private var statusObserver: NSKeyValueObservation?
     private var durationObserver: NSKeyValueObservation?
     private var started = false
@@ -79,6 +81,7 @@ final class AppModel: ObservableObject {
     private var browseGeneration = UUID()
     private var videoGeneration = UUID()
     private var subtitleGeneration = UUID()
+    private var qualityGeneration = UUID()
     private var cachedLists: [String: [Video]] = [:]
     private var history = ["动态"]
     private var historyIndex = 0
@@ -415,12 +418,15 @@ final class AppModel: ObservableObject {
         videoTask?.cancel()
         subtitleTask?.cancel()
         qualityTask?.cancel()
+        qualitySwitchState = nil
         let generation = UUID()
         videoGeneration = generation
         subtitleGeneration = UUID()
         player.replaceCurrentItem(with: nil)
         mediaLoader?.invalidate()
         mediaLoader = nil
+        dashLoader?.invalidate()
+        dashLoader = nil
         statusObserver = nil
         durationObserver = nil
         mediaID = id
@@ -471,9 +477,14 @@ final class AppModel: ObservableObject {
         saveSession()
         player.pause()
         player.replaceCurrentItem(with: nil)
+        mediaLoader?.invalidate()
+        mediaLoader = nil
+        dashLoader?.invalidate()
+        dashLoader = nil
         videoTask?.cancel()
         subtitleTask?.cancel()
         qualityTask?.cancel()
+        qualitySwitchState = nil
         subtitleGeneration = UUID()
         let generation = UUID()
         videoGeneration = generation
@@ -517,16 +528,11 @@ final class AppModel: ObservableObject {
             }
         }
         do {
-            let playback = try await api.playback(
-                bvid: id, cid: cid, episodeID: detail?.video.episodeID)
+            let (playback, item) = try await playableMedia(id: id, cid: cid, quality: 80)
             guard !Task.isCancelled, generation == videoGeneration else { return }
             quality = playback.quality
             qualityID = playback.qualityID
             qualities = playback.qualities
-            mediaLoader?.invalidate()
-            let loader = MediaResourceLoader(url: playback.url)
-            mediaLoader = loader
-            let item = AVPlayerItem(asset: loader.asset)
             statusObserver = item.observe(\.status, options: [.new]) { [weak self] item, _ in
                 Task { @MainActor in
                     guard let self, generation == self.videoGeneration,
@@ -550,6 +556,48 @@ final class AppModel: ObservableObject {
         }
         if generation == videoGeneration { videoLoading = false }
     }
+    private func playableMedia(id: String, cid: Int64, quality: Int) async throws -> (
+        Playback, AVPlayerItem
+    ) {
+        let result = try await api.playback(
+            bvid: id, cid: cid, quality: quality,
+            episodeID: detail?.video.episodeID)
+        try Task.checkCancellation()
+        do { return (result, try await prepareMedia(result)) } catch {
+            try Task.checkCancellation()
+            guard result.videoStream != nil else { throw error }
+            // Index/transport failures can still use the former single-MP4 route.
+            let fallback = try await api.playback(
+                bvid: id, cid: cid, quality: quality,
+                episodeID: detail?.video.episodeID, preferDASH: false)
+            let item = try await prepareMedia(fallback)
+            try Task.checkCancellation()
+            toast = "分离流暂时无法加载，已回退到 " + fallback.quality
+            return (fallback, item)
+        }
+    }
+
+    private func prepareMedia(_ playback: Playback) async throws -> AVPlayerItem {
+        if playback.videoStream != nil {
+            let (loader, item) = try await DASHResourceLoader.prepare(playback)
+            if Task.isCancelled {
+                loader.invalidate()
+                throw CancellationError()
+            }
+            mediaLoader?.invalidate()
+            mediaLoader = nil
+            dashLoader?.invalidate()
+            dashLoader = loader
+            return item
+        }
+        dashLoader?.invalidate()
+        dashLoader = nil
+        mediaLoader?.invalidate()
+        let loader = MediaResourceLoader(url: playback.url)
+        mediaLoader = loader
+        return AVPlayerItem(asset: loader.asset)
+    }
+
     private func observeDuration(_ item: AVPlayerItem, generation: UUID) {
         durationObserver = item.observe(\.duration, options: [.initial, .new]) {
             [weak self] item, _ in
@@ -564,23 +612,23 @@ final class AppModel: ObservableObject {
         guard let id = mediaID, let cid = pageID, value != qualityID else { return }
         qualityTask?.cancel()
         let generation = videoGeneration
-        let position = time
-        let resume = playing
+        let request = UUID()
+        qualityGeneration = request
+        let current = player.currentTime().seconds
+        let position = qualitySwitchState?.position ?? (current.isFinite ? current : time)
+        let resume = qualitySwitchState?.resume ?? (player.rate != 0)
+        qualitySwitchState = (position, resume)
         player.pause()
         videoLoading = true
         playerError = nil
         qualityTask = Task { [self] in
             do {
-                let result = try await api.playback(
-                    bvid: id, cid: cid, quality: value, episodeID: detail?.video.episodeID)
-                guard !Task.isCancelled, generation == videoGeneration else { return }
+                let (result, item) = try await playableMedia(id: id, cid: cid, quality: value)
+                guard !Task.isCancelled, generation == videoGeneration, request == qualityGeneration
+                else { return }
                 quality = result.quality
                 qualityID = result.qualityID
                 qualities = result.qualities
-                mediaLoader?.invalidate()
-                let loader = MediaResourceLoader(url: result.url)
-                mediaLoader = loader
-                let item = AVPlayerItem(asset: loader.asset)
                 statusObserver = item.observe(\.status, options: [.new]) { [weak self] item, _ in
                     Task { @MainActor in
                         guard let self, generation == self.videoGeneration,
@@ -594,17 +642,21 @@ final class AppModel: ObservableObject {
                 observeDuration(item, generation: generation)
                 player.replaceCurrentItem(with: item)
                 await player.seek(to: CMTime(seconds: position, preferredTimescale: 600))
-                guard !Task.isCancelled, generation == videoGeneration else { return }
+                guard !Task.isCancelled, generation == videoGeneration, request == qualityGeneration
+                else { return }
                 if resume { player.playImmediately(atRate: Float(playbackRate)) }
                 if result.qualityID != value {
                     toast = "请求的清晰度未返回，当前使用" + result.quality + "。当前取流格式或账号权限可能受限。"
                 }
             } catch {
-                if !Task.isCancelled, generation == videoGeneration {
+                if !Task.isCancelled, generation == videoGeneration, request == qualityGeneration {
                     playerError = error.localizedDescription
                 }
             }
-            if !Task.isCancelled, generation == videoGeneration { videoLoading = false }
+            if !Task.isCancelled, generation == videoGeneration, request == qualityGeneration {
+                videoLoading = false
+                qualitySwitchState = nil
+            }
         }
     }
     func seek(_ seconds: Double) {
@@ -649,12 +701,15 @@ final class AppModel: ObservableObject {
         videoTask?.cancel()
         subtitleTask?.cancel()
         qualityTask?.cancel()
+        qualitySwitchState = nil
         videoGeneration = UUID()
         subtitleGeneration = UUID()
         player.pause()
         player.replaceCurrentItem(with: nil)
         mediaLoader?.invalidate()
         mediaLoader = nil
+        dashLoader?.invalidate()
+        dashLoader = nil
         statusObserver = nil
         durationObserver = nil
         mediaID = nil
