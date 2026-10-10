@@ -300,7 +300,7 @@ public actor BilibiliAPI {
     }
     public func playback(
         bvid: String, cid: Int64, quality: Int = 80, episodeID: Int64? = nil,
-        preferDASH: Bool = true
+        preferDASH: Bool = true, allowAV1: Bool = true, allowHEVC: Bool = true
     )
         async throws -> Playback
     {
@@ -318,14 +318,17 @@ public actor BilibiliAPI {
             episodeID == nil ? "/x/player/wbi/playurl" : "/pgc/player/web/playurl", params: params,
             signed: episodeID == nil)
         do {
-            return try PlaybackParser.parse(d, preferredQuality: quality)
+            return try PlaybackParser.parse(
+                d, preferredQuality: quality,
+                allowAV1: allowAV1 && MediaCapabilities.hardwareAV1, allowHEVC: allowHEVC)
         } catch {
             try Task.checkCancellation()
             guard preferDASH else { throw error }
             // A response without compatible indexed streams may still offer a complete MP4.
             // API/permission errors above are surfaced directly, never retried here.
             return try await playback(
-                bvid: bvid, cid: cid, quality: quality, episodeID: episodeID, preferDASH: false)
+                bvid: bvid, cid: cid, quality: quality, episodeID: episodeID, preferDASH: false,
+                allowAV1: allowAV1, allowHEVC: allowHEVC)
         }
     }
     public func subtitleTracks(bvid: String, cid: Int64) async throws -> [SubtitleTrack] {

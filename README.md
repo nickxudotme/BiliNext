@@ -57,7 +57,7 @@ swift test
 
 标题栏播放选项菜单中的“使用本机官方核心”在当前播放区域运行本机哔哩哔哩客户端内置的 nano 播放器。它从 `/Applications/哔哩哔哩.app/Contents/Resources/app.asar` 只读获取 `render/assets/lib/core.js`，不加载官网视频页面，也不使用官方外链播放器。需要保留本机已安装的兼容官方客户端；播放器代码不打包进 BiliNext。媒体引擎宿主是 WKWebView，官方播放器界面和弹幕由核心提供，Swift 接入字幕时间、跳转、暂停及进度保存。
 
-已验证 TED、Spark 两条 UGC 的真实播放画面、播放/暂停、时间前进、官方弹幕、Transcript 跳转和切回原播放器保留位置。AV1/HEVC 暂未启用；PGC、高密度弹幕、全屏及发送等功能仍需逐项验收。来源与接口分析见 `docs/OFFICIAL-CLIENT-PLAYER.md`。
+已验证 TED、Spark 两条 UGC 的真实播放画面、播放/暂停、时间前进、官方弹幕、Transcript 跳转和切回原播放器保留位置。AV1 开关已按硬件能力启用（该官方核心的 AV1 尚未单独实测），HEVC 开关仍关闭；PGC、高密度弹幕、全屏及发送等功能仍需逐项验收。来源与接口分析见 `docs/OFFICIAL-CLIENT-PLAYER.md`。
 
 
 ## 主窗口沉浸播放页（2026-10-05）

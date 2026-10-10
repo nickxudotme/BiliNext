@@ -1,7 +1,10 @@
 import Foundation
 
 enum PlaybackParser {
-    static func parse(_ data: [String: Any], preferredQuality: Int) throws -> Playback {
+    static func parse(
+        _ data: [String: Any], preferredQuality: Int,
+        allowAV1: Bool = false, allowHEVC: Bool = true
+    ) throws -> Playback {
         let ids = data["accept_quality"] as? [Int] ?? []
         let labels = data["accept_description"] as? [String] ?? []
         func label(_ value: Int) -> String {
@@ -13,23 +16,30 @@ enum PlaybackParser {
                 ?? "清晰度 \(value)"
         }
         if let dash = data["dash"] as? [String: Any] {
-            // Start with SDR AVC/HEVC. HDR/Dolby and AV1 require separate device validation.
+            // AV1 is enabled by the caller only when hardware decoding is available.
             let videos = (dash["video"] as? [[String: Any]] ?? []).compactMap {
                 row -> (Int, PlaybackStream)? in
                 let quality = (row["id"] as? NSNumber)?.intValue ?? 0
                 guard quality > 0, ![125, 126].contains(quality), let stream = stream(row),
-                    stream.codec.hasPrefix("avc1") || stream.codec.hasPrefix("hev1")
-                        || stream.codec.hasPrefix("hvc1")
+                    stream.codec.hasPrefix("avc1")
+                        || (allowHEVC
+                            && (stream.codec.hasPrefix("hev1") || stream.codec.hasPrefix("hvc1")))
+                        || (allowAV1 && stream.codec.hasPrefix("av01."))
                 else { return nil }
                 return (quality, stream)
             }
             let available = Set(videos.map { $0.0 }).sorted(by: >)
             guard let highest = available.first else {
-                throw APIError(code: -1, message: "没有适合原生播放器的 SDR H.264/HEVC 视频流")
+                throw APIError(code: -1, message: "没有适合当前原生解码能力的 SDR 视频流")
             }
             let actual = available.contains(preferredQuality) ? preferredQuality : highest
             let candidates = videos.filter { $0.0 == actual }
-            let chosen = candidates.first { $0.1.codec.hasPrefix("avc1") } ?? candidates[0]
+            func rank(_ stream: PlaybackStream) -> Int {
+                if stream.codec.hasPrefix("av01.") { return 0 }
+                if stream.codec.hasPrefix("hev1") || stream.codec.hasPrefix("hvc1") { return 1 }
+                return 2
+            }
+            let chosen = candidates.min { rank($0.1) < rank($1.1) }!
             let audio = (dash["audio"] as? [[String: Any]] ?? []).compactMap(stream)
                 .filter { $0.codec.hasPrefix("mp4a") }
                 .max { $0.bandwidth < $1.bandwidth }

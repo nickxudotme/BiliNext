@@ -62,3 +62,28 @@ private func streamRow(_ id: Int, codec: String = "avc1.640028", camel: Bool = t
         try PlaybackParser.parse(["durl": []], preferredQuality: 80)
     }
 }
+
+@Test func codecSelectionHonorsHardwareGateAndFallbacks() throws {
+    let data: [String: Any] = [
+        "dash": [
+            "video": [
+                streamRow(120),
+                streamRow(120, codec: "hev1.1.6.L153.90"), streamRow(120, codec: "av01.0.12M.08"),
+            ]
+        ]
+    ]
+    #expect(
+        try PlaybackParser.parse(data, preferredQuality: 120, allowAV1: true)
+            .videoStream?.codec.hasPrefix("av01.") == true)
+    #expect(
+        try PlaybackParser.parse(data, preferredQuality: 120, allowAV1: false)
+            .videoStream?.codec.hasPrefix("hev1") == true)
+    #expect(
+        try PlaybackParser.parse(data, preferredQuality: 120, allowAV1: false, allowHEVC: false)
+            .videoStream?.codec.hasPrefix("avc1") == true)
+    #expect(throws: APIError.self) {
+        try PlaybackParser.parse(
+            ["dash": ["video": [streamRow(120, codec: "av01.0.12M.08")]]],
+            preferredQuality: 120, allowAV1: false)
+    }
+}

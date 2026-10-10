@@ -63,9 +63,12 @@ final class AppModel: ObservableObject {
     @Published var playing = false
     @Published var quality = ""
     @Published var qualityID = 64
+    private(set) var playbackCodec = ""
     @Published var qualities: [PlaybackQuality] = []
     private var qualityTask: Task<Void, Never>?
     private var qualitySwitchState: (position: Double, resume: Bool)?
+    private var playbackIntent = false
+    private var failedCodecItem: ObjectIdentifier?
     private var browseTask: Task<Void, Never>?
     private var videoTask: Task<Void, Never>?
     private var subtitleTask: Task<Void, Never>?
@@ -406,6 +409,7 @@ final class AppModel: ObservableObject {
                 if officialCore {
                     officialWebView?.evaluateJavaScript("window.biliPlayer?.play()")
                 } else {
+                    playbackIntent = true
                     player.playImmediately(atRate: Float(playbackRate))
                 }
             }
@@ -532,23 +536,18 @@ final class AppModel: ObservableObject {
             guard !Task.isCancelled, generation == videoGeneration else { return }
             quality = playback.quality
             qualityID = playback.qualityID
+            playbackCodec = playback.videoStream?.codec ?? "MP4"
             qualities = playback.qualities
-            statusObserver = item.observe(\.status, options: [.new]) { [weak self] item, _ in
-                Task { @MainActor in
-                    guard let self, generation == self.videoGeneration,
-                        self.player.currentItem === item
-                    else { return }
-                    if item.status == .failed {
-                        self.playerError = item.error?.localizedDescription ?? "媒体加载失败"
-                    }
-                }
-            }
+            playbackIntent = autoplay
+            observeMediaStatus(item, playback: playback, generation: generation)
             observeDuration(item, generation: generation)
             player.replaceCurrentItem(with: item)
             if position > 0 {
                 await player.seek(to: CMTime(seconds: position, preferredTimescale: 600))
             }
-            guard !Task.isCancelled, generation == videoGeneration, selected == id else { return }
+            guard !Task.isCancelled, generation == videoGeneration, selected == id,
+                player.currentItem === item
+            else { return }
             if autoplay { player.playImmediately(atRate: Float(playbackRate)) }
         } catch {
             guard !Task.isCancelled, generation == videoGeneration else { return }
@@ -556,24 +555,62 @@ final class AppModel: ObservableObject {
         }
         if generation == videoGeneration { videoLoading = false }
     }
-    private func playableMedia(id: String, cid: Int64, quality: Int) async throws -> (
-        Playback, AVPlayerItem
-    ) {
-        let result = try await api.playback(
+    private func playableMedia(
+        id: String, cid: Int64, quality: Int,
+        allowAV1: Bool = true, allowHEVC: Bool = true
+    ) async throws -> (Playback, AVPlayerItem) {
+        var result = try await api.playback(
             bvid: id, cid: cid, quality: quality,
-            episodeID: detail?.video.episodeID)
-        try Task.checkCancellation()
-        do { return (result, try await prepareMedia(result)) } catch {
+            episodeID: detail?.video.episodeID, allowAV1: allowAV1, allowHEVC: allowHEVC)
+        while true {
             try Task.checkCancellation()
-            guard result.videoStream != nil else { throw error }
-            // Index/transport failures can still use the former single-MP4 route.
-            let fallback = try await api.playback(
-                bvid: id, cid: cid, quality: quality,
-                episodeID: detail?.video.episodeID, preferDASH: false)
-            let item = try await prepareMedia(fallback)
-            try Task.checkCancellation()
-            toast = "分离流暂时无法加载，已回退到 " + fallback.quality
-            return (fallback, item)
+            do { return (result, try await prepareMedia(result)) } catch {
+                try Task.checkCancellation()
+                guard let stream = result.videoStream else { throw error }
+                let isAV1 = stream.codec.hasPrefix("av01.")
+                let isHEVC = stream.codec.hasPrefix("hev1") || stream.codec.hasPrefix("hvc1")
+                if isAV1 || isHEVC {
+                    result = try await api.playback(
+                        bvid: id, cid: cid, quality: quality,
+                        episodeID: detail?.video.episodeID, allowAV1: false, allowHEVC: isAV1)
+                    continue
+                }
+                let fallback = try await api.playback(
+                    bvid: id, cid: cid, quality: quality,
+                    episodeID: detail?.video.episodeID, preferDASH: false)
+                let item = try await prepareMedia(fallback)
+                try Task.checkCancellation()
+                toast = "分离流暂时无法加载，已回退到 " + fallback.quality
+                return (fallback, item)
+            }
+        }
+    }
+
+    func observeMediaStatus(_ item: AVPlayerItem, playback: Playback, generation: UUID? = nil) {
+        let generation = generation ?? videoGeneration
+        failedCodecItem = nil
+        statusObserver = item.observe(\.status, options: [.new]) { [weak self] item, _ in
+            Task { @MainActor in
+                guard let self, !self.officialCore, generation == self.videoGeneration,
+                    self.player.currentItem === item, item.status == .failed,
+                    self.failedCodecItem != ObjectIdentifier(item)
+                else { return }
+                self.failedCodecItem = ObjectIdentifier(item)
+                let codec = playback.videoStream?.codec ?? ""
+                let isAV1 = codec.hasPrefix("av01.")
+                let isHEVC = codec.hasPrefix("hev1") || codec.hasPrefix("hvc1")
+                if isAV1 || isHEVC {
+                    let current = self.player.currentTime().seconds
+                    self.qualitySwitchState =
+                        self.qualitySwitchState
+                        ?? (current.isFinite ? current : self.time, self.playbackIntent)
+                    self.toast = isAV1 ? "AV1 加载失败，正在尝试 HEVC／H.264" : "HEVC 加载失败，正在尝试 H.264"
+                    self.changeQuality(
+                        self.qualityID, allowAV1: false, allowHEVC: isAV1, force: true)
+                } else {
+                    self.playerError = item.error?.localizedDescription ?? "媒体加载失败"
+                }
+            }
         }
     }
 
@@ -608,8 +645,13 @@ final class AppModel: ObservableObject {
             }
         }
     }
-    func selectQuality(_ value: Int) {
-        guard let id = mediaID, let cid = pageID, value != qualityID else { return }
+    func selectQuality(_ value: Int) { changeQuality(value) }
+
+    private func changeQuality(
+        _ value: Int, allowAV1: Bool = true, allowHEVC: Bool = true,
+        force: Bool = false
+    ) {
+        guard let id = mediaID, let cid = pageID, force || value != qualityID else { return }
         qualityTask?.cancel()
         let generation = videoGeneration
         let request = UUID()
@@ -618,27 +660,22 @@ final class AppModel: ObservableObject {
         let position = qualitySwitchState?.position ?? (current.isFinite ? current : time)
         let resume = qualitySwitchState?.resume ?? (player.rate != 0)
         qualitySwitchState = (position, resume)
+        playbackIntent = resume
         player.pause()
         videoLoading = true
         playerError = nil
         qualityTask = Task { [self] in
             do {
-                let (result, item) = try await playableMedia(id: id, cid: cid, quality: value)
+                let (result, item) = try await playableMedia(
+                    id: id, cid: cid, quality: value,
+                    allowAV1: allowAV1, allowHEVC: allowHEVC)
                 guard !Task.isCancelled, generation == videoGeneration, request == qualityGeneration
                 else { return }
                 quality = result.quality
                 qualityID = result.qualityID
+                playbackCodec = result.videoStream?.codec ?? "MP4"
                 qualities = result.qualities
-                statusObserver = item.observe(\.status, options: [.new]) { [weak self] item, _ in
-                    Task { @MainActor in
-                        guard let self, generation == self.videoGeneration,
-                            self.player.currentItem === item
-                        else { return }
-                        if item.status == .failed {
-                            self.playerError = item.error?.localizedDescription ?? "媒体加载失败"
-                        }
-                    }
-                }
+                observeMediaStatus(item, playback: result, generation: generation)
                 observeDuration(item, generation: generation)
                 player.replaceCurrentItem(with: item)
                 await player.seek(to: CMTime(seconds: position, preferredTimescale: 600))
@@ -683,6 +720,7 @@ final class AppModel: ObservableObject {
             player.pause()
         }
         playing = player.rate != 0
+        playbackIntent = playing
     }
     func setRate(_ value: Double) {
         playbackRate = value

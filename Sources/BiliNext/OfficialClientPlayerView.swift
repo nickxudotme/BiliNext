@@ -1,3 +1,4 @@
+import BiliNextCore
 import SwiftUI
 import WebKit
 
@@ -66,7 +67,7 @@ struct OfficialClientPlayerView: NSViewRepresentable {
                                 element:document.getElementById('player'), fullWrap:document.body,
                                 channelKind:nano.ChannelKind.PC_APP, kind:nano.GroupKind[options.kind],
                                 bvid:options.bvid, aid:options.aid, cid:options.cid, episodeId:options.episodeId,
-                                autoplay:false, enableAV1:false, enableHEVC:false, hideBoxShadow:true,
+                                autoplay:false, enableAV1:\(MediaCapabilities.hardwareAV1), enableHEVC:false, hideBoxShadow:true,
                                 appInfo:{platform:'mac',mobi_app:'pc_link',build:1190000},
                                 featureList:new Set(['noVVReport','noVTReport']),
                             });

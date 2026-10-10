@@ -66,6 +66,8 @@ private func indexFixture(version: UInt8 = 0, hierarchical: Bool = false) -> Dat
     if authenticated { _ = try await api.profile() }
     var bvid = ProcessInfo.processInfo.environment["BILINEXT_TEST_BVID"] ?? "BV1xx411c7mD"
     let require4K = ProcessInfo.processInfo.environment["BILINEXT_4K_TEST"] == "1"
+    let requireAV1 = ProcessInfo.processInfo.environment["BILINEXT_AV1_TEST"] == "1"
+    if requireAV1 { #expect(MediaCapabilities.hardwareAV1) }
     if require4K {
         let results = try await api.search("4K 风景")
         var found: String?
@@ -73,7 +75,9 @@ private func indexFixture(version: UInt8 = 0, hierarchical: Bool = false) -> Dat
             let detail = try await api.detail(video.bvid)
             guard let page = detail.pages.first else { continue }
             let source = try await api.playback(bvid: video.bvid, cid: page.cid, quality: 120)
-            if source.qualityID == 120 {
+            if source.qualityID == 120
+                && (!requireAV1 || source.videoStream?.codec.hasPrefix("av01.") == true)
+            {
                 found = video.bvid
                 break
             }
@@ -84,6 +88,7 @@ private func indexFixture(version: UInt8 = 0, hierarchical: Bool = false) -> Dat
     let page = try #require(detail.pages.first)
     let playback = try await api.playback(bvid: bvid, cid: page.cid, quality: 127)
     #expect(playback.videoStream != nil)
+    if requireAV1 { #expect(playback.videoStream?.codec.hasPrefix("av01.") == true) }
     let (loader, item) = try await DASHResourceLoader.prepare(playback)
     defer { loader.invalidate() }
     let player = AVPlayer(playerItem: item)
@@ -125,7 +130,7 @@ private func indexFixture(version: UInt8 = 0, hierarchical: Bool = false) -> Dat
     try await Task.sleep(for: .milliseconds(500))
     #expect(abs(player.currentTime().seconds - position) < 0.1)
     print(
-        "DASH smoke: bvid=\(bvid), quality=\(playback.qualityID), decoded=\(width)x\(height), duration=\(Int(duration)), seek/rate/pause passed; muted"
+        "DASH smoke: bvid=\(bvid), codec=\(playback.videoStream?.codec ?? "MP4"), quality=\(playback.qualityID), decoded=\(width)x\(height), duration=\(Int(duration)), seek/rate/pause passed; muted"
     )
     if require4K {
         let lower = try await api.playback(bvid: bvid, cid: page.cid, quality: 64)
@@ -185,5 +190,63 @@ private func indexFixture(version: UInt8 = 0, hierarchical: Bool = false) -> Dat
         #expect(model.qualityID == 80)
         #expect(model.player.rate > 0)
         print("AppModel: autoplay, 4K selection, paused switch, rapid replacement passed; muted")
+        if requireAV1 {
+            #expect(model.playbackCodec.hasPrefix("av01."))
+            let failedItem = AVPlayerItem(
+                url: directory.appendingPathComponent("missing-media.mp4"))
+            let source = try await api.playback(bvid: bvid, cid: page.cid, quality: 80)
+            model.observeMediaStatus(failedItem, playback: source)
+            model.player.replaceCurrentItem(with: failedItem)
+            model.player.play()
+            for _ in 0..<250 {
+                if !model.videoLoading, !model.playbackCodec.hasPrefix("av01."),
+                    model.player.currentItem?.status == .readyToPlay
+                {
+                    break
+                }
+                try await Task.sleep(for: .milliseconds(200))
+            }
+            #expect(model.playerError == nil)
+            #expect(!model.playbackCodec.hasPrefix("av01."))
+            #expect(model.player.currentItem?.status == .readyToPlay)
+            #expect(model.player.rate > 0)
+            print(
+                "Runtime codec fallback: failed AV1 item → \(model.playbackCodec), playback resumed; muted"
+            )
+            model.togglePlayback()
+            let failedHEVC = AVPlayerItem(url: directory.appendingPathComponent("missing-hevc.mp4"))
+            let hevcSource = try await api.playback(
+                bvid: bvid, cid: page.cid, quality: 80, allowAV1: false)
+            model.observeMediaStatus(failedHEVC, playback: hevcSource)
+            model.player.replaceCurrentItem(with: failedHEVC)
+            for _ in 0..<250 {
+                if !model.videoLoading, model.playbackCodec.hasPrefix("avc1"),
+                    model.player.currentItem?.status == .readyToPlay
+                {
+                    break
+                }
+                try await Task.sleep(for: .milliseconds(200))
+            }
+            #expect(model.playerError == nil)
+            #expect(model.playbackCodec.hasPrefix("avc1"))
+            #expect(model.player.currentItem?.status == .readyToPlay)
+            #expect(model.player.rate == 0)
+            print("Runtime codec fallback: failed HEVC item → H.264, paused state preserved; muted")
+            let avc = try await api.playback(
+                bvid: bvid, cid: page.cid, quality: 120,
+                allowAV1: false, allowHEVC: false)
+            #expect(avc.videoStream?.codec.hasPrefix("avc1") == true)
+            let (avcLoader, avcItem) = try await DASHResourceLoader.prepare(avc)
+            defer { avcLoader.invalidate() }
+            player.replaceCurrentItem(with: avcItem)
+            player.play()
+            for _ in 0..<150 {
+                if player.currentTime().seconds > 1 || avcItem.status == .failed { break }
+                try await Task.sleep(for: .milliseconds(200))
+            }
+            #expect(avcItem.status == .readyToPlay)
+            #expect(player.currentTime().seconds > 1)
+            print("Explicit H.264 fallback: quality=\(avc.qualityID), playing; muted")
+        }
     }
 }
