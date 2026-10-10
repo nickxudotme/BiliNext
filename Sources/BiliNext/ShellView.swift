@@ -5,6 +5,7 @@ struct ShellView: View {
     @ObservedObject var model: AppModel
     private let drawerWidth: CGFloat = 220
     @State private var pinned = true
+    @State private var fullScreen = false
     @State private var revealed = false
     @State private var hovering = false
     @State private var hoveredTab: String?
@@ -27,7 +28,7 @@ struct ShellView: View {
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.leading, pinned ? drawerWidth : 0)
             .background(Color(nsColor: .windowBackgroundColor))
-            .background(WindowChrome())
+            .background(WindowChrome { fullScreen = $0 })
             .background(
                 DrawerPointerTracker(externalWidth: drawerWidth) { point in updatePointer(point) }
             )
@@ -104,7 +105,9 @@ struct ShellView: View {
         VStack(spacing: 0) {
             GlassEffectContainer(spacing: 6) {
                 HStack(spacing: 4) {
-                    TrafficLights().frame(width: 56, height: 24)
+                    if !fullScreen {
+                        TrafficLights().frame(width: 56, height: 24)
+                    }
                     Button {
                         revealTask?.cancel()
                         hideTask?.cancel()

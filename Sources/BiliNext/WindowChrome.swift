@@ -2,20 +2,59 @@ import AppKit
 import SwiftUI
 
 struct WindowChrome: NSViewRepresentable {
-    func makeNSView(context: Context) -> ChromeView { ChromeView() }
-    func updateNSView(_ view: ChromeView, context: Context) { view.configure() }
+    var onFullScreenChange: (Bool) -> Void = { _ in }
+    func makeNSView(context: Context) -> ChromeView {
+        let view = ChromeView()
+        view.onFullScreenChange = onFullScreenChange
+        return view
+    }
+    func updateNSView(_ view: ChromeView, context: Context) {
+        view.onFullScreenChange = onFullScreenChange
+        view.configure()
+    }
     final class ChromeView: NSView {
+        var onFullScreenChange: (Bool) -> Void = { _ in }
+        private var reportedFullScreen: Bool?
+        private var notifications: [NSObjectProtocol] = []
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            notifications.forEach(NotificationCenter.default.removeObserver)
+            notifications = []
+            if let window {
+                for name in [
+                    NSWindow.willEnterFullScreenNotification,
+                    NSWindow.didEnterFullScreenNotification, NSWindow.didExitFullScreenNotification,
+                ] {
+                    notifications.append(
+                        NotificationCenter.default.addObserver(
+                            forName: name, object: window, queue: .main
+                        ) { [weak self] notification in
+                            MainActor.assumeIsolated {
+                                self?.configure(
+                                    fullScreen: notification.name
+                                        != NSWindow.didExitFullScreenNotification)
+                            }
+                        })
+                }
+            }
             configure()
         }
-        func configure() {
+        deinit { notifications.forEach(NotificationCenter.default.removeObserver) }
+        func configure(fullScreen: Bool? = nil) {
             guard let window else { return }
+            let fullScreen = fullScreen ?? window.styleMask.contains(.fullScreen)
+            if reportedFullScreen != fullScreen {
+                reportedFullScreen = fullScreen
+                DispatchQueue.main.async { [weak self] in
+                    self?.onFullScreenChange(fullScreen)
+                }
+            }
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
             window.styleMask.insert(.fullSizeContentView)
             for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-                window.standardWindowButton(kind)?.isHidden = true
+                window.standardWindowButton(kind)?.isHidden =
+                    !fullScreen
             }
         }
     }
@@ -25,6 +64,29 @@ struct TrafficLights: NSViewRepresentable {
     func makeNSView(context: Context) -> Controls { Controls() }
     func updateNSView(_ view: Controls, context: Context) {}
     final class Controls: NSView {
+        private var notifications: [NSObjectProtocol] = []
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            notifications.forEach(NotificationCenter.default.removeObserver)
+            notifications = []
+            isHidden = window?.styleMask.contains(.fullScreen) ?? false
+            guard let window else { return }
+            for name in [
+                NSWindow.willEnterFullScreenNotification,
+                NSWindow.didEnterFullScreenNotification, NSWindow.didExitFullScreenNotification,
+            ] {
+                notifications.append(
+                    NotificationCenter.default.addObserver(
+                        forName: name, object: window, queue: .main
+                    ) { [weak self] notification in
+                        MainActor.assumeIsolated {
+                            self?.isHidden =
+                                notification.name != NSWindow.didExitFullScreenNotification
+                        }
+                    })
+            }
+        }
+        deinit { notifications.forEach(NotificationCenter.default.removeObserver) }
         override init(frame: NSRect) {
             super.init(frame: frame)
             for (index, kind) in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
