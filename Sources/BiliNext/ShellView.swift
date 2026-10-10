@@ -236,7 +236,14 @@ struct ShellView: View {
                         Button("退出登录") { Task { await model.logout() } }
                     } label: {
                         Image(systemName: "ellipsis")
-                    }.menuStyle(.borderlessButton).frame(width: 20)
+                            .font(.system(size: 14, weight: .semibold))
+                            .frame(width: 36, height: 36)
+                            .contentShape(Circle())
+                    }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden)
+                    .frame(width: 36, height: 36)
+                    .glassEffect(.regular.interactive(), in: Circle())
+                    .help("账户选项").accessibilityLabel("账户选项")
                 } else {
                     Button("登录 B 站") { model.loginPresented = true }.buttonStyle(.plain)
                     Spacer()
