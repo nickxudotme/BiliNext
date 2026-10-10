@@ -17,13 +17,16 @@ struct VideoCommunityView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(section == "评论" ? "评论" : "接着看").font(.headline)
+                Text(section == "评论" ? "评论" : "接着看").font(.title3.weight(.semibold))
+                if section == "评论", count > 0 {
+                    Text("\(count) 条").font(.callout).foregroundStyle(.secondary)
+                }
                 Spacer()
                 if section == "评论" {
                     Picker("排序", selection: $newest) {
                         Text("最热").tag(false)
                         Text("最新").tag(true)
-                    }.labelsHidden().frame(width: 80)
+                    }.pickerStyle(.segmented).labelsHidden().frame(width: 136)
                 }
             }
             ScrollView {
@@ -54,9 +57,6 @@ struct VideoCommunityView: View {
                             }.buttonStyle(InteractionButtonStyle(kind: .row))
                         }
                     } else {
-                        if count > 0 {
-                            Text("\(count) 条评论").font(.caption).foregroundStyle(.secondary)
-                        }
                         ForEach(comments) { comment in
                             CommentThreadView(
                                 comment: comment, aid: model.detail?.video.aid ?? 0, api: model.api)
@@ -149,16 +149,22 @@ private struct CommentThreadView: View {
             CommentContent(comment: comment, collapsed: $collapsed, count: comment.replyCount)
             if !collapsed {
                 VStack(alignment: .leading, spacing: 14) {
-                    ForEach(branches) { branch in CommentBranchView(branch: branch, depth: 1) }
+                    ForEach(branches) { branch in
+                        CommentBranchView(branch: branch, depth: 1)
+                            .overlay(alignment: .topLeading) {
+                                Rectangle().fill(.quaternary).frame(width: 12, height: 1)
+                                    .offset(x: -24, y: 25).allowsHitTesting(false)
+                            }
+                    }
                     if comment.replyCount > 0 && more {
                         Button {
                             request += 1
                         } label: {
                             Label(
                                 loadedPage == 0 ? "展开全部 \(comment.replyCount) 条回复" : "加载更多回复",
-                                systemImage: "arrow.turn.down.right")
+                                systemImage: "chevron.right")
                         }.buttonStyle(InteractionButtonStyle(kind: .row)).font(.caption)
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundStyle(.secondary)
                             .disabled(loading)
                     }
                     if loading { ProgressView().controlSize(.small) }
@@ -166,7 +172,7 @@ private struct CommentThreadView: View {
                         Text(error).font(.caption).foregroundStyle(.secondary)
                         Button("重试回复") { request += 1 }.font(.caption).disabled(loading)
                     }
-                }.padding(.leading, 18)
+                }.padding(.leading, 30)
                     .overlay(alignment: .leading) {
                         Button {
                             collapsed = true
@@ -216,8 +222,13 @@ private struct CommentBranchView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     ForEach(branch.children) { child in
                         AnyView(CommentBranchView(branch: child, depth: depth + 1))
+                            .overlay(alignment: .topLeading) {
+                                Rectangle().fill(.quaternary).frame(width: 10, height: 1)
+                                    .offset(x: depth < 4 ? -26 : -8, y: 25)
+                                    .allowsHitTesting(false)
+                            }
                     }
-                }.padding(.leading, depth < 4 ? 14 : 4)
+                }.padding(.leading, depth < 4 ? 26 : 8)
                     .overlay(alignment: .leading) { Rectangle().fill(.quaternary).frame(width: 1) }
             }
         }.accessibilityElement(children: .contain)
@@ -228,44 +239,66 @@ private struct CommentContent: View {
     let comment: Comment
     @Binding var collapsed: Bool
     let count: Int
+    @State private var hovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 7) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.15)) { collapsed.toggle() }
-                } label: {
-                    Image(systemName: collapsed ? "plus.circle" : "minus.circle").foregroundStyle(
-                        .tertiary)
-                }.buttonStyle(InteractionButtonStyle(kind: .row)).help(collapsed ? "展开讨论" : "折叠讨论")
-                    .accessibilityLabel("\(collapsed ? "展开" : "折叠") \(comment.author) 的评论")
-                AvatarView(url: comment.avatar).frame(width: 20, height: 20)
-                Text(comment.author).font(.caption.weight(.medium)).lineLimit(1)
-                Spacer(minLength: 2)
-                Text(comment.date, style: .relative).font(.caption2).foregroundStyle(.tertiary)
-                    .lineLimit(1)
+        HStack(alignment: .top, spacing: 10) {
+            Button {
+                collapsed.toggle()
+            } label: {
+                Image(systemName: collapsed ? "chevron.right" : "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 12, height: 30)
             }
-            if collapsed {
-                Text(count > 0 ? "已折叠 · \(count) 条回复" : "已折叠评论").font(.caption).foregroundStyle(
-                    .secondary)
-            } else {
-                Text(comment.text).font(.callout).lineSpacing(4).textSelection(.enabled).fixedSize(
-                    horizontal: false, vertical: true)
-                HStack(spacing: 12) {
-                    Label("\(comment.likes)", systemImage: "hand.thumbsup").foregroundStyle(
-                        .secondary)
-                    if count > 0 { Text("\(count) 条回复").foregroundStyle(.tertiary) }
-                    Spacer()
+            .buttonStyle(InteractionButtonStyle(kind: .row))
+            .help(collapsed ? "展开讨论" : "折叠讨论")
+            .accessibilityLabel("\(collapsed ? "展开" : "折叠") \(comment.author) 的评论")
+            AvatarView(url: comment.avatar).frame(width: 30, height: 30)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Text(comment.author).font(.callout.weight(.medium)).lineLimit(1)
+                    Text(comment.date, style: .relative)
+                        .font(.caption).foregroundStyle(.tertiary).lineLimit(1)
+                    Spacer(minLength: 0)
                     Menu {
                         Button("复制评论") {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(comment.text, forType: .string)
                         }
-                        Button("折叠讨论") { collapsed = true }
+                        Button(collapsed ? "展开讨论" : "折叠讨论") { collapsed.toggle() }
                     } label: {
                         Image(systemName: "ellipsis")
-                    }.menuStyle(.borderlessButton).frame(width: 18)
-                }.font(.caption2)
+                    }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden)
+                    .frame(width: 22, height: 22)
+                    .modifier(MenuHoverFeedback())
+                    .accessibilityLabel("评论选项")
+                }
+                if collapsed {
+                    Text(count > 0 ? "已折叠 · \(count) 条回复" : "已折叠评论")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text(comment.text).font(.callout).lineSpacing(4)
+                        .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 18) {
+                        Label("\(comment.likes)", systemImage: "hand.thumbsup")
+                        if count > 0 { Text("\(count) 条回复") }
+                    }
+                    .font(.caption).foregroundStyle(.secondary)
+                    .padding(.top, 2)
+                }
             }
         }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(.primary.opacity(hovered ? 0.055 : 0))
+        }
+        .contentShape(Rectangle())
+        .onHover { hovered = $0 }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: hovered)
     }
 }
