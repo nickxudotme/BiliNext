@@ -35,15 +35,17 @@ struct CustomPlayerView: View {
     @ObservedObject var model: AppModel
     @ObservedObject private var clock: PlaybackClock
     init(
-        model: AppModel, danmaku: DanmakuModel,
+        model: AppModel, danmaku: DanmakuModel, isActive: Bool = true,
         onControlsVisibility: @escaping (Bool) -> Void = { _ in }
     ) {
+        self.isActive = isActive
         self.onControlsVisibility = onControlsVisibility
         self.model = model
         self.danmaku = danmaku
         self.clock = model.playbackClock
     }
 
+    var isActive: Bool
     var onControlsVisibility: (Bool) -> Void
     private var controlsVisible: Bool {
         controls || !model.playing || scrubbing || settings || volumeSettings || qualitySettings
@@ -113,7 +115,7 @@ struct CustomPlayerView: View {
             }
         }
         .background(.black)
-        .contentShape(Rectangle()).focusable().focused($focused).focusEffectDisabled()
+        .contentShape(Rectangle()).focusable(isActive).focused($focused).focusEffectDisabled()
         .onTapGesture {
             focused = true
             model.togglePlayback()
@@ -157,6 +159,10 @@ struct CustomPlayerView: View {
             $0.size.width
         } action: {
             availableWidth = $0
+        }
+        .onChange(of: isActive) { _, active in
+            focused = active
+            if !active { hideTask?.cancel() }
         }
         .onDisappear { hideTask?.cancel() }
     }

@@ -19,11 +19,27 @@ struct ShellView: View {
 
     var body: some View {
         ZStack {
-            BrowseView(model: model).opacity(model.selected == nil ? 1 : 0).allowsHitTesting(
-                model.selected == nil
-            ).accessibilityHidden(model.selected != nil)
-            if model.selected != nil {
-                PlaybackView(model: model, navigationOverlayVisible: !pinned && revealed)
+            ForEach(model.browseInstances.keys.sorted(), id: \.self) { destination in
+                if let instance = model.browseInstances[destination] {
+                    BrowseView(
+                        model: instance,
+                        isActive: model.selected == nil && model.menu == destination
+                    )
+                    .opacity(model.selected == nil && model.menu == destination ? 1 : 0)
+                    .allowsHitTesting(model.selected == nil && model.menu == destination)
+                    .accessibilityHidden(model.selected != nil || model.menu != destination)
+                }
+            }
+            ForEach(model.tabs) { tab in
+                if let instance = model.playbackInstances[tab.id] {
+                    PlaybackView(
+                        model: instance, navigationOverlayVisible: !pinned && revealed,
+                        isActive: model.selected == tab.id
+                    )
+                    .opacity(model.selected == tab.id ? 1 : 0)
+                    .allowsHitTesting(model.selected == tab.id)
+                    .accessibilityHidden(model.selected != tab.id)
+                }
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.leading, pinned ? drawerWidth : 0)

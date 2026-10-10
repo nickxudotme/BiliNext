@@ -1,15 +1,15 @@
 import AVKit
 import BiliNextCore
+import Combine
 import SwiftUI
 import WebKit
 
 @MainActor
 final class AppModel: ObservableObject {
+    let api: BilibiliAPI
     #if DEBUG
-        let api = BilibiliAPI(credentialStorage: .developmentFile)
         let credentialNotice = "开发版：本机会话文件未加密，仅当前用户可读写"
     #else
-        let api = BilibiliAPI()
         let credentialNotice = "登录凭据仅保存在本机钥匙串"
     #endif
     @Published var officialCore = false
@@ -17,7 +17,13 @@ final class AppModel: ObservableObject {
     weak var officialWebView: WKWebView?
     let player = AVPlayer()
     let danmaku = DanmakuModel()
-    let downloads = DownloadManager()
+    let downloads: DownloadManager
+    @Published private(set) var playbackInstances: [String: AppModel] = [:]
+    @Published private(set) var browseInstances: [String: AppModel] = [:]
+    private(set) var playbackTabActive = true
+    private weak var tabOwner: AppModel?
+    private let managesPlaybackTabs: Bool
+    private var tabSubscriptions: [String: Set<AnyCancellable>] = [:]
     @Published var downloadsPresented = false
     @Published var duration = 0.0
     @Published var buffering = false
@@ -93,9 +99,19 @@ final class AppModel: ObservableObject {
 
     // MARK: - Lifecycle
 
-    init(sessionStore: SessionStore = SessionStore()) {
+    init(
+        sessionStore: SessionStore = SessionStore(), managesPlaybackTabs: Bool = true,
+        downloads: DownloadManager? = nil, api: BilibiliAPI? = nil
+    ) {
+        #if DEBUG
+            self.api = api ?? BilibiliAPI(credentialStorage: .developmentFile)
+        #else
+            self.api = api ?? BilibiliAPI()
+        #endif
         self.sessionStore = sessionStore
-        if let saved = try? sessionStore.read() {
+        self.managesPlaybackTabs = managesPlaybackTabs
+        self.downloads = downloads ?? DownloadManager()
+        if managesPlaybackTabs, let saved = try? sessionStore.read() {
             tabs = saved
         }
         observer = player.addPeriodicTimeObserver(
@@ -107,8 +123,8 @@ final class AppModel: ObservableObject {
                     time: value.seconds, duration: self.player.currentItem?.duration.seconds ?? 0,
                     playing: self.player.rate != 0,
                     buffering: self.player.timeControlStatus == .waitingToPlayAtSpecifiedRate)
-                self.updateDanmaku()
-                if Date().timeIntervalSince(self.lastSaved) > 5 {
+                if self.playbackTabActive { self.updateDanmaku() }
+                if self.playbackTabActive && Date().timeIntervalSince(self.lastSaved) > 5 {
                     self.saveSession(updateTabs: false)
                 }
             }
@@ -134,23 +150,33 @@ final class AppModel: ObservableObject {
     var canBack: Bool { historyIndex > 0 }
     var canForward: Bool { historyIndex < history.count - 1 }
     func navigate(_ destination: String) {
+        if let tabOwner {
+            tabOwner.navigate(destination)
+            return
+        }
+        suspendPlaybackTabs()
         selected = nil
         menu = destination
         libraryQuery = ""
         history = Array(history.prefix(historyIndex + 1))
         history.append(destination)
         historyIndex += 1
-        refresh()
+        if browseInstances[destination] == nil { refresh() }
     }
     func moveHistory(_ delta: Int) {
+        suspendPlaybackTabs()
         let next = historyIndex + delta
         guard history.indices.contains(next) else { return }
         historyIndex = next
         menu = history[next]
         selected = nil
-        refresh()
+        if browseInstances[menu] == nil { refresh() }
     }
     func refresh(more: Bool = false) {
+        if managesPlaybackTabs, selected == nil {
+            browseInstance(for: menu).refresh(more: more)
+            return
+        }
         guard selected == nil else {
             if let id = selected { activate(id, force: true) }
             return
@@ -327,6 +353,10 @@ final class AppModel: ObservableObject {
     // MARK: - Tabs and session
 
     func open(_ video: Video, background: Bool = false) {
+        if let tabOwner {
+            tabOwner.open(video, background: background)
+            return
+        }
         if !tabs.contains(where: { $0.id == video.id }) {
             tabs.append(
                 SessionTab(
@@ -344,10 +374,15 @@ final class AppModel: ObservableObject {
         closed = tabs.filter { $0.id == id }
         let index = tabs.firstIndex(where: { $0.id == id }) ?? 0
         tabs.removeAll { $0.id == id }
+        releasePlaybackTab(id)
         if mediaID == id { stopMedia() }
         if selected == id {
             selected = nil
-            if !tabs.isEmpty { activate(tabs[min(index, tabs.count - 1)].id) } else { refresh() }
+            if !tabs.isEmpty {
+                activate(tabs[min(index, tabs.count - 1)].id)
+            } else if browseInstances[menu] == nil {
+                refresh()
+            }
         }
         saveSession()
     }
@@ -355,15 +390,17 @@ final class AppModel: ObservableObject {
         saveSession()
         if let selected, tabs.contains(where: { $0.id == selected }) {
             closed = tabs.filter { $0.id != selected }
+            for tab in closed { releasePlaybackTab(tab.id) }
             tabs.removeAll { $0.id != selected }
             saveSession()
         } else {
             closed = tabs
+            for tab in closed { releasePlaybackTab(tab.id) }
             tabs = []
             selected = nil
             stopMedia()
             saveSession()
-            refresh()
+            if browseInstances[menu] == nil { refresh() }
         }
     }
     func undoClose() {
@@ -372,7 +409,24 @@ final class AppModel: ObservableObject {
         saveSession()
     }
     func saveSession(updateTabs: Bool = true) {
+        if let tabOwner {
+            tabOwner.saveSession(updateTabs: updateTabs)
+            return
+        }
         var snapshot = tabs
+        for index in snapshot.indices {
+            guard let instance = playbackInstances[snapshot[index].id] else { continue }
+            if let video = instance.detail?.video { snapshot[index].video = video }
+            snapshot[index].cid = instance.pageID ?? snapshot[index].cid
+            let seconds =
+                instance.officialCore ? instance.time : instance.player.currentTime().seconds
+            if instance.officialCore || instance.player.currentItem?.status == .readyToPlay,
+                seconds.isFinite
+            {
+                snapshot[index].position = max(0, seconds)
+            }
+        }
+        if updateTabs { tabs = snapshot }
         if officialCore || player.currentItem?.status == .readyToPlay,
             let index = snapshot.firstIndex(where: { $0.id == mediaID })
         {
@@ -384,7 +438,83 @@ final class AppModel: ObservableObject {
         do {
             try sessionStore.write(snapshot)
             lastSaved = Date()
+            for instance in playbackInstances.values { instance.lastSaved = lastSaved }
         } catch { toast = "标签恢复记录保存失败：\(error.localizedDescription)" }
+    }
+
+    private func suspendPlaybackTabs(except id: String? = nil) {
+        for (key, instance) in playbackInstances where key != id {
+            instance.playbackTabActive = false
+            if let state = instance.qualitySwitchState {
+                instance.qualitySwitchState = (state.position, false)
+            }
+            instance.player.pause()
+            instance.officialWebView?.evaluateJavaScript("window.biliPlayer?.pause()")
+            instance.playbackIntent = false
+            instance.playing = false
+        }
+    }
+
+    private func releasePlaybackTab(_ id: String) {
+        playbackInstances[id]?.officialWebView?.evaluateJavaScript("window.biliPlayer?.pause()")
+        playbackInstances[id]?.stopMedia()
+        if let instance = playbackInstances[id], let observer = instance.observer {
+            instance.player.removeTimeObserver(observer)
+            instance.observer = nil
+        }
+        playbackInstances.removeValue(forKey: id)
+        tabSubscriptions.removeValue(forKey: id)
+    }
+
+    private func connectPage(_ instance: AppModel, key: String) {
+        instance.tabOwner = self
+        instance.profile = profile
+        var subscriptions = Set<AnyCancellable>()
+        instance.$loginPresented.dropFirst().sink { [weak self] value in
+            if value { self?.loginPresented = true }
+        }.store(in: &subscriptions)
+        instance.$downloadsPresented.dropFirst().sink { [weak self] value in
+            if value { self?.downloadsPresented = true }
+        }.store(in: &subscriptions)
+        instance.$toast.dropFirst().sink { [weak self] value in
+            if let value { self?.toast = value }
+        }.store(in: &subscriptions)
+        instance.$playing.dropFirst().sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }.store(in: &subscriptions)
+        tabSubscriptions[key] = subscriptions
+    }
+
+    func browseInstance(for destination: String) -> AppModel {
+        if let existing = browseInstances[destination] { return existing }
+        let instance = AppModel(
+            sessionStore: sessionStore, managesPlaybackTabs: false, downloads: downloads, api: api)
+        instance.menu = destination
+        connectPage(instance, key: "browse:" + destination)
+        browseInstances[destination] = instance
+        return instance
+    }
+
+    func playbackInstance(for tab: SessionTab) -> AppModel {
+        if let existing = playbackInstances[tab.id] { return existing }
+        let instance = AppModel(
+            sessionStore: sessionStore, managesPlaybackTabs: false, downloads: downloads, api: api)
+        instance.tabs = [tab]
+        instance.menu = menu
+        connectPage(instance, key: tab.id)
+        playbackInstances[tab.id] = instance
+        return instance
+    }
+
+    private func activatePlaybackTab(_ id: String, force: Bool, autoplay: Bool) {
+        guard let tab = tabs.first(where: { $0.id == id }) else { return }
+        saveSession()
+        suspendPlaybackTabs(except: id)
+        let instance = playbackInstance(for: tab)
+        selected = id
+        instance.profile = profile
+        instance.playbackTabActive = true
+        instance.activate(id, force: force, autoplay: autoplay)
     }
 
     // MARK: - Media playback
@@ -402,6 +532,10 @@ final class AppModel: ObservableObject {
         }
     }
     func activate(_ id: String, force: Bool = false, autoplay: Bool = false) {
+        if managesPlaybackTabs {
+            activatePlaybackTab(id, force: force, autoplay: autoplay)
+            return
+        }
         guard tabs.contains(where: { $0.id == id }) else { return }
         selected = id
         if mediaID == id && !force {
@@ -538,7 +672,7 @@ final class AppModel: ObservableObject {
             qualityID = playback.qualityID
             playbackCodec = playback.videoStream?.codec ?? "MP4"
             qualities = playback.qualities
-            playbackIntent = autoplay
+            playbackIntent = autoplay && playbackTabActive
             observeMediaStatus(item, playback: playback, generation: generation)
             observeDuration(item, generation: generation)
             player.replaceCurrentItem(with: item)
@@ -548,7 +682,7 @@ final class AppModel: ObservableObject {
             guard !Task.isCancelled, generation == videoGeneration, selected == id,
                 player.currentItem === item
             else { return }
-            if autoplay { player.playImmediately(atRate: Float(playbackRate)) }
+            if autoplay && playbackTabActive { player.playImmediately(atRate: Float(playbackRate)) }
         } catch {
             guard !Task.isCancelled, generation == videoGeneration else { return }
             playerError = error.localizedDescription
@@ -681,7 +815,9 @@ final class AppModel: ObservableObject {
                 await player.seek(to: CMTime(seconds: position, preferredTimescale: 600))
                 guard !Task.isCancelled, generation == videoGeneration, request == qualityGeneration
                 else { return }
-                if resume { player.playImmediately(atRate: Float(playbackRate)) }
+                if resume && playbackTabActive {
+                    player.playImmediately(atRate: Float(playbackRate))
+                }
                 if result.qualityID != value {
                     toast = "请求的清晰度未返回，当前使用" + result.quality + "。当前取流格式或账号权限可能受限。"
                 }
@@ -708,6 +844,10 @@ final class AppModel: ObservableObject {
             toleranceAfter: .zero)
     }
     func togglePlayback() {
+        if managesPlaybackTabs {
+            if let selected { playbackInstances[selected]?.togglePlayback() }
+            return
+        }
         if officialCore {
             officialWebView?.evaluateJavaScript(
                 "{ const p=window.biliPlayer; if(p) { if(p.isPaused()) p.play(); else p.pause(); } }"
@@ -734,7 +874,10 @@ final class AppModel: ObservableObject {
         guard !officialCore else { return }
         danmaku.update(time: time, duration: duration, api: api)
     }
-    func isPlaying(_ id: String) -> Bool { id == mediaID && playing }
+    func isPlaying(_ id: String) -> Bool {
+        if managesPlaybackTabs { return playbackInstances[id]?.playing ?? false }
+        return id == mediaID && playing
+    }
     private func stopMedia() {
         videoTask?.cancel()
         subtitleTask?.cancel()
@@ -785,6 +928,9 @@ final class AppModel: ObservableObject {
 
     func loggedIn() async {
         profile = try? await api.profile()
+        for instance in Array(playbackInstances.values) + Array(browseInstances.values) {
+            instance.profile = profile
+        }
         cachedLists.removeAll()
         folders = []
         folderID = 0
@@ -795,11 +941,16 @@ final class AppModel: ObservableObject {
         do {
             try await api.logout()
             profile = nil
+            for destination in browseInstances.keys {
+                tabSubscriptions.removeValue(forKey: "browse:" + destination)
+            }
+            browseInstances.removeAll()
             cachedLists.removeAll()
             folders = []
             folderID = 0
             removedLater = nil
             videos = []
+            for id in Array(playbackInstances.keys) { releasePlaybackTab(id) }
             stopMedia()
             selected = nil
             refresh()

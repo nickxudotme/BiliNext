@@ -24,6 +24,7 @@ private enum PlaybackPanel: String, CaseIterable, Identifiable {
 struct PlaybackView: View {
     @ObservedObject var model: AppModel
     var navigationOverlayVisible = false
+    var isActive = true
     @State private var panel = PlaybackPanel.info
     @State private var playerWidth: CGFloat = 0
     @State private var pointer: NSPoint?
@@ -88,6 +89,13 @@ struct PlaybackView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DrawerPointerTracker(externalWidth: 0, onPosition: trackPointer))
+        .onChange(of: isActive) { _, active in
+            idleTask?.cancel()
+            pointer = nil
+            hoveringVideo = false
+            hoveringDetails = false
+            if active { NSCursor.setHiddenUntilMouseMoves(false) }
+        }
         .onChange(of: model.playing) { _, _ in
             idle = false
             scheduleIdle()
@@ -127,7 +135,7 @@ struct PlaybackView: View {
     }
 
     private func trackPointer(_ next: NSPoint?) {
-        guard next != pointer else { return }
+        guard isActive, next != pointer else { return }
         pointer = next
         let next = navigationOverlayVisible && (next?.x ?? 999) < 224 ? nil : next
         hoveringVideo = next.map { $0.x >= 0 && $0.x < playerWidth } ?? false
@@ -149,6 +157,7 @@ struct PlaybackView: View {
     }
 
     private func updateCursor() {
+        guard isActive else { return }
         NSCursor.setHiddenUntilMouseMoves(idle && hoveringVideo && model.playing)
     }
     private var player: some View {
@@ -163,7 +172,8 @@ struct PlaybackView: View {
                         ).allowsHitTesting(false)
                 }
             } else {
-                CustomPlayerView(model: model, danmaku: model.danmaku) { visible in
+                CustomPlayerView(model: model, danmaku: model.danmaku, isActive: isActive) {
+                    visible in
                     idle = !visible && hoveringVideo && model.playing
                     updateCursor()
                 }

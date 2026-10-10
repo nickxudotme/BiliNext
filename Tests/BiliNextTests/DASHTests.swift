@@ -153,7 +153,8 @@ private func indexFixture(version: UInt8 = 0, hierarchical: Bool = false) -> Dat
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
             UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let model = AppModel(sessionStore: SessionStore(directory: directory))
+        let model = AppModel(
+            sessionStore: SessionStore(directory: directory), managesPlaybackTabs: false)
         model.player.isMuted = true
         model.open(Video(bvid: bvid, title: "4K 播放验证"))
         defer { model.close(bvid) }

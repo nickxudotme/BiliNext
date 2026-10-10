@@ -14,6 +14,7 @@ struct AvatarView: View {
 
 struct BrowseView: View {
     @ObservedObject var model: AppModel
+    var isActive = true
     @State private var bottomVisible = false
     @FocusState private var searching: Bool
     var body: some View {
@@ -195,14 +196,18 @@ struct BrowseView: View {
                             .disabled(model.loading).padding(20)
                             .onScrollVisibilityChange { visible in
                                 bottomVisible = visible
-                                if visible { model.loadMoreIfNeeded() }
+                                if visible && isActive { model.loadMoreIfNeeded() }
                             }
                     }
                 }.id(model.menu)
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .onChange(of: model.loading) { _, loading in
-                if !loading && bottomVisible { model.loadMoreIfNeeded() }
+                if isActive && !loading && bottomVisible { model.loadMoreIfNeeded() }
+            }
+            .onChange(of: isActive) { _, active in
+                if !active { searching = false }
+                if active && bottomVisible { model.loadMoreIfNeeded() }
             }
             .onChange(of: model.menu) { _, menu in if menu == "搜索" { searching = true } }
     }
