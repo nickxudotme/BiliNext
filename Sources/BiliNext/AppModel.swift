@@ -82,6 +82,7 @@ final class AppModel: ObservableObject {
     @Published var cues: [Cue] = []
     @Published var subtitleError: String?
     @Published var subtitleLoading = false
+    let smartSubtitles = SmartSubtitleModel()
     let playbackClock = PlaybackClock()
     var time: Double {
         get { playbackClock.time }
@@ -160,6 +161,14 @@ final class AppModel: ObservableObject {
                 bvid: mediaID, cid: pageID, position: time,
                 playing: playing, buffering: buffering ?? self.buffering)
         }
+        smartSubtitles.configure(
+            video: mediaID, cid: pageID, owner: detail?.video.ownerID,
+            track: tracks.first { $0.id == trackID }?.language ?? "")
+        smartSubtitles.updateAvailability(hasCues: !cues.isEmpty, loading: subtitleLoading)
+        smartSubtitles.sample(
+            player: mpv, cues: cues,
+            time: time,
+            active: playbackTabActive && !officialCore && playing && !(buffering ?? self.buffering))
         self.time = time
         let length = duration.isFinite ? max(0, duration) : 0
         if self.duration != length { self.duration = length }

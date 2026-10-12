@@ -8,6 +8,7 @@ extension AppModel {
     // MARK: - Media playback
 
     func switchPlayer() {
+        smartSubtitles.redetect()
         watchHistoryReporter.flush()
         saveSession()
         mpv?.pause()
@@ -61,6 +62,7 @@ extension AppModel {
         statusObserver = nil
         durationObserver = nil
         mediaID = id
+        smartSubtitles.configure(video: id, cid: nil, owner: nil, track: "")
         detail = nil
         pageID = nil
         cues = []
@@ -122,6 +124,7 @@ extension AppModel {
         subtitleGeneration = UUID()
         let generation = UUID()
         videoGeneration = generation
+        smartSubtitles.configure(video: id, cid: cid, owner: detail?.video.ownerID, track: "")
         pageID = cid
         time = 0
         playing = false
@@ -138,6 +141,7 @@ extension AppModel {
     private func loadMedia(
         id: String, cid: Int64, position: Double, generation: UUID, autoplay: Bool = false
     ) async {
+        smartSubtitles.configure(video: id, cid: cid, owner: detail?.video.ownerID, track: "")
         videoLoading = true
         playerError = nil
         subtitleLoading = true
@@ -400,6 +404,8 @@ extension AppModel {
         }
     }
     func seek(_ seconds: Double) {
+        guard seconds.isFinite else { return }
+        smartSubtitles.resetAfterSeek()
         if officialCore {
             if seconds.isFinite {
                 officialWebView?.evaluateJavaScript("window.biliPlayer?.seek( \(max(0, seconds)));")
@@ -471,6 +477,7 @@ extension AppModel {
         return id == mediaID && playing
     }
     func stopMedia() {
+        smartSubtitles.configure(video: nil, cid: nil, owner: nil, track: "")
         watchHistoryReporter.flush()
         videoTask?.cancel()
         subtitleTask?.cancel()

@@ -14,6 +14,7 @@ final class MPVPlayer {
     private(set) var failure: String?
     private var reported = false
     private var wasCachePaused = false
+    var captureVideoFrame: (() -> SubtitleFrame?)?
     var onUpdate: ((Double, Double, Bool, Bool) -> Void)?
     var time: Double { number("time-pos") }
     var duration: Double { number("duration") }
@@ -96,6 +97,11 @@ final class MPVPlayer {
         playbackActivity.setActive(false)
     }
     func play() { set("pause", "no") }
+    func subtitleFrame() async -> SubtitleFrame? {
+        guard loaded else { return nil }
+        return captureVideoFrame?()
+    }
+
     func stop() {
         try? command(["stop"])
         loaded = false
@@ -155,9 +161,11 @@ final class MPVPlayer {
         }
         let cachePaused = flag("paused-for-cache")
         if cachePaused != wasCachePaused {
-            NSLog("mpv buffer: %@; rate=%.2f; ahead=%.2fs; download=%.0fKiB/s; decoder-drops=%.0f; output-drops=%.0f",
+            NSLog(
+                "mpv buffer: %@; rate=%.2f; ahead=%.2fs; download=%.0fKiB/s; decoder-drops=%.0f; output-drops=%.0f",
                 cachePaused ? "waiting" : "resumed", speed, number("demuxer-cache-duration"),
-                number("cache-speed") / 1024, number("decoder-frame-drop-count"), number("frame-drop-count"))
+                number("cache-speed") / 1024, number("decoder-frame-drop-count"),
+                number("frame-drop-count"))
             wasCachePaused = cachePaused
         }
         playbackActivity.setActive(playing && failure == nil)
@@ -212,6 +220,7 @@ struct MPVSurface: NSViewRepresentable {
                 }
             }
             if let renderer {
+                player.captureVideoFrame = { [weak self] in self?.captureSubtitleFrame() }
                 mpv_render_context_set_update_callback(
                     renderer,
                     { context in
@@ -252,6 +261,7 @@ struct MPVSurface: NSViewRepresentable {
         }
         func releaseRenderer() {
             guard let renderer else { return }
+            player.captureVideoFrame = nil
             openGLContext?.makeCurrentContext()
             mpv_render_context_set_update_callback(renderer, nil, nil)
             mpv_render_context_free(renderer)

@@ -13,6 +13,8 @@ extension AppModel {
         let generation = UUID()
         subtitleGeneration = generation
         trackID = id
+        smartSubtitles.configure(
+            video: mediaID, cid: pageID, owner: detail?.video.ownerID, track: track.language)
         cues = []
         subtitleError = nil
         subtitleLoading = true

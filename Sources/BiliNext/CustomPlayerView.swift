@@ -43,6 +43,7 @@ struct CustomPlayerView: View {
         self.model = model
         self.danmaku = danmaku
         self.clock = model.playbackClock
+        self.smartSubtitles = model.smartSubtitles
     }
 
     var isActive: Bool
@@ -69,7 +70,7 @@ struct CustomPlayerView: View {
     @AppStorage("danmaku.blocked") private var blocked = ""
     @AppStorage("danmaku.rolling") private var rolling = true
     @AppStorage("danmaku.fixed") private var fixed = true
-    @AppStorage("player.subtitles") private var showSubtitles = true
+    @ObservedObject private var smartSubtitles: SmartSubtitleModel
 
     var body: some View {
         ZStack {
@@ -85,7 +86,7 @@ struct CustomPlayerView: View {
                 rolling: rolling, fixed: fixed
             )
             .allowsHitTesting(false)
-            if showSubtitles {
+            if smartSubtitles.visible {
                 VStack {
                     Spacer()
                     let lines = model.cues.filter { $0.contains(model.time) }
@@ -98,6 +99,17 @@ struct CustomPlayerView: View {
                             .padding(.horizontal, 20)
                     }
                 }.padding(.bottom, controls || !model.playing ? 76 : 20).allowsHitTesting(false)
+            }
+            if smartSubtitles.needsDecision {
+                VStack {
+                    HStack {
+                        Text("画面字幕语言不同，保留软字幕？")
+                        Button("保留") { smartSubtitles.resolveLanguage(keep: true) }
+                        Button("隐藏") { smartSubtitles.resolveLanguage(keep: false) }
+                    }.padding(12).background(
+                        .regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+                    Spacer()
+                }.padding(16)
             }
             if model.videoLoading || model.buffering {
                 ProgressView().tint(.white).allowsHitTesting(false)
@@ -201,7 +213,10 @@ struct CustomPlayerView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("清晰度").font(.headline)
                                 ForEach(model.qualities) { option in
-                                    PlayerOptionRow(title: option.label, selected: model.qualityID == option.value) {
+                                    PlayerOptionRow(
+                                        title: option.label,
+                                        selected: model.qualityID == option.value
+                                    ) {
                                         model.selectQuality(option.value)
                                         qualitySettings = false
                                     }
@@ -218,7 +233,7 @@ struct CustomPlayerView: View {
                     settings.toggle()
                 } label: {
                     Image(systemName: "slider.horizontal.3")
-                }.help("弹幕设置").accessibilityLabel("弹幕设置")
+                }.help("字幕与弹幕设置").accessibilityLabel("字幕与弹幕设置")
                     .popover(isPresented: $settings) { settingsPanel }
                 Button {
                     rateSettings.toggle()
@@ -229,7 +244,10 @@ struct CustomPlayerView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("播放速度").font(.headline)
                             ForEach([0.5, 0.75, 1, 1.25, 1.5, 2, 3], id: \.self) { value in
-                                PlayerOptionRow(title: String(format: "%g×", value), selected: model.playbackRate == value) {
+                                PlayerOptionRow(
+                                    title: String(format: "%g×", value),
+                                    selected: model.playbackRate == value
+                                ) {
                                     model.setRate(value)
                                     rateSettings = false
                                 }
@@ -238,11 +256,13 @@ struct CustomPlayerView: View {
                     }
                 if availableWidth > 480 {
                     Button {
-                        showSubtitles.toggle()
+                        smartSubtitles.setVisible(!smartSubtitles.visible)
                     } label: {
                         Image(
-                            systemName: showSubtitles ? "captions.bubble.fill" : "captions.bubble")
-                    }.help("画面字幕")
+                            systemName: smartSubtitles.visible
+                                ? "captions.bubble.fill" : "captions.bubble")
+                    }.help("画面字幕").accessibilityLabel(
+                        smartSubtitles.visible ? "隐藏画面软字幕" : "显示画面软字幕")
                 }
                 Button {
                     volumeSettings.toggle()
@@ -283,10 +303,10 @@ struct CustomPlayerView: View {
     private var settingsPanel: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
-                Text("弹幕设置").font(.headline)
+                Text("字幕与弹幕").font(.headline)
                 Text("显示").font(.caption).foregroundStyle(.secondary).padding(.top, 8)
                 Toggle("显示弹幕", isOn: $danmaku.enabled)
-                Toggle("画面字幕", isOn: $showSubtitles)
+                SmartSubtitleSettings(model: smartSubtitles)
                 if availableWidth <= 540 {
                     Picker(
                         "清晰度",
