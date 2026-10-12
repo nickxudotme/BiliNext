@@ -1,13 +1,18 @@
 import AppKit
 import BiliNextCore
+import Combine
 import SwiftUI
 
 struct VideoCardView: View {
     let video: Video
     @ObservedObject var model: AppModel
-    @ObservedObject var preview: HoverPreview
+    let preview: HoverPreview
     var isActive: Bool
+    @Environment(\.displayScale) private var displayScale
+    @State private var coverPixels = 640
     @State private var hovered = false
+    @State private var previewing = false
+    @Environment(\.cardGridScrolling) private var scrolling
     @AppStorage("cards.hoverPreview") private var previewEnabled = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -19,21 +24,23 @@ struct VideoCardView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Color.primary.opacity(0.045).aspectRatio(16 / 9, contentMode: .fit)
                     .overlay {
-                        AsyncImage(url: video.cover) {
-                            $0.resizable().scaledToFill()
-                        } placeholder: {
+                        ThumbnailView(url: video.cover, pixels: coverPixels) {
                             Image(systemName: "play.rectangle").font(.largeTitle)
                                 .foregroundStyle(.tertiary)
                         }
-                        if preview.activeID == video.id && preview.ready && isActive {
+                        if previewing && isActive {
                             VideoSurface(player: preview.player).allowsHitTesting(false)
                         }
                     }
+                    .onGeometryChange(for: Int.self) { proxy in
+                        // Bucket sizes to avoid new image tasks for every resize pixel.
+                        max(64, Int(ceil(proxy.size.width * displayScale / 64)) * 64)
+                    } action: { coverPixels = $0 }
                     .overlay(alignment: .bottom) {
                         LinearGradient(
-                            colors: [.clear, .black.opacity(0.65)],
+                            colors: [.clear, .black.opacity(0.78)],
                             startPoint: .top, endPoint: .bottom
-                        ).frame(height: 45)
+                        ).frame(height: 64)
                             .allowsHitTesting(false)
                     }
                     .overlay(alignment: .bottomTrailing) {
@@ -47,32 +54,42 @@ struct VideoCardView: View {
                         }
                     }
                     .overlay(alignment: .bottomLeading) {
-                        if preview.activeID == video.id && preview.ready {
-                            Label("静音预览", systemImage: "speaker.slash.fill")
-                                .font(.system(size: 10, weight: .medium)).foregroundStyle(.white)
-                                .padding(8)
+                        VStack(alignment: .leading, spacing: 6) {
+                            if previewing {
+                                Label("静音预览", systemImage: "speaker.slash.fill")
+                            } else {
+                                HStack(spacing: 10) {
+                                    if let count = video.viewCount {
+                                        Label(formatted(count), systemImage: "play.fill")
+                                    }
+                                    if let count = video.danmakuCount {
+                                        Label(formatted(count), systemImage: "text.bubble")
+                                    }
+                                }
+                            }
                         }
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white)
+                        .padding(.leading, 10).padding(.bottom, 10)
+                        .padding(.trailing, 64)
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                HStack(alignment: .top, spacing: 8) {
-                    AvatarView(url: video.avatar).frame(width: 24, height: 24)
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(video.title).font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.primary).lineLimit(2)
-                            .frame(height: 38, alignment: .topLeading)
-                        Text(video.author).font(.system(size: 12)).foregroundStyle(.secondary)
-                            .lineLimit(1)
-                        HStack(spacing: 10) {
-                            if let count = video.viewCount {
-                                Label(formatted(count), systemImage: "play.rectangle")
-                            }
-                            if let count = video.danmakuCount {
-                                Label(formatted(count), systemImage: "text.bubble")
-                            }
-                        }.font(.system(size: 11)).foregroundStyle(.tertiary)
+                    .clipShape(RoundedRectangle(cornerRadius: GlassTheme.artworkRadius))
+                    .overlay { RoundedRectangle(cornerRadius: GlassTheme.artworkRadius).strokeBorder(.primary.opacity(0.08), lineWidth: 1).allowsHitTesting(false) }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(video.title).font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.primary).lineLimit(2)
+                        .frame(height: 40, alignment: .topLeading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 6) {
+                        ThumbnailView(url: video.avatar, pixels: 64) {
+                            Image(systemName: "person.crop.circle.fill").resizable().foregroundStyle(.secondary)
+                        }.frame(width: 18, height: 18).clipShape(Circle())
+                        Text(video.author).font(.system(size: 12))
+                            .foregroundStyle(.secondary).lineLimit(1)
+                        Spacer(minLength: 0)
                     }
-                    Spacer(minLength: 0)
                 }
+                .padding(.horizontal, 4).padding(.bottom, 6)
                 if let viewed = video.viewedAt {
                     HStack {
                         Text(viewed, format: .dateTime.month().day().hour().minute())
@@ -80,12 +97,14 @@ struct VideoCardView: View {
                         if let progress = video.progress {
                             Text(progress < 0 ? "已看完" : "看到 " + timestamp(progress))
                         }
-                    }.font(.caption2).foregroundStyle(.tertiary)
+                    }.font(.caption2).foregroundStyle(.secondary)
+                        .padding(.horizontal, 4).padding(.bottom, 6)
                 }
             }.contentShape(Rectangle())
         }
         .buttonStyle(InteractionButtonStyle(kind: .card))
         .overlay(alignment: .topTrailing) {
+            if hovered && !scrolling {
             Menu {
                 Button("在后台标签打开") {
                     preview.stop()
@@ -101,18 +120,25 @@ struct VideoCardView: View {
                 Image(systemName: "ellipsis").font(.system(size: 13, weight: .semibold))
                     .frame(width: 28, height: 28)
             }.menuStyle(.borderlessButton).menuIndicator(.hidden)
-                .glassEffect(.regular.interactive(), in: Circle())
+                .chromeSurface(in: Circle(), interactive: true)
                 .modifier(MenuHoverFeedback()).padding(8)
                 .opacity(hovered ? 1 : 0).allowsHitTesting(hovered)
                 .accessibilityLabel("视频选项")
+            }
         }
         .onHover { inside in
             hovered = inside
-            if inside && isActive && previewEnabled {
+            if inside && isActive && previewEnabled && !scrolling {
                 preview.request(video)
             } else {
                 preview.stop(ifMatching: video.id)
             }
+        }
+        .onReceive(preview.$activeID.combineLatest(preview.$ready)
+            .map { $0 == video.id && $1 }.removeDuplicates()) { previewing = $0 }
+        .onChange(of: scrolling) { _, moving in
+            if moving { preview.stop(ifMatching: video.id) }
+            else if hovered && isActive && previewEnabled { preview.request(video) }
         }
         .onChange(of: isActive) { _, active in
             if !active {

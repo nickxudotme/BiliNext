@@ -101,6 +101,7 @@ extension AppModel {
 
     func suspendPlaybackTabs(except id: String? = nil) {
         for (key, instance) in playbackInstances where key != id {
+            instance.watchHistoryReporter.flush()
             instance.playbackTabActive = false
             if let state = instance.qualitySwitchState {
                 instance.qualitySwitchState = (state.position, false)

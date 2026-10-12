@@ -22,7 +22,7 @@ extension AppModel {
         history = Array(history.prefix(historyIndex + 1))
         history.append(destination)
         historyIndex += 1
-        if browseInstances[destination] == nil { refresh() }
+        if destination == "历史" || browseInstances[destination] == nil { refresh() }
     }
     func moveHistory(_ delta: Int) {
         suspendPlaybackTabs()
@@ -31,7 +31,7 @@ extension AppModel {
         historyIndex = next
         menu = history[next]
         selected = nil
-        if browseInstances[menu] == nil { refresh() }
+        if menu == "历史" || browseInstances[menu] == nil { refresh() }
     }
     func refresh(more: Bool = false) {
         if managesPlaybackTabs, selected == nil {

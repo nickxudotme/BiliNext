@@ -10,6 +10,8 @@ struct TranscriptView: View {
         self.clock = model.playbackClock
     }
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
     @State private var query = ""
     @State private var paragraphs = false
     @State private var following = true
@@ -46,7 +48,10 @@ struct TranscriptView: View {
                 ) { ForEach(model.tracks) { track in Text(track.language).tag(track.id) } }
                 .labelsHidden()
             }
-            TextField("搜索字幕", text: $query).textFieldStyle(.roundedBorder)
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
+                TextField("搜索字幕", text: $query).textFieldStyle(.plain)
+            }.padding(8).chromeSurface(in: RoundedRectangle(cornerRadius: GlassTheme.rowRadius))
             if model.subtitleLoading {
                 Spacer()
                 ProgressView()
@@ -68,12 +73,12 @@ struct TranscriptView: View {
                                 moveMatch(-1, proxy: proxy)
                             } label: {
                                 Image(systemName: "chevron.up")
-                            }.disabled(matches.isEmpty)
+                            }.disabled(matches.isEmpty).accessibilityLabel("上一个匹配").help("上一个匹配")
                             Button {
                                 moveMatch(1, proxy: proxy)
                             } label: {
                                 Image(systemName: "chevron.down")
-                            }.disabled(matches.isEmpty)
+                            }.disabled(matches.isEmpty).accessibilityLabel("下一个匹配").help("下一个匹配")
                         }
                         Spacer()
                         Button(following ? "暂停跟随" : "回到正在播放") {
@@ -83,15 +88,27 @@ struct TranscriptView: View {
                             }
                         }.font(.caption)
                     }.buttonStyle(InteractionButtonStyle(kind: .row))
+                        .padding(.vertical, 4)
+                    Divider().opacity(0.4)
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 8) {
                             ForEach(groups, id: \.first!.id) { group in
                                 if let first = group.first {
                                     VStack(alignment: .leading, spacing: 6) {
-                                        Button(timestamp(first.start)) { model.seek(first.start) }
-                                            .font(.caption.monospacedDigit()).foregroundStyle(
-                                                .secondary
-                                            ).buttonStyle(InteractionButtonStyle(kind: .row))
+                                        HStack(spacing: 8) {
+                                            Button(timestamp(first.start)) { model.seek(first.start) }
+                                                .font(.caption.monospacedDigit()).foregroundStyle(
+                                                    .secondary
+                                                ).buttonStyle(InteractionButtonStyle(kind: .row))
+                                            Spacer(minLength: 0)
+                                            if group.contains(where: { activeIDs.contains($0.id) }) {
+                                                Label("正在播放", systemImage: "waveform")
+                                                    .foregroundStyle(Color.accentColor)
+                                            } else if matchIDs.contains(first.id) {
+                                                Label("匹配", systemImage: "magnifyingglass")
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                        }.font(.caption)
                                         Text(
                                             group.map(\.text).joined(
                                                 separator: paragraphs ? " " : "")
@@ -106,6 +123,11 @@ struct TranscriptView: View {
                                                     ? Color.yellow.opacity(0.12) : .clear,
                                             in: RoundedRectangle(cornerRadius: 8)
                                         )
+                                        .overlay {
+                                            RoundedRectangle(cornerRadius: GlassTheme.rowRadius)
+                                                .strokeBorder(.primary.opacity(contrast == .increased && (group.contains { activeIDs.contains($0.id) } || matchIDs.contains(first.id)) ? 0.4 : 0), lineWidth: 1)
+                                                .allowsHitTesting(false)
+                                        }
                                         .id(first.id)
                                         .contextMenu { Button("复制带时间的引用") { copy(group) } }
                                 }
@@ -117,7 +139,7 @@ struct TranscriptView: View {
                     }
                     .onChange(of: activeGroup) { _, id in
                         if following, let id {
-                            withAnimation { proxy.scrollTo(id, anchor: .center) }
+                            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { proxy.scrollTo(id, anchor: .center) }
                         }
                     }
                     .onChange(of: query) { _, _ in

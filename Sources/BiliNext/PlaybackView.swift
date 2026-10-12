@@ -83,7 +83,7 @@ struct PlaybackView: View {
                         }
                     }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }.frame(minWidth: 310, idealWidth: 360, maxWidth: 420, maxHeight: .infinity)
-                    .background(.regularMaterial)
+                    .background { DetailSurface() }
                     .ignoresSafeArea(.container, edges: .top)
             }
         }
@@ -131,7 +131,7 @@ struct PlaybackView: View {
         .menuStyle(.borderlessButton).menuIndicator(.hidden)
         .modifier(MenuHoverFeedback())
         .frame(width: 36, height: 36)
-        .glassEffect(.regular.interactive(), in: Circle())
+        .chromeSurface(in: Circle(), interactive: true)
         .help("播放选项").accessibilityLabel("播放选项")
     }
 
@@ -214,7 +214,7 @@ private struct PlaybackPanelSwitcher: View {
             }
         }
         .padding(4)
-        .glassEffect(.regular, in: Capsule())
+        .chromeSurface(in: Capsule())
         .accessibilityElement(children: .contain)
         .accessibilityLabel("视频详情栏目")
     }

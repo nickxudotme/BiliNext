@@ -15,33 +15,24 @@ struct AvatarView: View {
 struct BrowseView: View {
     @ObservedObject var model: AppModel
     var isActive = true
-    @State private var bottomVisible = false
     @FocusState private var searching: Bool
+    private var pageTitle: String {
+        switch model.menu {
+        case "首页": return model.homeSection == "番剧" ? "番剧影视" : model.homeSection
+        case "动态": return model.dynamicMode == "全部" ? "全部动态" : "视频动态"
+        case "收藏": return model.folders.first(where: { $0.id == model.folderID })?.title ?? "收藏"
+        default: return model.menu
+        }
+    }
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(model.menu).font(.system(size: 26, weight: .semibold))
-                if model.menu == "首页" {
-                    Picker("内容", selection: $model.homeSection) {
-                        Text("推荐").tag("推荐")
-                        Text("热门").tag("热门")
-                        Text("排行榜").tag("排行榜")
-                        Text("番剧影视").tag("番剧")
-                    }.pickerStyle(.segmented).frame(width: 300).onChange(of: model.homeSection) {
-                        _, _ in model.refresh()
-                    }
-                }
-                if model.menu == "动态" {
-                    Picker("动态类型", selection: $model.dynamicMode) {
-                        Text("视频").tag("视频")
-                        Text("全部").tag("全部")
-                    }.pickerStyle(.segmented).frame(width: 140).onChange(of: model.dynamicMode) {
-                        _, _ in model.refresh()
-                    }
-                }
+            HStack(alignment: .center, spacing: 20) {
+                Text(pageTitle).font(.system(size: 26, weight: .bold)).lineLimit(1)
                 Spacer()
                 if model.loading { ProgressView().controlSize(.small) }
-            }.padding(.horizontal, 28).padding(.top, 32).padding(.bottom, 20)
+            }.padding(.horizontal, GlassTheme.contentInset).padding(.top, 28).padding(.bottom, 20)
+                .background(GlassTheme.canvas)
+                .overlay(alignment: .bottom) { Divider().opacity(0.35).padding(.horizontal, GlassTheme.contentInset) }
             if model.menu == "搜索" {
                 HStack {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
@@ -54,23 +45,8 @@ struct BrowseView: View {
                         Text("最多收藏").tag("stow")
                     }.frame(width: 110).onChange(of: model.searchOrder) { _, _ in model.refresh() }
                     Button("搜索") { model.refresh() }.buttonStyle(.glass)
-                }.padding(12).background(
-                    .quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 14)
-                )
-                .padding(.horizontal, 28).padding(.bottom, 20)
-            }
-            if model.menu == "收藏" && !model.folders.isEmpty {
-                HStack {
-                    Picker(
-                        "收藏夹",
-                        selection: Binding(get: { model.folderID }, set: { model.selectFolder($0) })
-                    ) {
-                        ForEach(model.folders) { folder in
-                            Text("\(folder.title) · \(folder.count)").tag(folder.id)
-                        }
-                    }.frame(maxWidth: 360)
-                    Spacer()
-                }.padding(.horizontal, 28).padding(.bottom, 12)
+                }.padding(12).chromeSurface(in: RoundedRectangle(cornerRadius: GlassTheme.panelRadius))
+                .padding(.horizontal, GlassTheme.contentInset).padding(.bottom, 20)
             }
             if ["收藏", "历史"].contains(model.menu) {
                 HStack {
@@ -92,12 +68,12 @@ struct BrowseView: View {
                             model.refresh()
                         }
                     }
-                }.padding(.horizontal, 28).padding(.bottom, 12)
+                }.padding(.horizontal, GlassTheme.contentInset).padding(.bottom, 12)
             }
             if model.menu == "历史" {
                 Text("来自 B 站的观看历史 · 点击从上次进度继续").font(.caption).foregroundStyle(.secondary).frame(
                     maxWidth: .infinity, alignment: .leading
-                ).padding(.horizontal, 28).padding(.bottom, 12)
+                ).padding(.horizontal, GlassTheme.contentInset).padding(.bottom, 12)
             }
             if model.menu == "稍后再看", let removed = model.removedLater {
                 HStack {
@@ -106,7 +82,7 @@ struct BrowseView: View {
                     Button("撤销") { model.changeWatchLater(removed) }.disabled(
                         model.libraryBusy.contains(removed.id))
                 }
-                .font(.callout).padding(.horizontal, 28).padding(.bottom, 12)
+                .font(.callout).padding(.horizontal, GlassTheme.contentInset).padding(.bottom, 12)
             }
             if let error = model.browseError {
                 HStack {
@@ -115,7 +91,7 @@ struct BrowseView: View {
                     Spacer()
                     Button("重试") { model.refresh() }
                 }
-                .font(.callout).padding().background(.orange.opacity(0.08)).padding(.horizontal, 28)
+                .font(.callout).padding().background(.orange.opacity(0.08)).padding(.horizontal, GlassTheme.contentInset)
             }
             if model.menu == "首页" && model.homeSection == "番剧" {
                 SeasonBrowser(model: model)
@@ -138,34 +114,12 @@ struct BrowseView: View {
                     systemImage: "play.rectangle",
                     description: Text(model.menu == "搜索" ? "支持关键词、BV 号和视频链接。" : "可以稍后刷新再看看。"))
             } else {
-                ScrollView {
-                    LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 220), spacing: 20)],
-                        alignment: .leading, spacing: 26
-                    ) {
-                        ForEach(model.videos) { video in
-                            VideoCardView(
-                                video: video, model: model,
-                                preview: model.hoverPreview, isActive: isActive)
-                        }
-                    }.padding(.horizontal, 28).padding(.vertical, 12)
-                    if model.hasMore {
-                        Button(model.loading ? "加载中…" : "加载更多") { model.refresh(more: true) }
-                            .disabled(model.loading).padding(20)
-                            .onScrollVisibilityChange { visible in
-                                bottomVisible = visible
-                                if visible && isActive { model.loadMoreIfNeeded() }
-                            }
-                    }
-                }.id(model.menu)
+                NativeVideoGrid(model: model, isActive: isActive)
+                    .id(model.menu)
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .onChange(of: model.loading) { _, loading in
-                if isActive && !loading && bottomVisible { model.loadMoreIfNeeded() }
-            }
             .onChange(of: isActive) { _, active in
                 if !active { searching = false }
-                if active && bottomVisible { model.loadMoreIfNeeded() }
             }
             .onChange(of: model.menu) { _, menu in if menu == "搜索" { searching = true } }
     }

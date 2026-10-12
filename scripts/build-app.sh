@@ -9,8 +9,9 @@ if [ -z "$signing_identity" ] || [ "$signing_identity" = "-" ]; then
     printf '%s\n' 'Set BILINEXT_SIGNING_IDENTITY or .signing-identity to a persistent code-signing certificate. Ad-hoc signing causes repeated Keychain prompts.' >&2
     exit 1
 fi
-swift build
-bin_dir="$(swift build --show-bin-path)"
+build_configuration="${BILINEXT_BUILD_CONFIGURATION:-release}"
+swift build -c "$build_configuration"
+bin_dir="$(swift build -c "$build_configuration" --show-bin-path)"
 app_dir="$PWD/build/BiliNext.app"
 mkdir -p "$app_dir/Contents/MacOS"
 cp "$bin_dir/BiliNext" "$app_dir/Contents/MacOS/BiliNext"

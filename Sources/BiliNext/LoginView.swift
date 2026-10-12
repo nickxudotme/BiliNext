@@ -17,8 +17,8 @@ struct LoginView: View {
                 Button {
                     dismiss()
                 } label: {
-                    Image(systemName: "xmark")
-                }.buttonStyle(.plain).accessibilityLabel("关闭")
+                    Image(systemName: "xmark").frame(width: 28, height: 28)
+                }.buttonStyle(InteractionButtonStyle()).chromeSurface(in: Circle(), interactive: true).accessibilityLabel("关闭")
             }
             Text("使用哔哩哔哩手机客户端扫码确认").foregroundStyle(.secondary)
             Group {
@@ -32,7 +32,8 @@ struct LoginView: View {
             Text(status).font(.callout).multilineTextAlignment(.center)
             if failed { Button("刷新二维码") { retry = UUID() }.buttonStyle(.glass) }
             Text(model.credentialNotice).font(.caption).foregroundStyle(.secondary)
-        }.padding(28).frame(width: 380)
+        }.padding(GlassTheme.contentInset).frame(width: 380)
+            .background { DetailSurface() }
             .task(id: retry) { await login() }
     }
     private func login() async {

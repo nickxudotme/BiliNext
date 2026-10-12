@@ -19,6 +19,47 @@ import Testing
 }
 
 @MainActor
+@Test func mpvBufferMarginTracksRateWithinMemoryLimit() throws {
+    let core = try MPVPlayer(videoOutput: "null")
+    #expect(core.flag("options/cache-pause-initial"))
+    core.speed = 3
+    #expect(core.number("options/cache-secs") == 180)
+    #expect(core.number("options/cache-pause-wait") == 9)
+    #expect(core.number("options/demuxer-max-bytes") == 256 * 1024 * 1024)
+    core.speed = 0.5
+    #expect(core.number("options/cache-secs") == 60)
+    #expect(core.number("options/cache-pause-wait") == 3)
+    #expect(core.number("options/demuxer-max-bytes") == 128 * 1024 * 1024)
+}
+
+@MainActor
+@Test(.enabled(if: ProcessInfo.processInfo.environment["BILINEXT_MPV_TEST"] == "1"))
+func mpvTripleSpeedMaintainsForwardBuffer() async throws {
+    let api = BilibiliAPI(credentialStorage: .developmentFile)
+    let detail = try await api.detail("BV1DApx61EcR")
+    let page = try #require(detail.pages.first)
+    let source = try await api.playback(bvid: detail.video.bvid, cid: page.cid, quality: 80)
+    let core = try MPVPlayer(videoOutput: "null")
+    core.muted = true
+    core.speed = 3
+    defer { core.stop() }
+    try core.load(source, position: 120, autoplay: true)
+    var rebuffered = 0
+    var began = false
+    for _ in 0..<160 {
+        try await Task.sleep(for: .milliseconds(250))
+        if core.time > 121 { began = true }
+        if began && core.flag("paused-for-cache") { rebuffered += 1 }
+        if core.time >= 150 || core.failure != nil { break }
+    }
+    #expect(core.failure == nil)
+    #expect(core.time >= 150)
+    #expect(core.number("speed") == 3)
+    #expect(rebuffered == 0)
+    print("3x network playback: time=\(core.time), cache=\(core.number("demuxer-cache-duration"))s, download=\(core.number("cache-speed"))B/s, buffering-samples=\(rebuffered)")
+}
+
+@MainActor
 @Test(.enabled(if: ProcessInfo.processInfo.environment["BILINEXT_MPV_TEST"] == "1"))
 func mpvDirectDASHPlaysSeeksSwitchesAndRetainsTabs() async throws {
     let api = BilibiliAPI(credentialStorage: .developmentFile)

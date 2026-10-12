@@ -1,5 +1,16 @@
 import SwiftUI
 
+private struct CardGridScrollingKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var cardGridScrolling: Bool {
+        get { self[CardGridScrollingKey.self] }
+        set { self[CardGridScrollingKey.self] = newValue }
+    }
+}
+
 /// Shared pointer feedback, with local state so hovering a card does not refresh the page.
 struct InteractionButtonStyle: ButtonStyle {
     enum Kind { case control, row, card }
@@ -16,9 +27,10 @@ struct InteractionButtonStyle: ButtonStyle {
         let destructive: Bool
         @Environment(\.isEnabled) private var enabled
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @Environment(\.cardGridScrolling) private var scrolling
         @State private var hovered = false
 
-        private var highlighted: Bool { enabled && hovered }
+        private var highlighted: Bool { enabled && hovered && !scrolling }
         private var pressed: Bool { enabled && configuration.isPressed }
         private var tint: Color { destructive ? .red : .primary }
         private var radius: CGFloat {
@@ -44,7 +56,7 @@ struct InteractionButtonStyle: ButtonStyle {
                 .offset(y: !reduceMotion && kind == .card && highlighted && !pressed ? -2 : 0)
                 .opacity(enabled ? 1 : 0.45)
                 .animation(
-                    reduceMotion ? nil : .easeOut(duration: pressed ? 0.09 : 0.16), value: hovered
+                    reduceMotion || scrolling ? nil : .easeOut(duration: pressed ? 0.09 : 0.16), value: hovered
                 )
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: pressed)
                 .onHover { hovered = $0 }

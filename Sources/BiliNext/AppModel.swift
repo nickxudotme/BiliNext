@@ -7,6 +7,20 @@ import WebKit
 @MainActor
 final class AppModel: ObservableObject {
     let api: BilibiliAPI
+    lazy var watchHistoryReporter = WatchHistoryReporter(
+        send: { [weak self, api] progress in
+            try await api.reportWatchProgress(
+                bvid: progress.bvid, cid: progress.cid, position: progress.position)
+            guard let self else { return }
+            let owner = self.tabOwner ?? self
+            if let history = owner.browseInstances["历史"] {
+                history.cachedLists = [:]
+                if owner.selected == nil && owner.menu == "历史" { history.refresh() }
+            }
+        },
+        onError: { error in
+            NSLog("Watch history sync failed: %@", error.localizedDescription)
+        })
     let hoverPreview: HoverPreview
     #if DEBUG
         let credentialNotice = "开发版：本机会话文件未加密，仅当前用户可读写"
@@ -141,6 +155,11 @@ final class AppModel: ObservableObject {
     }
 
     func updatePlayback(time: Double, duration: Double, playing: Bool, buffering: Bool? = nil) {
+        if !officialCore, profile != nil, let mediaID, let pageID, detail?.video.episodeID == nil {
+            watchHistoryReporter.update(
+                bvid: mediaID, cid: pageID, position: time,
+                playing: playing, buffering: buffering ?? self.buffering)
+        }
         self.time = time
         let length = duration.isFinite ? max(0, duration) : 0
         if self.duration != length { self.duration = length }

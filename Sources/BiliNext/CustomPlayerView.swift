@@ -198,15 +198,15 @@ struct CustomPlayerView: View {
                         Text(model.quality).font(.system(size: 10))
                     }.help("清晰度")
                         .popover(isPresented: $qualitySettings) {
-                            VStack(alignment: .leading, spacing: 10) {
+                            VStack(alignment: .leading, spacing: 4) {
                                 Text("清晰度").font(.headline)
                                 ForEach(model.qualities) { option in
-                                    Button(option.label) {
+                                    PlayerOptionRow(title: option.label, selected: model.qualityID == option.value) {
                                         model.selectQuality(option.value)
                                         qualitySettings = false
-                                    }.buttonStyle(.bordered)
+                                    }
                                 }
-                            }.padding(16)
+                            }.padding(12).frame(width: 210)
                         }
                 }
                 Button {
@@ -226,15 +226,15 @@ struct CustomPlayerView: View {
                     Text(String(format: "%g×", model.playbackRate))
                 }.help("播放速度")
                     .popover(isPresented: $rateSettings) {
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 4) {
                             Text("播放速度").font(.headline)
                             ForEach([0.5, 0.75, 1, 1.25, 1.5, 2, 3], id: \.self) { value in
-                                Button(String(format: "%g×", value)) {
+                                PlayerOptionRow(title: String(format: "%g×", value), selected: model.playbackRate == value) {
                                     model.setRate(value)
                                     rateSettings = false
-                                }.buttonStyle(.bordered)
+                                }
                             }
-                        }.padding(16)
+                        }.padding(12).frame(width: 180)
                     }
                 if availableWidth > 480 {
                     Button {
@@ -284,6 +284,7 @@ struct CustomPlayerView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
                 Text("弹幕设置").font(.headline)
+                Text("显示").font(.caption).foregroundStyle(.secondary).padding(.top, 8)
                 Toggle("显示弹幕", isOn: $danmaku.enabled)
                 Toggle("画面字幕", isOn: $showSubtitles)
                 if availableWidth <= 540 {
@@ -293,20 +294,26 @@ struct CustomPlayerView: View {
                             get: { model.qualityID }, set: { model.selectQuality($0) })
                     ) { ForEach(model.qualities) { Text($0.label).tag($0.value) } }
                 }
+                Divider().padding(.vertical, 4)
+                Text("弹幕类型").font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Text("滚动")
                     Toggle("滚动", isOn: $rolling).labelsHidden()
                     Text("顶部 / 底部")
                     Toggle("固定", isOn: $fixed).labelsHidden()
                 }
-                Text("不透明度").font(.caption)
+                Divider().padding(.vertical, 4)
+                Text("外观").font(.caption).foregroundStyle(.secondary)
+                LabeledContent("不透明度", value: "\(Int(opacity * 100))%")
                 Slider(value: $opacity, in: 0.2...1)
-                Text("字号").font(.caption)
+                LabeledContent("字号", value: "\(Int(fontSize)) pt")
                 Slider(value: $fontSize, in: 14...32, step: 1)
-                Text("显示区域").font(.caption)
+                LabeledContent("显示区域", value: "\(Int(area * 100))%")
                 Slider(value: $area, in: 0.25...1, step: 0.25)
-                Text("弹幕速度").font(.caption)
+                LabeledContent("弹幕速度", value: String(format: "%g×", dmSpeed))
                 Slider(value: $dmSpeed, in: 0.5...2, step: 0.25)
+                Divider().padding(.vertical, 4)
+                Text("屏蔽").font(.caption).foregroundStyle(.secondary)
                 TextField("屏蔽关键词，用逗号分隔", text: $blocked).textFieldStyle(.roundedBorder)
                 if let error = danmaku.error {
                     Text(error).font(.caption).foregroundStyle(.secondary)
@@ -319,7 +326,7 @@ struct CustomPlayerView: View {
                     .caption
                 ).foregroundStyle(.secondary)
             }.padding(16)
-        }.frame(width: 290, height: 420)
+        }.frame(width: 300, height: 480)
     }
     private func revealControls() {
         controls = true

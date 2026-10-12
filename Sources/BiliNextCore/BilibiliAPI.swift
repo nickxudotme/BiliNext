@@ -420,6 +420,16 @@ public actor BilibiliAPI {
         let data = try await request("/x/web-interface/history/cursor", params: params)
         return LibraryParser.history(data, previousCursor: cursor)
     }
+    public func reportWatchProgress(bvid: String, cid: Int64, position: Double) async throws {
+        guard position.isFinite, position >= 0, cid > 0 else { return }
+        _ = try await request(
+            "/x/click-interface/web/heartbeat",
+            form: [
+                "bvid": bvid, "cid": String(cid),
+                "played_time": String(Int(min(position, Double(Int32.max)))),
+                "type": "3", "dt": "2", "play_type": "0",
+            ])
+    }
     public func searchHistory(keyword: String, page: Int) async throws -> Feed {
         let data = try await request(
             "/x/web-interface/history/search",

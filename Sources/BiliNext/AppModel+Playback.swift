@@ -8,6 +8,7 @@ extension AppModel {
     // MARK: - Media playback
 
     func switchPlayer() {
+        watchHistoryReporter.flush()
         saveSession()
         mpv?.pause()
         player.pause()
@@ -39,6 +40,7 @@ extension AppModel {
             return
         }
         saveSession()
+        watchHistoryReporter.flush()
         officialCore = false
         mpv?.pause()
         player.pause()
@@ -103,6 +105,7 @@ extension AppModel {
     }
     func selectPage(_ cid: Int64) {
         guard let id = selected, cid != pageID else { return }
+        watchHistoryReporter.flush()
         saveSession()
         mpv?.pause()
         player.pause()
@@ -468,6 +471,7 @@ extension AppModel {
         return id == mediaID && playing
     }
     func stopMedia() {
+        watchHistoryReporter.flush()
         videoTask?.cancel()
         subtitleTask?.cancel()
         qualityTask?.cancel()

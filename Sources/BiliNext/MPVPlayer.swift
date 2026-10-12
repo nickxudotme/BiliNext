@@ -9,9 +9,11 @@ import SwiftUI
 final class MPVPlayer {
     let handle: OpaquePointer
     private var poll: Timer?
+    private let playbackActivity = PlaybackActivity()
     private(set) var loaded = false
     private(set) var failure: String?
     private var reported = false
+    private var wasCachePaused = false
     var onUpdate: ((Double, Double, Bool, Bool) -> Void)?
     var time: Double { number("time-pos") }
     var duration: Double { number("duration") }
@@ -25,7 +27,10 @@ final class MPVPlayer {
         set { set("mute", newValue ? "yes" : "no") }
     }
     var speed = 1.0 {
-        didSet { set("speed", String(speed)) }
+        didSet {
+            applyBufferPolicy()
+            set("speed", String(speed))
+        }
     }
     init(videoOutput: String = "libmpv") throws {
         guard let core = mpv_create() else { throw MPVError(message: "无法创建 mpv 播放器") }
@@ -34,8 +39,10 @@ final class MPVPlayer {
             "config": "no", "terminal": "no", "vo": videoOutput, "hwdec": "videotoolbox",
             "idle": "yes", "keep-open": "yes", "pause": "yes", "osc": "no",
             "input-default-bindings": "no", "load-scripts": "no", "sub-auto": "no",
-            "cache": "yes", "cache-secs": "30", "demuxer-max-bytes": "67108864",
-            "demuxer-readahead-secs": "30", "network-timeout": "15",
+            "cache": "yes", "cache-secs": "60", "demuxer-max-bytes": "134217728",
+            "demuxer-readahead-secs": "60", "demuxer-max-back-bytes": "16777216",
+            "cache-pause": "yes", "cache-pause-initial": "yes", "cache-pause-wait": "3",
+            "network-timeout": "15",
             "user-agent": "Mozilla/5.0", "referrer": "https://www.bilibili.com/",
         ]
         for (key, value) in options { mpv_set_option_string(core, key, value) }
@@ -48,6 +55,15 @@ final class MPVPlayer {
             Task { @MainActor in self?.update() }
         }
     }
+    private func applyBufferPolicy() {
+        // mpv measures media seconds, so preserve a useful wall-clock margin at higher rates.
+        let multiplier = max(1, min(3, speed.isFinite ? speed : 1))
+        set("cache-secs", String(60 * multiplier))
+        set("demuxer-readahead-secs", String(60 * multiplier))
+        set("cache-pause-wait", String(3 * multiplier))
+        set("demuxer-max-bytes", String(Int(min(256, 128 * multiplier)) * 1024 * 1024))
+    }
+
     deinit {
         poll?.invalidate()
         mpv_terminate_destroy(handle)
@@ -55,7 +71,9 @@ final class MPVPlayer {
     func load(_ playback: Playback, position: Double, autoplay: Bool) throws {
         failure = nil
         reported = false
+        wasCachePaused = false
         loaded = false
+        playbackActivity.setActive(false)
         set("pause", autoplay ? "no" : "yes")
         // mpv accepts an independently fetched audio stream without a local HLS bridge.
         let source = playback.videoStream?.urls.first ?? playback.url
@@ -73,11 +91,15 @@ final class MPVPlayer {
         }
         try command(["loadfile", media, "replace", "-1", options])
     }
-    func pause() { set("pause", "yes") }
+    func pause() {
+        set("pause", "yes")
+        playbackActivity.setActive(false)
+    }
     func play() { set("pause", "no") }
     func stop() {
         try? command(["stop"])
         loaded = false
+        playbackActivity.setActive(false)
     }
     func seek(_ value: Double) {
         guard value.isFinite else { return }
@@ -131,7 +153,15 @@ final class MPVPlayer {
                 number("video-params/h"), number("audio-params/channel-count"), muted ? "yes" : "no"
             )
         }
-        onUpdate?(time, duration, playing, flag("paused-for-cache") || (!loaded && failure == nil))
+        let cachePaused = flag("paused-for-cache")
+        if cachePaused != wasCachePaused {
+            NSLog("mpv buffer: %@; rate=%.2f; ahead=%.2fs; download=%.0fKiB/s; decoder-drops=%.0f; output-drops=%.0f",
+                cachePaused ? "waiting" : "resumed", speed, number("demuxer-cache-duration"),
+                number("cache-speed") / 1024, number("decoder-frame-drop-count"), number("frame-drop-count"))
+            wasCachePaused = cachePaused
+        }
+        playbackActivity.setActive(playing && failure == nil)
+        onUpdate?(time, duration, playing, cachePaused || (!loaded && failure == nil))
     }
 }
 
