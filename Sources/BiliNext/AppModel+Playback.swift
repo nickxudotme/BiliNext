@@ -65,6 +65,7 @@ extension AppModel {
         smartSubtitles.configure(video: id, cid: nil, owner: nil, track: "")
         detail = nil
         pageID = nil
+        resetSecondarySubtitles()
         cues = []
         tracks = []
         trackID = ""
@@ -128,6 +129,7 @@ extension AppModel {
         pageID = cid
         time = 0
         playing = false
+        resetSecondarySubtitles()
         cues = []
         tracks = []
         trackID = ""
@@ -477,6 +479,7 @@ extension AppModel {
         return id == mediaID && playing
     }
     func stopMedia() {
+        resetSecondarySubtitles()
         smartSubtitles.configure(video: nil, cid: nil, owner: nil, track: "")
         watchHistoryReporter.flush()
         videoTask?.cancel()

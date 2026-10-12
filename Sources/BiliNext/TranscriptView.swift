@@ -42,14 +42,10 @@ struct TranscriptView: View {
                 Spacer()
                 Toggle("段落", isOn: $paragraphs).toggleStyle(.switch).controlSize(.mini)
             }
-            if !model.tracks.isEmpty {
-                Picker(
-                    "字幕", selection: Binding(get: { model.trackID }, set: { model.selectTrack($0) })
-                ) { ForEach(model.tracks) { track in Text(track.language).tag(track.id) } }
-                .labelsHidden()
-            }
+            SubtitleTrackControls(model: model)
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
                 TextField("搜索字幕", text: $query).textFieldStyle(.plain)
             }.padding(8).chromeSurface(in: RoundedRectangle(cornerRadius: GlassTheme.rowRadius))
             if model.subtitleLoading {
@@ -96,12 +92,15 @@ struct TranscriptView: View {
                                 if let first = group.first {
                                     VStack(alignment: .leading, spacing: 6) {
                                         HStack(spacing: 8) {
-                                            Button(timestamp(first.start)) { model.seek(first.start) }
-                                                .font(.caption.monospacedDigit()).foregroundStyle(
-                                                    .secondary
-                                                ).buttonStyle(InteractionButtonStyle(kind: .row))
+                                            Button(timestamp(first.start)) {
+                                                model.seek(first.start)
+                                            }
+                                            .font(.caption.monospacedDigit()).foregroundStyle(
+                                                .secondary
+                                            ).buttonStyle(InteractionButtonStyle(kind: .row))
                                             Spacer(minLength: 0)
-                                            if group.contains(where: { activeIDs.contains($0.id) }) {
+                                            if group.contains(where: { activeIDs.contains($0.id) })
+                                            {
                                                 Label("正在播放", systemImage: "waveform")
                                                     .foregroundStyle(Color.accentColor)
                                             } else if matchIDs.contains(first.id) {
@@ -125,7 +124,14 @@ struct TranscriptView: View {
                                         )
                                         .overlay {
                                             RoundedRectangle(cornerRadius: GlassTheme.rowRadius)
-                                                .strokeBorder(.primary.opacity(contrast == .increased && (group.contains { activeIDs.contains($0.id) } || matchIDs.contains(first.id)) ? 0.4 : 0), lineWidth: 1)
+                                                .strokeBorder(
+                                                    .primary.opacity(
+                                                        contrast == .increased
+                                                            && (group.contains {
+                                                                activeIDs.contains($0.id)
+                                                            } || matchIDs.contains(first.id))
+                                                            ? 0.4 : 0), lineWidth: 1
+                                                )
                                                 .allowsHitTesting(false)
                                         }
                                         .id(first.id)
@@ -139,7 +145,9 @@ struct TranscriptView: View {
                     }
                     .onChange(of: activeGroup) { _, id in
                         if following, let id {
-                            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { proxy.scrollTo(id, anchor: .center) }
+                            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                                proxy.scrollTo(id, anchor: .center)
+                            }
                         }
                     }
                     .onChange(of: query) { _, _ in

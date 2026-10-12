@@ -89,15 +89,10 @@ struct CustomPlayerView: View {
             if smartSubtitles.visible {
                 VStack {
                     Spacer()
-                    let lines = model.cues.filter { $0.contains(model.time) }
-                    if !lines.isEmpty {
-                        Text(lines.map(\.text).joined(separator: "\n")).font(
-                            .system(size: 18, weight: .medium)
-                        ).multilineTextAlignment(.center)
-                            .foregroundStyle(.white).padding(.horizontal, 10).padding(.vertical, 5)
-                            .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 6))
-                            .padding(.horizontal, 20)
-                    }
+                    SubtitleOverlay(
+                        primary: model.cues, secondary: model.secondaryCues, time: model.time
+                    )
+                    .padding(.horizontal, 20)
                 }.padding(.bottom, controls || !model.playing ? 76 : 20).allowsHitTesting(false)
             }
             if smartSubtitles.needsDecision {
@@ -306,7 +301,10 @@ struct CustomPlayerView: View {
                 Text("字幕与弹幕").font(.headline)
                 Text("显示").font(.caption).foregroundStyle(.secondary).padding(.top, 8)
                 Toggle("显示弹幕", isOn: $danmaku.enabled)
-                SmartSubtitleSettings(model: smartSubtitles)
+                SubtitleTrackControls(model: model)
+                SmartSubtitleSettings(
+                    model: smartSubtitles,
+                    automaticDetectionSuspended: !model.secondaryTrackID.isEmpty)
                 if availableWidth <= 540 {
                     Picker(
                         "清晰度",

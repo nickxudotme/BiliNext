@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SmartSubtitleSettings: View {
     @ObservedObject var model: SmartSubtitleModel
+    var automaticDetectionSuspended = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -19,7 +20,8 @@ struct SmartSubtitleSettings: View {
             Picker("此视频 / 分 P", selection: $model.videoRule) { rules }
             HStack(alignment: .top) {
                 if model.checking { ProgressView().controlSize(.mini) }
-                Text(model.status).font(.caption).foregroundStyle(.secondary)
+                Text(automaticDetectionSuspended ? "双语模式：自动检测已暂停" : model.status)
+                    .font(.caption).foregroundStyle(.secondary)
             }.accessibilityElement(children: .combine)
             if model.needsDecision {
                 HStack {

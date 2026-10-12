@@ -80,9 +80,16 @@ final class AppModel: ObservableObject {
     @Published var tracks: [SubtitleTrack] = []
     @Published var trackID = ""
     @Published var cues: [Cue] = []
+    @Published var secondaryTrackID = ""
+    @Published var secondaryCues: [Cue] = []
+    @Published var secondarySubtitleLoading = false
+    @Published var secondarySubtitleError: String?
+    var secondarySubtitleTask: Task<Void, Never>?
+    var secondarySubtitleGeneration = UUID()
+    let subtitleLoader: (SubtitleTrack) async throws -> [Cue]
     @Published var subtitleError: String?
     @Published var subtitleLoading = false
-    let smartSubtitles = SmartSubtitleModel()
+    let smartSubtitles: SmartSubtitleModel
     let playbackClock = PlaybackClock()
     var time: Double {
         get { playbackClock.time }
@@ -124,13 +131,18 @@ final class AppModel: ObservableObject {
     init(
         sessionStore: SessionStore = SessionStore(), managesPlaybackTabs: Bool = true,
         downloads: DownloadManager? = nil, api: BilibiliAPI? = nil,
-        hoverPreview: HoverPreview? = nil
+        hoverPreview: HoverPreview? = nil,
+        subtitleLoader: ((SubtitleTrack) async throws -> [Cue])? = nil,
+        subtitlePreferences: UserDefaults = .standard
     ) {
         #if DEBUG
             self.api = api ?? BilibiliAPI(credentialStorage: .developmentFile)
         #else
             self.api = api ?? BilibiliAPI()
         #endif
+        self.smartSubtitles = SmartSubtitleModel(defaults: subtitlePreferences)
+        self.subtitleLoader =
+            subtitleLoader ?? { [api = self.api] track in try await api.subtitles(track) }
         self.hoverPreview = hoverPreview ?? HoverPreview(api: self.api)
         self.sessionStore = sessionStore
         self.managesPlaybackTabs = managesPlaybackTabs
@@ -168,7 +180,8 @@ final class AppModel: ObservableObject {
         smartSubtitles.sample(
             player: mpv, cues: cues,
             time: time,
-            active: playbackTabActive && !officialCore && playing && !(buffering ?? self.buffering))
+            active: secondaryTrackID.isEmpty && playbackTabActive && !officialCore && playing
+                && !(buffering ?? self.buffering))
         self.time = time
         let length = duration.isFinite ? max(0, duration) : 0
         if self.duration != length { self.duration = length }
