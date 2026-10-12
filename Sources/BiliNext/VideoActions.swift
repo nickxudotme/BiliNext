@@ -1,6 +1,20 @@
 import BiliNextCore
 import SwiftUI
 
+struct VideoActionLabel: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Image(systemName: systemImage).font(.system(size: 22)).frame(height: 30)
+            Text(title).font(GlassTheme.metadataFont).lineLimit(1)
+        }
+        .frame(width: 36, height: 60)
+        .contentShape(Rectangle())
+    }
+}
+
 struct VideoActions: View {
     @ObservedObject var model: AppModel
     let video: Video
@@ -10,16 +24,18 @@ struct VideoActions: View {
     @State private var loaded = false
     @State private var coinDialog = false
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             Button {
                 performLike()
             } label: {
-                Image(systemName: liked ? "hand.thumbsup.fill" : "hand.thumbsup")
+                VideoActionLabel(
+                    title: liked ? "已赞" : "点赞",
+                    systemImage: liked ? "hand.thumbsup.fill" : "hand.thumbsup")
             }.help(liked ? "取消点赞" : "点赞").disabled(busy || (model.profile != nil && !loaded))
             Button {
                 if model.profile == nil { model.loginPresented = true } else { coinDialog = true }
             } label: {
-                Image(systemName: coins > 0 ? "c.circle.fill" : "c.circle")
+                VideoActionLabel(title: "投币", systemImage: coins > 0 ? "c.circle.fill" : "c.circle")
             }.help(coins > 0 ? "已投 \(coins) 枚硬币" : "投币").disabled(busy || coins >= 2)
         }.task(id: "\(video.bvid):\(model.profile?.id ?? 0)") {
             loaded = false

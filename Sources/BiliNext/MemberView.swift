@@ -22,12 +22,15 @@ struct MemberView: View {
                 AvatarView(url: profile?.avatar).frame(width: 48, height: 48)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(profile?.name ?? name).font(.title2.bold())
-                    Text(profile?.signature ?? "UP 主的投稿").font(.caption).foregroundStyle(.secondary)
+                    Text(profile?.signature ?? "UP 主的投稿").font(GlassTheme.metadataFont)
+                        .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
                 Spacer()
                 Link("B 站空间", destination: URL(string: "https://space.bilibili.com/\(mid)")!)
-                Button("完成") { dismiss() }.keyboardShortcut(.cancelAction)
+                    .font(GlassTheme.labelFont).frame(minHeight: GlassTheme.controlHeight)
+                Button("完成") { dismiss() }.controlSize(.large).font(GlassTheme.labelFont)
+                    .keyboardShortcut(.cancelAction)
             }
             HStack {
                 TextField("搜索此 UP 主的视频", text: $keyword).textFieldStyle(.roundedBorder).onSubmit {
@@ -37,28 +40,31 @@ struct MemberView: View {
                     Text("最新发布").tag("pubdate")
                     Text("最多播放").tag("click")
                     Text("最多收藏").tag("stow")
-                }.frame(width: 140)
-            }
+                }.frame(width: 160)
+            }.controlSize(.large).font(GlassTheme.labelFont)
             if let error {
-                Text(error).foregroundStyle(.secondary)
-                Button("重试") { load() }
+                Text(error).font(GlassTheme.metadataFont).foregroundStyle(.secondary)
+                Button("重试") { load() }.controlSize(.large).font(GlassTheme.labelFont)
             }
             ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 200))], spacing: 20) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 20)], spacing: 24) {
                     ForEach(videos) { video in
                         Button {
                             model.open(video)
                             dismiss()
                         } label: {
                             VStack(alignment: .leading, spacing: 8) {
-                                AsyncImage(url: video.cover) {
-                                    $0.resizable().scaledToFill()
-                                } placeholder: {
-                                    Color.gray.opacity(0.15)
-                                }.frame(height: 120).clipped().clipShape(
-                                    RoundedRectangle(cornerRadius: 8))
-                                Text(video.title).font(.callout).lineLimit(2).frame(
-                                    height: 36, alignment: .top)
+                                Color.gray.opacity(0.15).aspectRatio(16.0 / 9.0, contentMode: .fit)
+                                    .overlay {
+                                        AsyncImage(url: video.cover) {
+                                            $0.resizable().scaledToFill()
+                                        } placeholder: {
+                                            Color.clear
+                                        }
+                                    }.clipped().clipShape(RoundedRectangle(cornerRadius: 8))
+                                Text(video.title).font(GlassTheme.bodyFont).lineSpacing(3)
+                                    .lineLimit(2)
+                                    .frame(height: 48, alignment: .top)
                             }.frame(maxWidth: .infinity, alignment: .leading)
                         }.buttonStyle(InteractionButtonStyle(kind: .row))
                     }
@@ -66,7 +72,8 @@ struct MemberView: View {
                 if loading {
                     ProgressView().padding()
                 } else if more {
-                    Button("加载更多") { load(append: true) }.padding()
+                    Button("加载更多") { load(append: true) }.controlSize(.large)
+                        .font(GlassTheme.labelFont).padding()
                 } else if videos.isEmpty && error == nil {
                     ContentUnavailableView("暂无投稿", systemImage: "play.rectangle")
                 }
@@ -123,9 +130,9 @@ struct FavoritePickerView: View {
     @State private var loaded = false
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("收藏到文件夹").font(.headline)
+            Text("收藏到文件夹").font(GlassTheme.readingFont.weight(.semibold))
             if loading { ProgressView() }
-            if let error { Text(error).font(.caption).foregroundStyle(.secondary) }
+            if let error { Text(error).font(GlassTheme.metadataFont).foregroundStyle(.secondary) }
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     ForEach(folders) { folder in
@@ -139,17 +146,21 @@ struct FavoritePickerView: View {
                                     } else {
                                         selected.remove(folder.id)
                                     }
-                                }))
+                                })
+                        )
+                        .font(GlassTheme.bodyFont).frame(minHeight: GlassTheme.iconControlSize)
                     }
                 }
             }
-            if loaded && folders.isEmpty { Text("暂无收藏夹，请先在 B 站创建。").foregroundStyle(.secondary) }
+            if loaded && folders.isEmpty {
+                Text("暂无收藏夹，请先在 B 站创建。").font(GlassTheme.bodyFont).foregroundStyle(.secondary)
+            }
             HStack {
                 Button("取消") { dismiss() }
                 Spacer()
                 if !loaded && !loading { Button("重试") { Task { await load() } } }
                 Button("保存") { save() }.buttonStyle(.borderedProminent).disabled(loading || !loaded)
-            }
+            }.controlSize(.large).font(GlassTheme.labelFont)
         }.padding(24).frame(width: 360, height: 360).task { await load() }
     }
     private func load() async {

@@ -19,20 +19,23 @@ struct VideoCommunityView: View {
             HStack {
                 Text(section == "评论" ? "评论" : "接着看").font(.title3.weight(.semibold))
                 if section == "评论", count > 0 {
-                    Text("\(count) 条").font(.callout).foregroundStyle(.secondary)
+                    Text("\(count) 条").font(GlassTheme.metadataFont).foregroundStyle(.secondary)
                 }
                 Spacer()
                 if section == "评论" {
                     Picker("排序", selection: $newest) {
                         Text("最热").tag(false)
                         Text("最新").tag(true)
-                    }.pickerStyle(.segmented).labelsHidden().frame(width: 136)
+                    }.pickerStyle(.segmented).labelsHidden().controlSize(.large)
+                        .font(GlassTheme.labelFont).frame(width: 150)
                 }
             }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     if section == "简介" {
-                        Text(model.detail?.description ?? "").textSelection(.enabled)
+                        Text(model.detail?.description ?? "").font(GlassTheme.readingFont)
+                            .lineSpacing(5)
+                            .textSelection(.enabled)
                             .foregroundStyle(.secondary)
                     } else if section == "相关推荐" {
                         ForEach(related) { video in
@@ -48,9 +51,11 @@ struct VideoCommunityView: View {
                                     }.frame(width: 120, height: 72).clipped().clipShape(
                                         RoundedRectangle(cornerRadius: 6))
                                     VStack(alignment: .leading, spacing: 8) {
-                                        Text(video.title).lineLimit(2)
-                                        Text(video.author).font(.caption).foregroundStyle(
-                                            .secondary)
+                                        Text(video.title).font(GlassTheme.bodyFont).lineSpacing(3)
+                                            .lineLimit(2)
+                                        Text(video.author).font(GlassTheme.metadataFont)
+                                            .foregroundStyle(
+                                                .secondary)
                                     }
                                     Spacer()
                                 }.contentShape(Rectangle())
@@ -61,14 +66,17 @@ struct VideoCommunityView: View {
                             CommentThreadView(
                                 comment: comment, aid: model.detail?.video.aid ?? 0, api: model.api)
                         }
-                        if more { Button("加载更多评论") { load(more: true) }.disabled(loading) }
+                        if more {
+                            Button("加载更多评论") { load(more: true) }.controlSize(.large)
+                                .font(GlassTheme.labelFont).disabled(loading)
+                        }
                     }
                     if section != "简介" {
                         if loading {
                             ProgressView().frame(maxWidth: .infinity)
                         } else if let error {
-                            Text(error).font(.caption).foregroundStyle(.secondary)
-                            Button("重试") { load() }
+                            Text(error).font(GlassTheme.metadataFont).foregroundStyle(.secondary)
+                            Button("重试") { load() }.controlSize(.large).font(GlassTheme.labelFont)
                         } else if section == "评论" && comments.isEmpty {
                             Text("暂无评论").foregroundStyle(.secondary)
                         } else if section == "相关推荐" && related.isEmpty {
@@ -153,7 +161,7 @@ private struct CommentThreadView: View {
                         CommentBranchView(branch: branch, depth: 1)
                             .overlay(alignment: .topLeading) {
                                 Rectangle().fill(.quaternary).frame(width: 12, height: 1)
-                                    .offset(x: -24, y: 25).allowsHitTesting(false)
+                                    .offset(x: -18, y: 28).allowsHitTesting(false)
                             }
                     }
                     if comment.replyCount > 0 && more {
@@ -162,17 +170,23 @@ private struct CommentThreadView: View {
                         } label: {
                             Label(
                                 loadedPage == 0 ? "展开全部 \(comment.replyCount) 条回复" : "加载更多回复",
-                                systemImage: "chevron.right")
-                        }.buttonStyle(InteractionButtonStyle(kind: .row)).font(.caption)
-                            .foregroundStyle(.secondary)
-                            .disabled(loading)
+                                systemImage: "chevron.right"
+                            )
+                            .font(GlassTheme.labelFont)
+                            .frame(minHeight: GlassTheme.iconControlSize)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(InteractionButtonStyle(kind: .row))
+                        .foregroundStyle(.secondary)
+                        .disabled(loading)
                     }
                     if loading { ProgressView().controlSize(.small) }
                     if let error {
-                        Text(error).font(.caption).foregroundStyle(.secondary)
-                        Button("重试回复") { request += 1 }.font(.caption).disabled(loading)
+                        Text(error).font(GlassTheme.metadataFont).foregroundStyle(.secondary)
+                        Button("重试回复") { request += 1 }.font(GlassTheme.labelFont)
+                            .controlSize(.large).disabled(loading)
                     }
-                }.padding(.leading, 30)
+                }.padding(.leading, 18)
                     .overlay(alignment: .leading) {
                         Button {
                             collapsed = true
@@ -224,11 +238,11 @@ private struct CommentBranchView: View {
                         AnyView(CommentBranchView(branch: child, depth: depth + 1))
                             .overlay(alignment: .topLeading) {
                                 Rectangle().fill(.quaternary).frame(width: 10, height: 1)
-                                    .offset(x: depth < 4 ? -26 : -8, y: 25)
+                                    .offset(x: depth < 4 ? -16 : -8, y: 28)
                                     .allowsHitTesting(false)
                             }
                     }
-                }.padding(.leading, depth < 4 ? 26 : 8)
+                }.padding(.leading, depth < 4 ? 16 : 8)
                     .overlay(alignment: .leading) { Rectangle().fill(.quaternary).frame(width: 1) }
             }
         }.accessibilityElement(children: .contain)
@@ -243,52 +257,52 @@ private struct CommentContent: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Button {
-                collapsed.toggle()
-            } label: {
-                Image(systemName: collapsed ? "chevron.right" : "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 12, height: 30)
-            }
-            .buttonStyle(InteractionButtonStyle(kind: .row))
-            .help(collapsed ? "展开讨论" : "折叠讨论")
-            .accessibilityLabel("\(collapsed ? "展开" : "折叠") \(comment.author) 的评论")
-            AvatarView(url: comment.avatar).frame(width: 30, height: 30)
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    Text(comment.author).font(.callout.weight(.medium)).lineLimit(1)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                AvatarView(url: comment.avatar).frame(width: 32, height: 32)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(comment.author).font(GlassTheme.bodyFont.weight(.medium)).lineLimit(1)
                     Text(comment.date, style: .relative)
-                        .font(.caption).foregroundStyle(.tertiary).lineLimit(1)
-                    Spacer(minLength: 0)
-                    Menu {
-                        Button("复制评论") {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(comment.text, forType: .string)
-                        }
-                        Button(collapsed ? "展开讨论" : "折叠讨论") { collapsed.toggle() }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                    }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden)
-                    .frame(width: 22, height: 22)
-                    .modifier(MenuHoverFeedback())
-                    .accessibilityLabel("评论选项")
+                        .font(GlassTheme.metadataFont).foregroundStyle(.secondary).lineLimit(1)
                 }
-                if collapsed {
-                    Text(count > 0 ? "已折叠 · \(count) 条回复" : "已折叠评论")
-                        .font(.caption).foregroundStyle(.secondary)
-                } else {
-                    Text(comment.text).font(.callout).lineSpacing(4)
-                        .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 18) {
-                        Label("\(comment.likes)", systemImage: "hand.thumbsup")
-                        if count > 0 { Text("\(count) 条回复") }
-                    }
-                    .font(.caption).foregroundStyle(.secondary)
-                    .padding(.top, 2)
+                Spacer(minLength: 0)
+                Button {
+                    collapsed.toggle()
+                } label: {
+                    Image(systemName: collapsed ? "chevron.right" : "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .iconControlFrame(size: 24)
                 }
+                .buttonStyle(InteractionButtonStyle(kind: .row))
+                .help(collapsed ? "展开讨论" : "折叠讨论")
+                .accessibilityLabel("\(collapsed ? "展开" : "折叠") \(comment.author) 的评论")
+                Menu {
+                    Button("复制评论") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(comment.text, forType: .string)
+                    }
+                    Button(collapsed ? "展开讨论" : "折叠讨论") { collapsed.toggle() }
+                } label: {
+                    Image(systemName: "ellipsis").font(.system(size: 16)).iconControlFrame()
+                }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden)
+                .frame(width: GlassTheme.iconControlSize, height: GlassTheme.iconControlSize)
+                .modifier(MenuHoverFeedback())
+                .accessibilityLabel("评论选项")
+            }
+            if collapsed {
+                Text(count > 0 ? "已折叠 · \(count) 条回复" : "已折叠评论")
+                    .font(GlassTheme.metadataFont).foregroundStyle(.secondary)
+            } else {
+                Text(comment.text).font(GlassTheme.readingFont).lineSpacing(5)
+                    .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 18) {
+                    Label("\(comment.likes)", systemImage: "hand.thumbsup")
+                    if count > 0 { Text("\(count) 条回复") }
+                }
+                .font(GlassTheme.metadataFont).foregroundStyle(.secondary)
+                .padding(.top, 2)
             }
         }
         .padding(10)

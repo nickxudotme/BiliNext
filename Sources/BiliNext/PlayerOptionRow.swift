@@ -9,15 +9,16 @@ struct PlayerOptionRow: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Text(title)
+                    .font(GlassTheme.labelFont)
                 Spacer(minLength: 8)
                 Image(systemName: "checkmark")
-                    .font(.caption.weight(.semibold))
+                    .font(GlassTheme.captionFont.weight(.semibold))
                     .opacity(selected ? 1 : 0)
                     .accessibilityHidden(true)
             }
             .foregroundStyle(.primary)
             .padding(.horizontal, 10)
-            .frame(height: 30)
+            .frame(height: 36)
             .contentShape(Rectangle())
             .background { NavigationSelection(selected: selected) }
         }

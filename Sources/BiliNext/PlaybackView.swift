@@ -51,7 +51,7 @@ struct PlaybackView: View {
                         Image(systemName: model.theater ? "chevron.left" : "chevron.right")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(.white)
-                            .frame(width: 28, height: 64)
+                            .frame(width: 32, height: 64)
                             .background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
                     }
                     .buttonStyle(InteractionButtonStyle())
@@ -197,10 +197,10 @@ private struct PlaybackPanelSwitcher: View {
                     }
                 } label: {
                     Text(tab.rawValue)
-                        .font(.system(size: 12, weight: selection == tab ? .semibold : .medium))
+                        .font(GlassTheme.labelFont.weight(selection == tab ? .semibold : .medium))
                         .foregroundStyle(.primary)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 28)
+                        .frame(height: GlassTheme.controlHeight)
                         .contentShape(Capsule())
                         .background {
                             if selection == tab {
@@ -233,10 +233,11 @@ private struct VideoInformationView: View {
                         memberPresented = true
                     } label: {
                         HStack(spacing: 10) {
-                            AvatarView(url: video.avatar).frame(width: 36, height: 36)
+                            AvatarView(url: video.avatar).frame(width: 40, height: 40)
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(video.author).font(.headline)
-                                Text("查看 UP 主主页").font(.caption).foregroundStyle(.secondary)
+                                Text(video.author).font(GlassTheme.bodyFont.weight(.semibold))
+                                Text("查看 UP 主主页").font(GlassTheme.metadataFont).foregroundStyle(
+                                    .secondary)
                             }
                             Spacer()
                             Image(systemName: "chevron.right").font(.caption).foregroundStyle(
@@ -247,10 +248,10 @@ private struct VideoInformationView: View {
                         Text(video.title).font(.title3.weight(.semibold)).textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                         Text("\(video.bvid) · \(timestamp(model.duration))").font(
-                            .caption.monospacedDigit()
+                            GlassTheme.metadataFont.monospacedDigit()
                         ).foregroundStyle(.secondary)
                     }
-                    HStack(spacing: 16) {
+                    HStack(spacing: 8) {
                         if video.episodeID == nil {
                             VideoActions(model: model, video: video).id(video.bvid)
                         }
@@ -261,12 +262,12 @@ private struct VideoInformationView: View {
                                 favoritePresented = true
                             }
                         } label: {
-                            Image(systemName: "star")
+                            VideoActionLabel(title: "收藏", systemImage: "star")
                         }.help("收藏到文件夹").accessibilityLabel("收藏到文件夹").disabled(video.aid == nil)
                         Button {
                             model.changeWatchLater(video)
                         } label: {
-                            Image(systemName: "text.badge.plus")
+                            VideoActionLabel(title: "稍后", systemImage: "text.badge.plus")
                         }.help("加入稍后再看").accessibilityLabel("加入稍后再看").disabled(
                             model.libraryBusy.contains(video.id))
                         Button {
@@ -277,7 +278,7 @@ private struct VideoInformationView: View {
                                 model.downloadsPresented = true
                             }
                         } label: {
-                            Image(systemName: "arrow.down.circle")
+                            VideoActionLabel(title: "缓存", systemImage: "arrow.down.circle")
                         }.help("缓存当前分 P").accessibilityLabel("缓存当前分 P").disabled(
                             model.pageID == nil)
                         Button {
@@ -287,18 +288,21 @@ private struct VideoInformationView: View {
                                 forType: .string)
                             model.toast = "已复制当前时间链接"
                         } label: {
-                            Image(systemName: "square.and.arrow.up")
+                            VideoActionLabel(title: "复制", systemImage: "square.and.arrow.up")
                         }.help("复制当前时间链接").accessibilityLabel("复制当前时间链接")
-                    }.buttonStyle(InteractionButtonStyle()).font(.title3).frame(maxWidth: .infinity)
+                    }.buttonStyle(InteractionButtonStyle()).font(.system(size: 18)).frame(
+                        maxWidth: .infinity)
                     Divider()
                     if !detail.description.isEmpty {
-                        Text(detail.description).font(.callout).lineSpacing(5).textSelection(
-                            .enabled
-                        ).fixedSize(horizontal: false, vertical: true)
+                        Text(detail.description).font(GlassTheme.bodyFont).lineSpacing(5)
+                            .textSelection(
+                                .enabled
+                            ).fixedSize(horizontal: false, vertical: true)
                     }
                     if detail.pages.count > 1 {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("选集 · \(detail.pages.count)").font(.headline)
+                            Text("选集 · \(detail.pages.count)").font(
+                                GlassTheme.bodyFont.weight(.semibold))
                             ForEach(detail.pages) { page in
                                 Button {
                                     model.selectPage(page.cid)
@@ -309,7 +313,8 @@ private struct VideoInformationView: View {
                                                 ? "waveform" : "play.circle")
                                         Text("P\(page.number)  \(page.title)").lineLimit(2)
                                         Spacer(minLength: 0)
-                                    }.padding(10).contentShape(Rectangle())
+                                    }.font(GlassTheme.labelFont).padding(10).frame(minHeight: 40)
+                                        .contentShape(Rectangle())
                                         .background(
                                             model.pageID == page.cid
                                                 ? Color.accentColor.opacity(0.1)
@@ -354,14 +359,17 @@ private struct DanmakuListView: View {
     var body: some View {
         VStack(spacing: 12) {
             HStack {
-                Text("弹幕列表").font(.headline)
+                Text("弹幕列表").font(GlassTheme.readingFont.weight(.semibold))
                 Spacer()
-                Text("当前 6 分钟 · \(items.count) 条").font(.caption).foregroundStyle(.secondary)
+                Text("当前 6 分钟 · \(items.count) 条").font(GlassTheme.metadataFont).foregroundStyle(
+                    .secondary)
             }
-            TextField("搜索当前时段弹幕", text: $query).textFieldStyle(.roundedBorder)
+            TextField("搜索当前时段弹幕", text: $query).font(GlassTheme.bodyFont).textFieldStyle(
+                .roundedBorder
+            ).controlSize(.large)
             if loading { ProgressView().controlSize(.small) }
             if let error {
-                Text(error).font(.caption).foregroundStyle(.secondary)
+                Text(error).font(GlassTheme.metadataFont).foregroundStyle(.secondary)
                 Button("重试") { retry += 1 }
             }
             ScrollView {
@@ -375,10 +383,12 @@ private struct DanmakuListView: View {
                             model.seek(item.time)
                         } label: {
                             HStack(alignment: .top, spacing: 12) {
-                                Text(timestamp(item.time)).font(.caption.monospacedDigit())
-                                    .foregroundStyle(.secondary).frame(
-                                        width: 42, alignment: .leading)
-                                Text(item.text).font(.callout).frame(
+                                Text(timestamp(item.time)).font(
+                                    GlassTheme.metadataFont.monospacedDigit()
+                                )
+                                .foregroundStyle(.secondary).frame(
+                                    width: 48, alignment: .leading)
+                                Text(item.text).font(GlassTheme.bodyFont).frame(
                                     maxWidth: .infinity, alignment: .leading)
                             }.padding(.vertical, 9).contentShape(Rectangle())
                         }.buttonStyle(InteractionButtonStyle()).help("跳转到 \(timestamp(item.time))")

@@ -102,11 +102,11 @@ struct ShellView: View {
             }
             .overlay(alignment: .bottom) {
                 if let toast = model.toast {
-                    Text(toast).font(.callout).padding(12).chromeSurface(in: Capsule()).padding(20).task(id: toast)
-                    {
-                        try? await Task.sleep(for: .seconds(2))
-                        if !Task.isCancelled { model.toast = nil }
-                    }
+                    Text(toast).font(.callout).padding(12).chromeSurface(in: Capsule()).padding(20)
+                        .task(id: toast) {
+                            try? await Task.sleep(for: .seconds(2))
+                            if !Task.isCancelled { model.toast = nil }
+                        }
                 }
             }
             .sheet(isPresented: $model.downloadsPresented) {
@@ -129,7 +129,7 @@ struct ShellView: View {
                         revealed = false
                         pointerZone = -1
                     } label: {
-                        Image(systemName: "sidebar.left").frame(width: 26, height: 28)
+                        Image(systemName: "sidebar.left").frame(width: 28, height: 32)
                     }
                     .chromeSurface(in: Circle(), interactive: true)
                     .help(pinned ? "隐藏侧栏" : "固定侧栏")
@@ -139,25 +139,25 @@ struct ShellView: View {
                         Button {
                             model.moveHistory(-1)
                         } label: {
-                            Image(systemName: "arrow.left").frame(width: 24, height: 28)
+                            Image(systemName: "arrow.left").frame(width: 26, height: 32)
                         }
                         .disabled(!model.canBack).accessibilityLabel("后退")
                         Button {
                             model.moveHistory(1)
                         } label: {
-                            Image(systemName: "arrow.right").frame(width: 24, height: 28)
+                            Image(systemName: "arrow.right").frame(width: 26, height: 32)
                         }
                         .disabled(!model.canForward).accessibilityLabel("前进")
                         Button {
                             model.refresh()
                         } label: {
-                            Image(systemName: "arrow.clockwise").frame(width: 24, height: 28)
+                            Image(systemName: "arrow.clockwise").frame(width: 26, height: 32)
                         }
                         .accessibilityLabel("刷新")
                     }.padding(.horizontal, 3)
                         .chromeSurface(in: Capsule(), interactive: true)
                 }
-                .font(.system(size: 14)).buttonStyle(InteractionButtonStyle())
+                .font(.system(size: 15)).buttonStyle(InteractionButtonStyle())
                 .frame(height: 44).padding(.horizontal, 10)
             }
             ScrollView {
@@ -171,29 +171,42 @@ struct ShellView: View {
                                 if hasChildren { expandedMenus = [item.0] }
                             } label: {
                                 HStack(spacing: 8) {
-                                    Image(systemName: item.1).frame(width: 16)
-                                        .foregroundStyle(active ? GlassTheme.accent : .secondary)
+                                    Image(systemName: item.1).font(.system(size: 17)).frame(
+                                        width: 20
+                                    )
+                                    .foregroundStyle(active ? GlassTheme.accent : .secondary)
                                     Text(item.0)
                                     Spacer(minLength: 0)
-                                }.padding(.leading, 10).frame(height: 32)
-                                    .contentShape(Rectangle())
+                                }.padding(.leading, 10).frame(
+                                    height: GlassTheme.navigationRowHeight
+                                )
+                                .contentShape(Rectangle())
                             }.buttonStyle(InteractionButtonStyle(kind: .row))
                             if hasChildren {
                                 Button {
                                     withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) {
-                                        if expandedMenus.contains(item.0) { expandedMenus.remove(item.0) }
-                                        else { expandedMenus.insert(item.0) }
+                                        if expandedMenus.contains(item.0) {
+                                            expandedMenus.remove(item.0)
+                                        } else {
+                                            expandedMenus.insert(item.0)
+                                        }
                                     }
                                 } label: {
                                     Image(systemName: "chevron.right")
-                                        .font(.system(size: 9, weight: .semibold))
-                                        .rotationEffect(.degrees(expandedMenus.contains(item.0) ? 90 : 0))
-                                        .foregroundStyle(.secondary).frame(width: 28, height: 32)
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .rotationEffect(
+                                            .degrees(expandedMenus.contains(item.0) ? 90 : 0)
+                                        )
+                                        .foregroundStyle(.secondary).frame(
+                                            width: 28, height: GlassTheme.navigationRowHeight)
                                 }.buttonStyle(InteractionButtonStyle(kind: .row))
-                                    .accessibilityLabel((expandedMenus.contains(item.0) ? "折叠" : "展开") + item.0)
+                                    .accessibilityLabel(
+                                        (expandedMenus.contains(item.0) ? "折叠" : "展开") + item.0)
                             }
                         }
-                        .background { NavigationSelection(selected: active && !expandedMenus.contains(item.0)) }
+                        .background {
+                            NavigationSelection(selected: active && !expandedMenus.contains(item.0))
+                        }
                         .fontWeight(active ? .semibold : .regular)
                         if hasChildren && expandedMenus.contains(item.0) {
                             if let page = model.browseInstances[item.0] {
@@ -220,7 +233,7 @@ struct ShellView: View {
                 Rectangle().fill(.primary.opacity(0.10)).frame(height: 1)
                 if hovering && !model.tabs.isEmpty {
                     Button("clear") { model.clearTabs() }
-                        .buttonStyle(InteractionButtonStyle()).font(.system(size: 11))
+                        .buttonStyle(InteractionButtonStyle()).font(GlassTheme.captionFont)
                         .foregroundStyle(.secondary)
                         .help(model.selected == nil ? "清空打开的标签，可撤销" : "清空其他标签，保留当前视频，可撤销")
                 }
@@ -228,54 +241,60 @@ struct ShellView: View {
             ScrollView {
                 VStack(spacing: 2) {
                     ForEach(Array(model.tabs.enumerated()), id: \.element.id) { index, tab in
-                        HStack(spacing: 8) {
-                            AvatarView(url: tab.video.avatar).frame(width: 16, height: 16)
+                        HStack(spacing: 6) {
+                            AvatarView(url: tab.video.avatar).frame(width: 20, height: 20)
                             Text(tab.video.title).lineLimit(1).truncationMode(.tail)
                             Spacer(minLength: 0)
                             if model.isPlaying(tab.id) {
                                 Button {
                                     model.togglePlayback()
                                 } label: {
-                                    Image(systemName: "speaker.wave.2.fill").font(.system(size: 10))
+                                    Image(systemName: "speaker.wave.2.fill").font(.system(size: 12))
+                                        .iconControlFrame(size: 24)
                                 }.buttonStyle(InteractionButtonStyle()).help("暂停")
                             }
                             if hoveredTab == tab.id {
                                 Button {
                                     model.close(tab.id)
                                 } label: {
-                                    Image(systemName: "xmark").font(.system(size: 9))
+                                    Image(systemName: "xmark").font(.system(size: 11))
+                                        .iconControlFrame(size: 24)
                                 }
                                 .buttonStyle(InteractionButtonStyle(destructive: true)).help("关闭标签")
                                 .accessibilityLabel(
                                     "关闭 \(tab.video.title)")
                             }
-                        }.padding(.horizontal, 10).frame(height: 32)
-                            .background {
-                                NavigationSelection(selected: model.selected == tab.id)
-                                    .background(.primary.opacity(hoveredTab == tab.id ? 0.04 : 0), in: RoundedRectangle(cornerRadius: GlassTheme.rowRadius))
+                        }.font(GlassTheme.labelFont).padding(.horizontal, 10).frame(
+                            height: GlassTheme.tabRowHeight
+                        )
+                        .background {
+                            NavigationSelection(selected: model.selected == tab.id)
+                                .background(
+                                    .primary.opacity(hoveredTab == tab.id ? 0.04 : 0),
+                                    in: RoundedRectangle(cornerRadius: GlassTheme.rowRadius))
+                        }
+                        .animation(
+                            reduceMotion ? nil : .easeOut(duration: 0.16),
+                            value: hoveredTab == tab.id
+                        )
+                        .contentShape(Rectangle()).onTapGesture {
+                            model.activate(tab.id, autoplay: true)
+                        }
+                        .onHover { inside in hoveredTab = inside ? tab.id : nil }
+                        .accessibilityElement(children: .contain)
+                        .accessibilityLabel(tab.video.title)
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAction { model.activate(tab.id, autoplay: true) }
+                        .help(tab.video.title)
+                        .contextMenu {
+                            Button("关闭标签") { model.close(tab.id) }
+                            Button("复制链接") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(
+                                    "https://www.bilibili.com/video/\(tab.id)", forType: .string
+                                )
                             }
-                            .animation(
-                                reduceMotion ? nil : .easeOut(duration: 0.16),
-                                value: hoveredTab == tab.id
-                            )
-                            .contentShape(Rectangle()).onTapGesture {
-                                model.activate(tab.id, autoplay: true)
-                            }
-                            .onHover { inside in hoveredTab = inside ? tab.id : nil }
-                            .accessibilityElement(children: .contain)
-                            .accessibilityLabel(tab.video.title)
-                            .accessibilityAddTraits(.isButton)
-                            .accessibilityAction { model.activate(tab.id, autoplay: true) }
-                            .help(tab.video.title)
-                            .contextMenu {
-                                Button("关闭标签") { model.close(tab.id) }
-                                Button("复制链接") {
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(
-                                        "https://www.bilibili.com/video/\(tab.id)", forType: .string
-                                    )
-                                }
-                            }
+                        }
                     }
                 }.padding(.horizontal, 8)
             }
@@ -298,13 +317,13 @@ struct ShellView: View {
                         Button("退出登录") { Task { await model.logout() } }
                     } label: {
                         Image(systemName: "ellipsis")
-                            .font(.system(size: 12, weight: .medium))
-                            .frame(width: 20, height: 20)
+                            .font(.system(size: 14, weight: .medium))
+                            .frame(width: 28, height: 28)
                             .contentShape(Circle())
                     }
                     .menuStyle(.borderlessButton).menuIndicator(.hidden)
                     .modifier(MenuHoverFeedback())
-                    .frame(width: 20, height: 20)
+                    .frame(width: 28, height: 28)
                     .chromeSurface(in: Circle(), interactive: true)
                     .help("账户选项").accessibilityLabel("账户选项")
                 } else {
@@ -312,10 +331,10 @@ struct ShellView: View {
                         InteractionButtonStyle())
                     Spacer()
                 }
-            }.font(.system(size: 12)).padding(14)
+            }.font(GlassTheme.labelFont).padding(14)
                 .overlay(alignment: .top) { Divider().opacity(0.35).padding(.horizontal, 14) }
         }
-        .font(.system(size: 13))
+        .font(GlassTheme.bodyFont)
     }
 
     private func updatePointer(_ point: NSPoint?) {

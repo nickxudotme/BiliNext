@@ -155,10 +155,12 @@ struct DownloadsView: View {
             HStack {
                 Text("下载").font(.title2.bold())
                 Spacer()
-                Button("完成") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("完成") { dismiss() }.controlSize(.large).font(GlassTheme.labelFont)
+                    .keyboardShortcut(.cancelAction)
             }
-            Text("保存到 下载 / BiliNext · 当前支持单段 MP4，退出应用会中断未完成任务。").font(.caption).foregroundStyle(
-                .secondary)
+            Text("保存到 下载 / BiliNext · 当前支持单段 MP4，退出应用会中断未完成任务。").font(GlassTheme.metadataFont)
+                .foregroundStyle(
+                    .secondary)
             if manager.items.isEmpty {
                 ContentUnavailableView(
                     "还没有下载", systemImage: "arrow.down.circle", description: Text("在视频页面点击下载按钮。"))
@@ -168,9 +170,11 @@ struct DownloadsView: View {
                     ForEach(manager.items) { item in
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
-                                Text(item.title).lineLimit(2)
+                                Text(item.title).font(GlassTheme.bodyFont).lineSpacing(3).lineLimit(
+                                    2)
                                 Spacer()
-                                Text(item.state).foregroundStyle(.secondary)
+                                Text(item.state).font(GlassTheme.metadataFont).foregroundStyle(
+                                    .secondary)
                             }
                             if item.state == "下载中" {
                                 ProgressView(value: item.progress)
@@ -199,9 +203,10 @@ struct DownloadsView: View {
                                 }
                             }
                             if let error = item.error {
-                                Text(error).font(.caption).foregroundStyle(.secondary)
+                                Text(error).font(GlassTheme.metadataFont).foregroundStyle(
+                                    .secondary)
                             }
-                        }.padding(14).background(
+                        }.controlSize(.large).font(GlassTheme.labelFont).padding(14).background(
                             .quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 10))
                     }
                 }

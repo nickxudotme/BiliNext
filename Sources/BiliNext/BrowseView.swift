@@ -32,7 +32,9 @@ struct BrowseView: View {
                 if model.loading { ProgressView().controlSize(.small) }
             }.padding(.horizontal, GlassTheme.contentInset).padding(.top, 28).padding(.bottom, 20)
                 .background(GlassTheme.canvas)
-                .overlay(alignment: .bottom) { Divider().opacity(0.35).padding(.horizontal, GlassTheme.contentInset) }
+                .overlay(alignment: .bottom) {
+                    Divider().opacity(0.35).padding(.horizontal, GlassTheme.contentInset)
+                }
             if model.menu == "搜索" {
                 HStack {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
@@ -43,10 +45,13 @@ struct BrowseView: View {
                         Text("最多播放").tag("click")
                         Text("最新发布").tag("pubdate")
                         Text("最多收藏").tag("stow")
-                    }.frame(width: 110).onChange(of: model.searchOrder) { _, _ in model.refresh() }
+                    }.frame(width: 130).onChange(of: model.searchOrder) { _, _ in model.refresh() }
                     Button("搜索") { model.refresh() }.buttonStyle(.glass)
-                }.padding(12).chromeSurface(in: RoundedRectangle(cornerRadius: GlassTheme.panelRadius))
-                .padding(.horizontal, GlassTheme.contentInset).padding(.bottom, 20)
+                }.font(GlassTheme.bodyFont).controlSize(.large)
+                    .frame(minHeight: GlassTheme.controlHeight).padding(12).chromeSurface(
+                        in: RoundedRectangle(cornerRadius: GlassTheme.panelRadius)
+                    )
+                    .padding(.horizontal, GlassTheme.contentInset).padding(.bottom, 20)
             }
             if ["收藏", "历史"].contains(model.menu) {
                 HStack {
@@ -57,7 +62,7 @@ struct BrowseView: View {
                             Text("最近收藏").tag("mtime")
                             Text("最近投稿").tag("pubtime")
                             Text("最多播放").tag("view")
-                        }.frame(width: 130).onChange(of: model.favoriteOrder) { _, _ in
+                        }.frame(width: 150).onChange(of: model.favoriteOrder) { _, _ in
                             model.refresh()
                         }
                     }
@@ -68,10 +73,13 @@ struct BrowseView: View {
                             model.refresh()
                         }
                     }
-                }.padding(.horizontal, GlassTheme.contentInset).padding(.bottom, 12)
+                }.font(GlassTheme.bodyFont).controlSize(.large)
+                    .padding(.horizontal, GlassTheme.contentInset).padding(.bottom, 16)
             }
             if model.menu == "历史" {
-                Text("来自 B 站的观看历史 · 点击从上次进度继续").font(.caption).foregroundStyle(.secondary).frame(
+                Text("来自 B 站的观看历史 · 点击从上次进度继续").font(GlassTheme.metadataFont).foregroundStyle(
+                    .secondary
+                ).frame(
                     maxWidth: .infinity, alignment: .leading
                 ).padding(.horizontal, GlassTheme.contentInset).padding(.bottom, 12)
             }
@@ -82,7 +90,9 @@ struct BrowseView: View {
                     Button("撤销") { model.changeWatchLater(removed) }.disabled(
                         model.libraryBusy.contains(removed.id))
                 }
-                .font(.callout).padding(.horizontal, GlassTheme.contentInset).padding(.bottom, 12)
+                .font(GlassTheme.bodyFont).controlSize(.large).padding(
+                    .horizontal, GlassTheme.contentInset
+                ).padding(.bottom, 12)
             }
             if let error = model.browseError {
                 HStack {
@@ -91,7 +101,9 @@ struct BrowseView: View {
                     Spacer()
                     Button("重试") { model.refresh() }
                 }
-                .font(.callout).padding().background(.orange.opacity(0.08)).padding(.horizontal, GlassTheme.contentInset)
+                .font(GlassTheme.bodyFont).controlSize(.large).padding().background(
+                    .orange.opacity(0.08)
+                ).padding(.horizontal, GlassTheme.contentInset)
             }
             if model.menu == "首页" && model.homeSection == "番剧" {
                 SeasonBrowser(model: model)

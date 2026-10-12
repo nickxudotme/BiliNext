@@ -35,7 +35,9 @@ struct VideoCardView: View {
                     .onGeometryChange(for: Int.self) { proxy in
                         // Bucket sizes to avoid new image tasks for every resize pixel.
                         max(64, Int(ceil(proxy.size.width * displayScale / 64)) * 64)
-                    } action: { coverPixels = $0 }
+                    } action: {
+                        coverPixels = $0
+                    }
                     .overlay(alignment: .bottom) {
                         LinearGradient(
                             colors: [.clear, .black.opacity(0.78)],
@@ -45,7 +47,7 @@ struct VideoCardView: View {
                     }
                     .overlay(alignment: .bottomTrailing) {
                         if let duration = video.duration, duration > 0 {
-                            Text(timestamp(duration)).font(.system(size: 11, weight: .medium))
+                            Text(timestamp(duration)).font(GlassTheme.captionFont.weight(.medium))
                                 .monospacedDigit().padding(.horizontal, 6).padding(.vertical, 3)
                                 .background(
                                     .black.opacity(0.5), in: RoundedRectangle(cornerRadius: 4)
@@ -68,36 +70,48 @@ struct VideoCardView: View {
                                 }
                             }
                         }
-                        .font(.system(size: 11, weight: .medium))
+                        .font(GlassTheme.captionFont.weight(.medium))
                         .foregroundStyle(.white)
                         .padding(.leading, 10).padding(.bottom, 10)
                         .padding(.trailing, 64)
                     }
                     .clipShape(RoundedRectangle(cornerRadius: GlassTheme.artworkRadius))
-                    .overlay { RoundedRectangle(cornerRadius: GlassTheme.artworkRadius).strokeBorder(.primary.opacity(0.08), lineWidth: 1).allowsHitTesting(false) }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: GlassTheme.artworkRadius).strokeBorder(
+                            .primary.opacity(0.08), lineWidth: 1
+                        ).allowsHitTesting(false)
+                    }
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(video.title).font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.primary).lineLimit(2)
-                        .frame(height: 40, alignment: .topLeading)
+                    Text(video.title).font(GlassTheme.readingFont.weight(.semibold))
+                        .foregroundStyle(.primary).lineSpacing(3).lineLimit(2)
+                        .frame(height: VideoGridMetrics.titleHeight, alignment: .topLeading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     HStack(spacing: 6) {
                         ThumbnailView(url: video.avatar, pixels: 64) {
-                            Image(systemName: "person.crop.circle.fill").resizable().foregroundStyle(.secondary)
-                        }.frame(width: 18, height: 18).clipShape(Circle())
-                        Text(video.author).font(.system(size: 12))
+                            Image(systemName: "person.crop.circle.fill").resizable()
+                                .foregroundStyle(.secondary)
+                        }.frame(
+                            width: VideoGridMetrics.authorAvatarSize,
+                            height: VideoGridMetrics.authorAvatarSize
+                        ).clipShape(Circle())
+                        Text(video.author).font(GlassTheme.metadataFont)
                             .foregroundStyle(.secondary).lineLimit(1)
                         Spacer(minLength: 0)
                     }
                 }
                 .padding(.horizontal, 4).padding(.bottom, 6)
                 if let viewed = video.viewedAt {
-                    HStack {
+                    HStack(alignment: .top) {
                         Text(viewed, format: .dateTime.month().day().hour().minute())
                         Spacer()
                         if let progress = video.progress {
                             Text(progress < 0 ? "已看完" : "看到 " + timestamp(progress))
                         }
-                    }.font(.caption2).foregroundStyle(.secondary)
+                    }.font(GlassTheme.metadataFont).foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .frame(
+                            height: VideoGridMetrics.historyMetadataHeight, alignment: .topLeading
+                        )
                         .padding(.horizontal, 4).padding(.bottom, 6)
                 }
             }.contentShape(Rectangle())
@@ -105,25 +119,26 @@ struct VideoCardView: View {
         .buttonStyle(InteractionButtonStyle(kind: .card))
         .overlay(alignment: .topTrailing) {
             if hovered && !scrolling {
-            Menu {
-                Button("在后台标签打开") {
-                    preview.stop()
-                    model.open(video, background: true)
-                }
-                Button(model.menu == "稍后再看" ? "从稍后再看移除" : "加入稍后再看") {
-                    preview.stop()
-                    model.changeWatchLater(video, remove: model.menu == "稍后再看")
-                }.disabled(model.libraryBusy.contains(video.id))
-                Divider()
-                Toggle("悬停静音预览", isOn: $previewEnabled)
-            } label: {
-                Image(systemName: "ellipsis").font(.system(size: 13, weight: .semibold))
-                    .frame(width: 28, height: 28)
-            }.menuStyle(.borderlessButton).menuIndicator(.hidden)
-                .chromeSurface(in: Circle(), interactive: true)
-                .modifier(MenuHoverFeedback()).padding(8)
-                .opacity(hovered ? 1 : 0).allowsHitTesting(hovered)
-                .accessibilityLabel("视频选项")
+                Menu {
+                    Button("在后台标签打开") {
+                        preview.stop()
+                        model.open(video, background: true)
+                    }
+                    Button(model.menu == "稍后再看" ? "从稍后再看移除" : "加入稍后再看") {
+                        preview.stop()
+                        model.changeWatchLater(video, remove: model.menu == "稍后再看")
+                    }.disabled(model.libraryBusy.contains(video.id))
+                    Divider()
+                    Toggle("悬停静音预览", isOn: $previewEnabled)
+                } label: {
+                    Image(systemName: "ellipsis").font(GlassTheme.labelFont.weight(.semibold))
+                        .frame(
+                            width: GlassTheme.iconControlSize, height: GlassTheme.iconControlSize)
+                }.menuStyle(.borderlessButton).menuIndicator(.hidden)
+                    .chromeSurface(in: Circle(), interactive: true)
+                    .modifier(MenuHoverFeedback()).padding(8)
+                    .opacity(hovered ? 1 : 0).allowsHitTesting(hovered)
+                    .accessibilityLabel("视频选项")
             }
         }
         .onHover { inside in
@@ -134,11 +149,16 @@ struct VideoCardView: View {
                 preview.stop(ifMatching: video.id)
             }
         }
-        .onReceive(preview.$activeID.combineLatest(preview.$ready)
-            .map { $0 == video.id && $1 }.removeDuplicates()) { previewing = $0 }
+        .onReceive(
+            preview.$activeID.combineLatest(preview.$ready)
+                .map { $0 == video.id && $1 }.removeDuplicates()
+        ) { previewing = $0 }
         .onChange(of: scrolling) { _, moving in
-            if moving { preview.stop(ifMatching: video.id) }
-            else if hovered && isActive && previewEnabled { preview.request(video) }
+            if moving {
+                preview.stop(ifMatching: video.id)
+            } else if hovered && isActive && previewEnabled {
+                preview.request(video)
+            }
         }
         .onChange(of: isActive) { _, active in
             if !active {

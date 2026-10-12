@@ -16,13 +16,15 @@ struct ActivityView: View {
                 ForEach(items) { activity in
                     VStack(alignment: .leading, spacing: 14) {
                         HStack(spacing: 10) {
-                            AvatarView(url: activity.avatar).frame(width: 36, height: 36)
+                            AvatarView(url: activity.avatar).frame(width: 40, height: 40)
                             Button {
                                 member = activity
                             } label: {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(activity.author).font(.headline)
-                                    Text(activity.time).font(.caption).foregroundStyle(.secondary)
+                                    Text(activity.author).font(
+                                        GlassTheme.bodyFont.weight(.semibold))
+                                    Text(activity.time).font(GlassTheme.metadataFont)
+                                        .foregroundStyle(.secondary)
                                 }
                             }.buttonStyle(InteractionButtonStyle(kind: .row)).disabled(
                                 activity.mid == nil)
@@ -30,16 +32,19 @@ struct ActivityView: View {
                             if let link = activity.link {
                                 Link(destination: link) {
                                     Image(systemName: "arrow.up.right.square")
+                                        .font(.system(size: 18)).iconControlFrame()
                                 }.help("查看完整动态")
                             }
                         }
                         if !activity.text.isEmpty {
-                            Text(activity.text).font(.system(size: 14)).lineSpacing(5)
+                            Text(activity.text).font(GlassTheme.readingFont).lineSpacing(5)
                                 .textSelection(.enabled).fixedSize(
                                     horizontal: false, vertical: true)
                         }
                         if let original = activity.original {
-                            Text(original).font(.callout).foregroundStyle(.secondary).textSelection(
+                            Text(original).font(GlassTheme.bodyFont).lineSpacing(4).foregroundStyle(
+                                .secondary
+                            ).textSelection(
                                 .enabled
                             ).padding(12).frame(maxWidth: .infinity, alignment: .leading)
                                 .background(
@@ -57,7 +62,8 @@ struct ActivityView: View {
                                         Color.gray.opacity(0.2)
                                     }.frame(width: 180, height: 105).clipped().clipShape(
                                         RoundedRectangle(cornerRadius: 8))
-                                    Text(video.title).font(.callout).lineLimit(3)
+                                    Text(video.title).font(GlassTheme.bodyFont).lineSpacing(3)
+                                        .lineLimit(3)
                                     Spacer()
                                 }.contentShape(Rectangle())
                             }.buttonStyle(InteractionButtonStyle(kind: .row))
@@ -85,10 +91,12 @@ struct ActivityView: View {
                 if loading {
                     ProgressView().frame(maxWidth: .infinity)
                 } else if let error {
-                    Text(error).font(.caption).foregroundStyle(.secondary)
-                    Button("重试") { load() }
+                    Text(error).font(GlassTheme.metadataFont).foregroundStyle(.secondary)
+                    Button("重试") { load() }.controlSize(.large).font(GlassTheme.labelFont)
                 } else if offset != nil {
-                    Button("加载更多动态") { load(append: true) }.frame(maxWidth: .infinity)
+                    Button("加载更多动态") { load(append: true) }.controlSize(.large)
+                        .font(GlassTheme.labelFont).frame(
+                            maxWidth: .infinity, minHeight: GlassTheme.controlHeight)
                 } else if items.isEmpty {
                     ContentUnavailableView("暂无动态", systemImage: "rectangle.stack")
                 }

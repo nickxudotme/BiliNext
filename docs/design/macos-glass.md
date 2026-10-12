@@ -10,6 +10,8 @@ Considered directions: editorial discovery with a large hero; cinematic artwork-
 
 ChromeSurface, SidebarSurface and DetailSurface provide opaque system-color alternatives for Reduce Transparency. Chrome outlines strengthen under Increase Contrast. Sidebar transitions honor Reduce Motion. Main-window playback, fixed sidebar width, menu order, bindings, callbacks and services remain unchanged.
 
+The 2026-10-13 readability pass adds shared 16/15/14/13/12pt typography and explicit control sizing, wider video cards, labelled playback actions and comments with a separate header and body. See [UI scale comparison and verification](ui-scale.md) for the official-client comparison and current evidence; the earlier verification below remains historical.
+
 ## Skills
 
 - ehmo/platform-design-skills: macos-design-guidelines

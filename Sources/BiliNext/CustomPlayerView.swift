@@ -93,7 +93,7 @@ struct CustomPlayerView: View {
                         primary: model.cues, secondary: model.secondaryCues, time: model.time
                     )
                     .padding(.horizontal, 20)
-                }.padding(.bottom, controls || !model.playing ? 76 : 20).allowsHitTesting(false)
+                }.padding(.bottom, controls || !model.playing ? 96 : 20).allowsHitTesting(false)
             }
             if smartSubtitles.needsDecision {
                 VStack {
@@ -101,7 +101,7 @@ struct CustomPlayerView: View {
                         Text("画面字幕语言不同，保留软字幕？")
                         Button("保留") { smartSubtitles.resolveLanguage(keep: true) }
                         Button("隐藏") { smartSubtitles.resolveLanguage(keep: false) }
-                    }.padding(12).background(
+                    }.font(GlassTheme.labelFont).controlSize(.regular).padding(12).background(
                         .regularMaterial, in: RoundedRectangle(cornerRadius: 10))
                     Spacer()
                 }.padding(16)
@@ -180,33 +180,43 @@ struct CustomPlayerView: View {
     }
     private var controlsBar: some View {
         VStack(spacing: 8) {
-            Slider(
-                value: $scrubTime, in: 0...max(1, model.duration),
-                onEditingChanged: { editing in
-                    scrubbing = editing
-                    if !editing { model.seek(scrubTime) }
-                    revealControls()
+            HStack(spacing: 8) {
+                Slider(
+                    value: $scrubTime, in: 0...max(1, model.duration),
+                    onEditingChanged: { editing in
+                        scrubbing = editing
+                        if !editing { model.seek(scrubTime) }
+                        revealControls()
+                    }
+                ).tint(.white).accessibilityLabel("播放进度").disabled(model.duration <= 0)
+                    .frame(maxWidth: .infinity)
+                if availableWidth <= 540 {
+                    timeLabel.fixedSize(horizontal: true, vertical: false)
                 }
-            ).tint(.white).accessibilityLabel("播放进度").disabled(model.duration <= 0)
-            HStack(spacing: availableWidth > 540 ? 14 : 8) {
+            }
+            HStack(spacing: availableWidth > 540 ? 8 : 4) {
                 Button {
                     model.togglePlayback()
                 } label: {
-                    Image(systemName: model.playing ? "pause.fill" : "play.fill").frame(width: 20)
+                    Image(systemName: model.playing ? "pause.fill" : "play.fill")
+                        .font(.system(size: 20)).iconControlFrame()
                 }.accessibilityLabel(model.playing ? "暂停" : "播放")
-                Text(
-                    "\(timestamp(scrubbing ? scrubTime : model.time)) / \(timestamp(model.duration))"
-                ).font(.system(size: 11).monospacedDigit())
+                if availableWidth > 540 {
+                    timeLabel.minimumScaleFactor(0.85)
+                }
                 Spacer(minLength: 2)
                 if !model.qualities.isEmpty && availableWidth > 540 {
                     Button {
                         qualitySettings.toggle()
                     } label: {
-                        Text(model.quality).font(.system(size: 10))
+                        Text(model.quality).font(GlassTheme.metadataFont)
+                            .lineLimit(1).minimumScaleFactor(0.85)
+                            .padding(.horizontal, 6).frame(height: GlassTheme.controlHeight)
+                            .contentShape(Rectangle())
                     }.help("清晰度")
                         .popover(isPresented: $qualitySettings) {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("清晰度").font(.headline)
+                                Text("清晰度").font(GlassTheme.bodyFont.weight(.semibold))
                                 ForEach(model.qualities) { option in
                                     PlayerOptionRow(
                                         title: option.label,
@@ -223,21 +233,27 @@ struct CustomPlayerView: View {
                     danmaku.enabled.toggle()
                 } label: {
                     Image(systemName: danmaku.enabled ? "text.bubble.fill" : "text.bubble")
+                        .iconControlFrame()
                 }.help("弹幕开关 · D").accessibilityLabel("弹幕开关")
                 Button {
                     settings.toggle()
                 } label: {
                     Image(systemName: "slider.horizontal.3")
+                        .iconControlFrame()
                 }.help("字幕与弹幕设置").accessibilityLabel("字幕与弹幕设置")
                     .popover(isPresented: $settings) { settingsPanel }
                 Button {
                     rateSettings.toggle()
                 } label: {
                     Text(String(format: "%g×", model.playbackRate))
+                        .font(GlassTheme.metadataFont)
+                        .padding(.horizontal, 6)
+                        .frame(minWidth: 40, minHeight: GlassTheme.controlHeight)
+                        .contentShape(Rectangle())
                 }.help("播放速度")
                     .popover(isPresented: $rateSettings) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("播放速度").font(.headline)
+                            Text("播放速度").font(GlassTheme.bodyFont.weight(.semibold))
                             ForEach([0.5, 0.75, 1, 1.25, 1.5, 2, 3], id: \.self) { value in
                                 PlayerOptionRow(
                                     title: String(format: "%g×", value),
@@ -255,7 +271,9 @@ struct CustomPlayerView: View {
                     } label: {
                         Image(
                             systemName: smartSubtitles.visible
-                                ? "captions.bubble.fill" : "captions.bubble")
+                                ? "captions.bubble.fill" : "captions.bubble"
+                        )
+                        .iconControlFrame()
                     }.help("画面字幕").accessibilityLabel(
                         smartSubtitles.visible ? "隐藏画面软字幕" : "显示画面软字幕")
                 }
@@ -263,6 +281,7 @@ struct CustomPlayerView: View {
                     volumeSettings.toggle()
                 } label: {
                     Image(systemName: model.playerVolume == 0 ? "speaker.slash" : "speaker.wave.2")
+                        .iconControlFrame()
                 }.help("音量")
                     .popover(isPresented: $volumeSettings) {
                         Slider(
@@ -279,13 +298,15 @@ struct CustomPlayerView: View {
                     model.theater.toggle()
                 } label: {
                     Image(systemName: "rectangle.expand.vertical")
+                        .iconControlFrame()
                 }.help("剧场模式").accessibilityLabel("剧场模式")
                 Button {
                     toggleFullscreen()
                 } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .iconControlFrame()
                 }.help("全屏 · F").accessibilityLabel("全屏")
-            }.font(.system(size: 13)).buttonStyle(InteractionButtonStyle()).foregroundStyle(.white)
+            }.font(.system(size: 18)).buttonStyle(InteractionButtonStyle()).foregroundStyle(.white)
         }.padding(.horizontal, 16).padding(.top, 30).padding(.bottom, 14)
             .background(
                 LinearGradient(
@@ -295,11 +316,17 @@ struct CustomPlayerView: View {
                 // Keep control clicks from toggling the video surface.
             }
     }
+    private var timeLabel: some View {
+        Text("\(timestamp(scrubbing ? scrubTime : model.time)) / \(timestamp(model.duration))")
+            .font(GlassTheme.metadataFont.monospacedDigit())
+            .foregroundStyle(.white).lineLimit(1)
+    }
     private var settingsPanel: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
-                Text("字幕与弹幕").font(.headline)
-                Text("显示").font(.caption).foregroundStyle(.secondary).padding(.top, 8)
+                Text("字幕与弹幕").font(GlassTheme.readingFont.weight(.semibold))
+                Text("显示").font(GlassTheme.metadataFont).foregroundStyle(.secondary)
+                    .padding(.top, 8)
                 Toggle("显示弹幕", isOn: $danmaku.enabled)
                 SubtitleTrackControls(model: model)
                 SmartSubtitleSettings(
@@ -313,7 +340,7 @@ struct CustomPlayerView: View {
                     ) { ForEach(model.qualities) { Text($0.label).tag($0.value) } }
                 }
                 Divider().padding(.vertical, 4)
-                Text("弹幕类型").font(.caption).foregroundStyle(.secondary)
+                Text("弹幕类型").font(GlassTheme.metadataFont).foregroundStyle(.secondary)
                 HStack {
                     Text("滚动")
                     Toggle("滚动", isOn: $rolling).labelsHidden()
@@ -321,7 +348,7 @@ struct CustomPlayerView: View {
                     Toggle("固定", isOn: $fixed).labelsHidden()
                 }
                 Divider().padding(.vertical, 4)
-                Text("外观").font(.caption).foregroundStyle(.secondary)
+                Text("外观").font(GlassTheme.metadataFont).foregroundStyle(.secondary)
                 LabeledContent("不透明度", value: "\(Int(opacity * 100))%")
                 Slider(value: $opacity, in: 0.2...1)
                 LabeledContent("字号", value: "\(Int(fontSize)) pt")
@@ -331,20 +358,20 @@ struct CustomPlayerView: View {
                 LabeledContent("弹幕速度", value: String(format: "%g×", dmSpeed))
                 Slider(value: $dmSpeed, in: 0.5...2, step: 0.25)
                 Divider().padding(.vertical, 4)
-                Text("屏蔽").font(.caption).foregroundStyle(.secondary)
+                Text("屏蔽").font(GlassTheme.metadataFont).foregroundStyle(.secondary)
                 TextField("屏蔽关键词，用逗号分隔", text: $blocked).textFieldStyle(.roundedBorder)
                 if let error = danmaku.error {
-                    Text(error).font(.caption).foregroundStyle(.secondary)
+                    Text(error).font(GlassTheme.metadataFont).foregroundStyle(.secondary)
                     Button("重试") {
                         danmaku.retry()
                         model.updateDanmaku()
                     }
                 }
                 Text(danmaku.loading ? "正在加载弹幕…" : "已加载 \(danmaku.comments.count) 条弹幕").font(
-                    .caption
+                    GlassTheme.metadataFont
                 ).foregroundStyle(.secondary)
-            }.padding(16)
-        }.frame(width: 300, height: 480)
+            }.font(GlassTheme.labelFont).controlSize(.regular).padding(16)
+        }.frame(width: 320, height: 480)
     }
     private func revealControls() {
         controls = true

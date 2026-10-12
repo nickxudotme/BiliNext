@@ -27,16 +27,16 @@ struct SeasonBrowser: View {
                     Text("追番人数").tag(3)
                     Text("更新时间").tag(0)
                     Text("最高评分").tag(4)
-                }.frame(width: 140)
-            }.padding(.horizontal, 28)
+                }.frame(width: 160)
+            }.controlSize(.large).font(GlassTheme.labelFont).padding(.horizontal, 28)
             if let error {
                 HStack {
                     Text(error)
-                    Button("重试") { load() }
-                }.font(.caption).padding(.horizontal, 28)
+                    Button("重试") { load() }.controlSize(.large).font(GlassTheme.labelFont)
+                }.font(GlassTheme.metadataFont).padding(.horizontal, 28)
             }
             ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 20)], spacing: 24) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 20)], spacing: 24) {
                     ForEach(seasons) { season in
                         Button {
                             selected = season
@@ -50,11 +50,12 @@ struct SeasonBrowser: View {
                                         Color.clear
                                     }
                                 }.clipped().clipShape(RoundedRectangle(cornerRadius: 10))
-                                Text(season.title).font(.callout).lineLimit(1)
+                                Text(season.title).font(GlassTheme.bodyFont).lineLimit(1)
                                 Text(
                                     [season.update, season.badge].filter { !$0.isEmpty }.joined(
                                         separator: " · ")
-                                ).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                ).font(GlassTheme.metadataFont).foregroundStyle(.secondary)
+                                    .lineLimit(1)
                             }
                         }.buttonStyle(.plain)
                     }
@@ -62,7 +63,8 @@ struct SeasonBrowser: View {
                 if loading {
                     ProgressView().padding()
                 } else if more {
-                    Button("加载更多") { load(append: true) }.padding()
+                    Button("加载更多") { load(append: true) }.controlSize(.large)
+                        .font(GlassTheme.labelFont).padding()
                 }
             }
         }.task(id: model.catalogRefresh) { load() }.onChange(of: type) { _, _ in load() }.onChange(
@@ -113,16 +115,19 @@ private struct SeasonDetailView: View {
             HStack {
                 Text(season.title).font(.title2.bold())
                 Spacer()
-                Button("完成") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("完成") { dismiss() }.controlSize(.large).font(GlassTheme.labelFont)
+                    .keyboardShortcut(.cancelAction)
             }
             if loading { ProgressView() }
             if let error {
-                Text(error).foregroundStyle(.secondary)
-                Button("重试") { Task { await load() } }
+                Text(error).font(GlassTheme.metadataFont).foregroundStyle(.secondary)
+                Button("重试") { Task { await load() } }.controlSize(.large).font(
+                    GlassTheme.labelFont)
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text(detail?.description ?? "").font(.callout).foregroundStyle(.secondary)
+                    Text(detail?.description ?? "").font(GlassTheme.readingFont).lineSpacing(5)
+                        .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                     ForEach(detail?.episodes ?? []) { video in
                         Button {
@@ -130,19 +135,21 @@ private struct SeasonDetailView: View {
                             dismiss()
                         } label: {
                             HStack {
-                                Image(systemName: "play.circle")
-                                Text(video.title)
+                                Image(systemName: "play.circle").font(.system(size: 20))
+                                Text(video.title).font(GlassTheme.bodyFont)
                                 Spacer()
                             }.padding(10).contentShape(Rectangle())
                         }.buttonStyle(.plain)
                     }
                     if let detail, detail.episodes.isEmpty {
-                        Text("当前没有返回可播放的正片。").foregroundStyle(.secondary)
+                        Text("当前没有返回可播放的正片。").font(GlassTheme.bodyFont).foregroundStyle(.secondary)
                     }
                     Link(
                         "在 B 站查看",
                         destination: URL(
-                            string: "https://www.bilibili.com/bangumi/play/ss\(season.id)")!)
+                            string: "https://www.bilibili.com/bangumi/play/ss\(season.id)")!
+                    )
+                    .font(GlassTheme.labelFont).frame(minHeight: GlassTheme.controlHeight)
                 }
             }
         }.padding(24).frame(width: 660, height: 500).task { await load() }

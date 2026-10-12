@@ -7,6 +7,16 @@ enum GlassTheme {
     static let artworkRadius: CGFloat = 12
     static let rowRadius: CGFloat = 8
     static let panelRadius: CGFloat = 16
+    static let readingFont = Font.system(size: 16)
+    static let bodyFont = Font.system(size: 15)
+    static let labelFont = Font.system(size: 14)
+    static let metadataFont = Font.system(size: 13)
+    static let captionFont = Font.system(size: 12)
+    static let controlHeight: CGFloat = 34
+    static let iconControlSize: CGFloat = 32
+    static let navigationRowHeight: CGFloat = 38
+    static let childRowHeight: CGFloat = 34
+    static let tabRowHeight: CGFloat = 36
     static let accent = Color.pink
     static let canvas = Color(nsColor: .windowBackgroundColor)
 }
@@ -76,7 +86,8 @@ struct NavigationSelection: View {
             .overlay {
                 if selected {
                     RoundedRectangle(cornerRadius: GlassTheme.rowRadius)
-                        .strokeBorder(.primary.opacity(contrast == .increased ? 0.45 : 0.10), lineWidth: 1)
+                        .strokeBorder(
+                            .primary.opacity(contrast == .increased ? 0.45 : 0.10), lineWidth: 1)
                 }
             }
             .allowsHitTesting(false)
@@ -84,6 +95,10 @@ struct NavigationSelection: View {
 }
 
 extension View {
+    func iconControlFrame(size: CGFloat = GlassTheme.iconControlSize) -> some View {
+        frame(width: size, height: size).contentShape(Rectangle())
+    }
+
     func chromeSurface<S: Shape>(in shape: S, interactive: Bool = false) -> some View {
         modifier(ChromeSurface(shape: shape, interactive: interactive))
     }

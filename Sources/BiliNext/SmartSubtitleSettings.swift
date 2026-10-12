@@ -21,7 +21,7 @@ struct SmartSubtitleSettings: View {
             HStack(alignment: .top) {
                 if model.checking { ProgressView().controlSize(.mini) }
                 Text(automaticDetectionSuspended ? "双语模式：自动检测已暂停" : model.status)
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(GlassTheme.metadataFont).foregroundStyle(.secondary)
             }.accessibilityElement(children: .combine)
             if model.needsDecision {
                 HStack {
@@ -37,8 +37,8 @@ struct SmartSubtitleSettings: View {
                 Button("恢复软字幕") { model.setVisible(true) }
             }
             Text("每 4 秒最多取样一次，连续 3 条不同字幕确认后处理。识别仅在本机进行，Transcript 保留完整文字。")
-                .font(.caption2).foregroundStyle(.secondary)
-        }
+                .font(GlassTheme.captionFont).foregroundStyle(.secondary)
+        }.font(GlassTheme.labelFont).controlSize(.regular)
     }
 
     @ViewBuilder private var rules: some View {

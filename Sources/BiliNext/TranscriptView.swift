@@ -38,16 +38,18 @@ struct TranscriptView: View {
         let matchIDs = Set(matches)
         return VStack(spacing: 12) {
             HStack {
-                Text("字幕脚本").font(.headline)
+                Text("字幕脚本").font(GlassTheme.readingFont.weight(.semibold))
                 Spacer()
-                Toggle("段落", isOn: $paragraphs).toggleStyle(.switch).controlSize(.mini)
+                Toggle("段落", isOn: $paragraphs).toggleStyle(.switch).controlSize(.small)
+                    .font(GlassTheme.labelFont)
             }
             SubtitleTrackControls(model: model)
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                     .accessibilityHidden(true)
                 TextField("搜索字幕", text: $query).textFieldStyle(.plain)
-            }.padding(8).chromeSurface(in: RoundedRectangle(cornerRadius: GlassTheme.rowRadius))
+            }.font(GlassTheme.labelFont).padding(8).frame(minHeight: GlassTheme.controlHeight)
+                .chromeSurface(in: RoundedRectangle(cornerRadius: GlassTheme.rowRadius))
             if model.subtitleLoading {
                 Spacer()
                 ProgressView()
@@ -64,25 +66,32 @@ struct TranscriptView: View {
                     HStack {
                         if !query.isEmpty {
                             Text(matches.isEmpty ? "无匹配" : "\(searchIndex + 1) / \(matches.count)")
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(GlassTheme.metadataFont).foregroundStyle(.secondary)
                             Button {
                                 moveMatch(-1, proxy: proxy)
                             } label: {
-                                Image(systemName: "chevron.up")
+                                Image(systemName: "chevron.up").font(GlassTheme.labelFont)
+                                    .iconControlFrame()
                             }.disabled(matches.isEmpty).accessibilityLabel("上一个匹配").help("上一个匹配")
                             Button {
                                 moveMatch(1, proxy: proxy)
                             } label: {
-                                Image(systemName: "chevron.down")
+                                Image(systemName: "chevron.down").font(GlassTheme.labelFont)
+                                    .iconControlFrame()
                             }.disabled(matches.isEmpty).accessibilityLabel("下一个匹配").help("下一个匹配")
                         }
                         Spacer()
-                        Button(following ? "暂停跟随" : "回到正在播放") {
+                        Button {
                             following.toggle()
                             if following, let id = activeGroup {
                                 proxy.scrollTo(id, anchor: .center)
                             }
-                        }.font(.caption)
+                        } label: {
+                            Text(following ? "暂停跟随" : "回到正在播放")
+                                .font(GlassTheme.metadataFont)
+                                .frame(minHeight: GlassTheme.iconControlSize)
+                                .contentShape(Rectangle())
+                        }
                     }.buttonStyle(InteractionButtonStyle(kind: .row))
                         .padding(.vertical, 4)
                     Divider().opacity(0.4)
@@ -92,12 +101,16 @@ struct TranscriptView: View {
                                 if let first = group.first {
                                     VStack(alignment: .leading, spacing: 6) {
                                         HStack(spacing: 8) {
-                                            Button(timestamp(first.start)) {
+                                            Button {
                                                 model.seek(first.start)
+                                            } label: {
+                                                Text(timestamp(first.start))
+                                                    .font(GlassTheme.metadataFont.monospacedDigit())
+                                                    .foregroundStyle(.secondary)
+                                                    .frame(minHeight: GlassTheme.iconControlSize)
+                                                    .contentShape(Rectangle())
                                             }
-                                            .font(.caption.monospacedDigit()).foregroundStyle(
-                                                .secondary
-                                            ).buttonStyle(InteractionButtonStyle(kind: .row))
+                                            .buttonStyle(InteractionButtonStyle(kind: .row))
                                             Spacer(minLength: 0)
                                             if group.contains(where: { activeIDs.contains($0.id) })
                                             {
@@ -107,12 +120,12 @@ struct TranscriptView: View {
                                                 Label("匹配", systemImage: "magnifyingglass")
                                                     .foregroundStyle(.secondary)
                                             }
-                                        }.font(.caption)
+                                        }.font(GlassTheme.captionFont)
                                         Text(
                                             group.map(\.text).joined(
                                                 separator: paragraphs ? " " : "")
                                         )
-                                        .font(.system(size: 14)).lineSpacing(5).textSelection(
+                                        .font(GlassTheme.readingFont).lineSpacing(5).textSelection(
                                             .enabled)
                                     }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
                                         .background(

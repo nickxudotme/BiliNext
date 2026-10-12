@@ -30,21 +30,23 @@ struct SubtitleTrackControls: View {
                     .help("只去掉画面字幕的强制换行；宽度不足时仍自然换行，字幕脚本保留原文。")
                 if !model.secondaryTrackID.isEmpty {
                     Text("画面同时显示两条字幕；脚本阅读使用主字幕。双语模式暂停自动去重，手动字幕开关仍有效。")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(GlassTheme.metadataFont).foregroundStyle(.secondary)
                     if model.secondarySubtitleLoading {
                         HStack {
                             ProgressView().controlSize(.mini)
-                            Text("正在加载第二字幕…").font(.caption)
+                            Text("正在加载第二字幕…").font(GlassTheme.metadataFont)
                         }
                     } else if let error = model.secondarySubtitleError {
-                        Text("第二字幕加载失败：\(error)").font(.caption).foregroundStyle(.secondary)
+                        Text("第二字幕加载失败：\(error)").font(GlassTheme.metadataFont)
+                            .foregroundStyle(.secondary)
                         Button("重试第二字幕") { model.selectSecondaryTrack(model.secondaryTrackID) }
                     } else if model.secondaryCues.isEmpty {
                         Text("此字幕轨没有可用内容，可选择其他字幕。")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(GlassTheme.metadataFont).foregroundStyle(.secondary)
                     }
                 }
-            }
+            }.font(GlassTheme.labelFont).controlSize(.regular)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

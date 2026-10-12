@@ -3,11 +3,21 @@ import BiliNextCore
 import SwiftUI
 
 enum VideoGridMetrics {
+    static let minimumCardWidth: CGFloat = 260
+    static let columnSpacing: CGFloat = 20
+    static let titleHeight: CGFloat = 48
+    static let authorAvatarSize: CGFloat = 22
+    static let historyMetadataHeight: CGFloat = 36
+
     static func itemSize(viewportWidth: CGFloat, history: Bool) -> NSSize {
         let available = max(1, viewportWidth - GlassTheme.contentInset * 2)
-        let columns = max(1, Int((available + 20) / 240))
-        let width = floor(max(1, (available - CGFloat(columns - 1) * 20) / CGFloat(columns)))
-        return NSSize(width: width, height: ceil(width * 9 / 16 + (history ? 111 : 82)))
+        let columns = max(1, Int((available + columnSpacing) / (minimumCardWidth + columnSpacing)))
+        let width = floor(
+            max(1, (available - CGFloat(columns - 1) * columnSpacing) / CGFloat(columns)))
+        // Match the SwiftUI card's title, author row, spacing, and bottom padding.
+        let contentHeight = 10 + titleHeight + 8 + authorAvatarSize + 6
+        let historyHeight = history ? 10 + historyMetadataHeight + 6 : 0
+        return NSSize(width: width, height: ceil(width * 9 / 16 + contentHeight + historyHeight))
     }
 }
 
@@ -29,20 +39,27 @@ struct NativeVideoGrid: NSViewRepresentable {
         collection.delegate = context.coordinator
         collection.dataSource = context.coordinator
         let layout = NSCollectionViewFlowLayout()
-        layout.minimumInteritemSpacing = 20
+        layout.minimumInteritemSpacing = VideoGridMetrics.columnSpacing
         layout.minimumLineSpacing = 26
-        layout.sectionInset = NSEdgeInsets(top: 12, left: GlassTheme.contentInset, bottom: 12, right: GlassTheme.contentInset)
+        layout.sectionInset = NSEdgeInsets(
+            top: 12, left: GlassTheme.contentInset, bottom: 12, right: GlassTheme.contentInset)
         collection.collectionViewLayout = layout
         collection.register(VideoGridItem.self, forItemWithIdentifier: Coordinator.itemID)
-        collection.register(VideoGridFooter.self, forSupplementaryViewOfKind: NSCollectionView.elementKindSectionFooter,
+        collection.register(
+            VideoGridFooter.self,
+            forSupplementaryViewOfKind: NSCollectionView.elementKindSectionFooter,
             withIdentifier: Coordinator.footerID)
         collection.frame = scroll.contentView.bounds
         collection.autoresizingMask = [.width]
         scroll.documentView = collection
         context.coordinator.collection = collection
         context.coordinator.scroll = scroll
-        collection.didResize = { [weak coordinator = context.coordinator] in coordinator?.updateLayout() }
-        scroll.didScroll = { [weak coordinator = context.coordinator] in coordinator?.beginScrolling() }
+        collection.didResize = { [weak coordinator = context.coordinator] in
+            coordinator?.updateLayout()
+        }
+        scroll.didScroll = { [weak coordinator = context.coordinator] in
+            coordinator?.beginScrolling()
+        }
         context.coordinator.observeBounds()
         return scroll
     }
@@ -56,7 +73,8 @@ struct NativeVideoGrid: NSViewRepresentable {
         view.didScroll = nil
     }
 
-    @MainActor final class Coordinator: NSObject, NSCollectionViewDataSource, NSCollectionViewDelegate {
+    @MainActor
+    final class Coordinator: NSObject, NSCollectionViewDataSource, NSCollectionViewDelegate {
         static let itemID = NSUserInterfaceItemIdentifier("video-card")
         static let footerID = NSUserInterfaceItemIdentifier("video-footer")
         let model: AppModel
@@ -69,19 +87,26 @@ struct NativeVideoGrid: NSViewRepresentable {
         var idleWork: DispatchWorkItem?
         var checkScheduled = false
 
-        init(model: AppModel, active: Bool) { self.model = model; self.active = active }
+        init(model: AppModel, active: Bool) {
+            self.model = model
+            self.active = active
+        }
 
         func update(active: Bool) {
             let activityChanged = self.active != active
             self.active = active
-            if !active { interaction.scrolling = false; model.hoverPreview.stop() }
+            if !active {
+                interaction.scrolling = false
+                model.hoverPreview.stop()
+            }
             guard let collection else { return }
             let old = videos
             videos = model.videos
             updateLayout()
             if old != videos {
                 if videos.count > old.count && Array(videos.prefix(old.count)) == old {
-                    collection.insertItems(at: Set((old.count..<videos.count).map { IndexPath(item: $0, section: 0) }))
+                    collection.insertItems(
+                        at: Set((old.count..<videos.count).map { IndexPath(item: $0, section: 0) }))
                 } else {
                     collection.reloadData()
                     scroll?.contentView.scroll(to: .zero)
@@ -89,20 +114,29 @@ struct NativeVideoGrid: NSViewRepresentable {
             }
             if activityChanged {
                 for case let item as VideoGridItem in collection.visibleItems() {
-                    if let index = collection.indexPath(for: item)?.item, videos.indices.contains(index) {
-                        item.configure(video: videos[index], model: model, interaction: interaction, active: active)
+                    if let index = collection.indexPath(for: item)?.item,
+                        videos.indices.contains(index)
+                    {
+                        item.configure(
+                            video: videos[index], model: model, interaction: interaction,
+                            active: active)
                     }
                 }
             }
-            for case let footer as VideoGridFooter in collection.visibleSupplementaryViews(ofKind: NSCollectionView.elementKindSectionFooter) {
+            for case let footer as VideoGridFooter in collection.visibleSupplementaryViews(
+                ofKind: NSCollectionView.elementKindSectionFooter)
+            {
                 footer.configure(model: model)
             }
             scheduleBottomCheck()
         }
 
         func updateLayout() {
-            guard let collection, let scroll, let layout = collection.collectionViewLayout as? NSCollectionViewFlowLayout else { return }
-            let size = VideoGridMetrics.itemSize(viewportWidth: scroll.contentView.bounds.width,
+            guard let collection, let scroll,
+                let layout = collection.collectionViewLayout as? NSCollectionViewFlowLayout
+            else { return }
+            let size = VideoGridMetrics.itemSize(
+                viewportWidth: scroll.contentView.bounds.width,
                 history: videos.contains { $0.viewedAt != nil })
             let footerSize = NSSize(width: size.width, height: model.hasMore ? 56 : 0)
             if layout.itemSize != size || layout.footerReferenceSize != footerSize {
@@ -115,10 +149,12 @@ struct NativeVideoGrid: NSViewRepresentable {
         func observeBounds() {
             guard let scroll else { return }
             scroll.contentView.postsBoundsChangedNotifications = true
-            boundsObserver = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification,
-                object: scroll.contentView, queue: .main) { [weak self] _ in
-                    MainActor.assumeIsolated { self?.scheduleBottomCheck() }
-                }
+            boundsObserver = NotificationCenter.default.addObserver(
+                forName: NSView.boundsDidChangeNotification,
+                object: scroll.contentView, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.scheduleBottomCheck() }
+            }
         }
 
         func beginScrolling() {
@@ -151,24 +187,41 @@ struct NativeVideoGrid: NSViewRepresentable {
             model.hoverPreview.stop()
         }
 
-        func collectionView(_ collectionView: NSCollectionView, shouldSelectItemsAt indexPaths: Set<IndexPath>) -> Set<IndexPath> {
+        func collectionView(
+            _ collectionView: NSCollectionView, shouldSelectItemsAt indexPaths: Set<IndexPath>
+        ) -> Set<IndexPath> {
             // SwiftUI buttons handle activation; avoid adding a second selection style.
             []
         }
-        func collectionView(_ collectionView: NSCollectionView, didEndDisplaying item: NSCollectionViewItem,
-            forRepresentedObjectAt indexPath: IndexPath) {
+        func collectionView(
+            _ collectionView: NSCollectionView, didEndDisplaying item: NSCollectionViewItem,
+            forRepresentedObjectAt indexPath: IndexPath
+        ) {
             (item as? VideoGridItem)?.stopPreview()
         }
 
-        func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { videos.count }
-        func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
-            let item = collectionView.makeItem(withIdentifier: Self.itemID, for: indexPath) as! VideoGridItem
-            item.configure(video: videos[indexPath.item], model: model, interaction: interaction, active: active)
+        func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int)
+            -> Int
+        { videos.count }
+        func collectionView(
+            _ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath
+        ) -> NSCollectionViewItem {
+            let item =
+                collectionView.makeItem(withIdentifier: Self.itemID, for: indexPath)
+                as! VideoGridItem
+            item.configure(
+                video: videos[indexPath.item], model: model, interaction: interaction,
+                active: active)
             return item
         }
-        func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: NSCollectionView.SupplementaryElementKind,
-            at indexPath: IndexPath) -> NSView {
-            let footer = collectionView.makeSupplementaryView(ofKind: kind, withIdentifier: Self.footerID, for: indexPath) as! VideoGridFooter
+        func collectionView(
+            _ collectionView: NSCollectionView,
+            viewForSupplementaryElementOfKind kind: NSCollectionView.SupplementaryElementKind,
+            at indexPath: IndexPath
+        ) -> NSView {
+            let footer =
+                collectionView.makeSupplementaryView(
+                    ofKind: kind, withIdentifier: Self.footerID, for: indexPath) as! VideoGridFooter
             footer.configure(model: model)
             return footer
         }
@@ -206,7 +259,8 @@ final class VideoGridItem: NSCollectionViewItem {
         _ = view
         videoID = video.id
         preview = model.hoverPreview
-        host?.rootView = AnyView(HostedVideoCard(video: video, model: model, interaction: interaction, active: active))
+        host?.rootView = AnyView(
+            HostedVideoCard(video: video, model: model, interaction: interaction, active: active))
     }
     func stopPreview() {
         if let videoID { preview?.stop(ifMatching: videoID) }
@@ -230,8 +284,10 @@ final class VideoGridFooter: NSView, NSCollectionViewElement {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     func configure(model: AppModel) {
         host.frame = bounds
-        host.rootView = AnyView(Button(model.loading ? "加载中…" : "加载更多") { model.refresh(more: true) }
-            .disabled(model.loading).frame(maxWidth: .infinity, maxHeight: .infinity))
+        host.rootView = AnyView(
+            Button(model.loading ? "加载中…" : "加载更多") { model.refresh(more: true) }
+                .font(GlassTheme.labelFont).controlSize(.large)
+                .disabled(model.loading).frame(maxWidth: .infinity, maxHeight: .infinity))
     }
 }
 

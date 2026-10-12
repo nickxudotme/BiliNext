@@ -17,10 +17,13 @@ struct LoginView: View {
                 Button {
                     dismiss()
                 } label: {
-                    Image(systemName: "xmark").frame(width: 28, height: 28)
-                }.buttonStyle(InteractionButtonStyle()).chromeSurface(in: Circle(), interactive: true).accessibilityLabel("关闭")
+                    Image(systemName: "xmark").font(GlassTheme.labelFont).iconControlFrame()
+                }.buttonStyle(InteractionButtonStyle()).chromeSurface(
+                    in: Circle(), interactive: true
+                ).accessibilityLabel("关闭")
             }
-            Text("使用哔哩哔哩手机客户端扫码确认").foregroundStyle(.secondary)
+            Text("使用哔哩哔哩手机客户端扫码确认").font(GlassTheme.bodyFont).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
             Group {
                 if let image {
                     Image(nsImage: image).interpolation(.none).resizable().scaledToFit().padding(12)
@@ -29,9 +32,12 @@ struct LoginView: View {
                     ProgressView()
                 }
             }.frame(width: 220, height: 220)
-            Text(status).font(.callout).multilineTextAlignment(.center)
-            if failed { Button("刷新二维码") { retry = UUID() }.buttonStyle(.glass) }
-            Text(model.credentialNotice).font(.caption).foregroundStyle(.secondary)
+            Text(status).font(GlassTheme.bodyFont).multilineTextAlignment(.center)
+            if failed {
+                Button("刷新二维码") { retry = UUID() }.buttonStyle(.glass).controlSize(.large)
+                    .font(GlassTheme.labelFont)
+            }
+            Text(model.credentialNotice).font(GlassTheme.metadataFont).foregroundStyle(.secondary)
         }.padding(GlassTheme.contentInset).frame(width: 380)
             .background { DetailSurface() }
             .task(id: retry) { await login() }
