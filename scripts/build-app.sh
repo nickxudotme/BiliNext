@@ -9,7 +9,13 @@ if [ -z "$signing_identity" ] || [ "$signing_identity" = "-" ]; then
     printf '%s\n' 'Set BILINEXT_SIGNING_IDENTITY or .signing-identity to a persistent code-signing certificate. Ad-hoc signing causes repeated Keychain prompts.' >&2
     exit 1
 fi
-build_configuration="${BILINEXT_BUILD_CONFIGURATION:-release}"
+# Local iteration uses the existing development-file backend. Self-signed Release
+# binaries get a new Keychain partition (cdhash) whenever their contents change.
+build_configuration="${BILINEXT_BUILD_CONFIGURATION:-debug}"
+case "$build_configuration" in
+    debug|release) ;;
+    *) printf '%s\n' 'BILINEXT_BUILD_CONFIGURATION must be debug or release.' >&2; exit 1 ;;
+esac
 swift build -c "$build_configuration"
 bin_dir="$(swift build -c "$build_configuration" --show-bin-path)"
 app_dir="$PWD/build/BiliNext.app"

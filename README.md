@@ -12,6 +12,8 @@ open build/BiliNext.app
 swift test
 ```
 
+默认生成签名 Debug 开发包，沿用下述本机开发会话后端，日常重编译不读取钥匙串。正式包需显式运行 `BILINEXT_BUILD_CONFIGURATION=release bash scripts/build-app.sh`；Release 继续只使用钥匙串，不回退到开发文件。
+
 保持持久证书签名，但不要认为本地自签证书已经解决钥匙串提示：实际排查发现，旧文件型钥匙串还有基于 `cdhash` 的 partition 限制，稳定 designated requirement 并不足够。正式分发仍需处理 Apple 开发／Developer ID 签名与公证。
 
 开发期间，`DEBUG` 构建将会话存到 `~/Library/Application Support/BiliNext/Development/login-session.json`。目录权限为 0700，文件为 0600，未加密且不在仓库中；这是用户明确选择的开发便利性取舍。首次迁移只静默尝试读取旧钥匙串，拒绝时重新扫码一次。已有开发会话文件时不访问钥匙串；退出写入空记录，防止下次启动重新导入旧登录。旧钥匙串条目保留给正式版。
