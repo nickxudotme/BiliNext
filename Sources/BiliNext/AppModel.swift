@@ -127,6 +127,7 @@ final class AppModel: ObservableObject {
     @Published var qualityID = 64
     var playbackCodec = ""
     @Published var qualities: [PlaybackQuality] = []
+    @Published var highEnergy: HighEnergyCurve?
     var qualityTask: Task<Void, Never>?
     var qualitySwitchState: (position: Double, resume: Bool)?
     var playbackIntent = false

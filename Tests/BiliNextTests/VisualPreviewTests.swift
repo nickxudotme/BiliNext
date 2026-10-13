@@ -1,4 +1,5 @@
 import AppKit
+import BiliNextCore
 import SwiftUI
 import Testing
 
@@ -29,4 +30,32 @@ private func renderPreview(_ view: some View, name: String) throws {
     .frame(width: 1180, height: 680).background(GlassTheme.canvas)
     .environment(\.colorScheme, .dark)
     try renderPreview(view, name: "bilinext-loading-states")
+}
+
+@MainActor
+@Test func visualPreviewPlayerControls() throws {
+    guard ProcessInfo.processInfo.environment["BILINEXT_RENDER_PREVIEW"] == "1" else { return }
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let model = AppModel(sessionStore: SessionStore(directory: directory))
+    model.duration = 754
+    model.time = 291
+    model.quality = "1080P 高清"
+    let samples: [Double] = (0..<50).map { index in
+        let wave: Double = 35 * sin(Double(index) / 4)
+        return 40 + wave + Double(index % 7) * 6
+    }
+    model.highEnergy = HighEnergyCurve(stepSeconds: 15, samples: samples)
+    let view = CustomPlayerView(model: model, danmaku: model.danmaku)
+        .frame(width: 960, height: 540)
+    try renderPreview(view, name: "bilinext-player-controls")
+    var scrubbing = false
+    var scrubTime = 291.0
+    let scrubber = PlaybackScrubber(
+        time: 291, duration: 754, buffered: 380, activity: samples, showsActivity: true,
+        scrubbing: Binding(get: { scrubbing }, set: { scrubbing = $0 }),
+        scrubTime: Binding(get: { scrubTime }, set: { scrubTime = $0 }), seek: { _ in }
+    )
+    .padding(20).frame(width: 760).background(.black)
+    try renderPreview(scrubber, name: "bilinext-scrubber")
 }

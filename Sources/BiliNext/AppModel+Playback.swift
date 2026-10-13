@@ -162,6 +162,14 @@ extension AppModel {
         duration = 0
         danmaku.configure(cid: cid)
         danmaku.update(time: position, duration: 0, api: api)
+        highEnergy = nil
+        let aid = detail?.video.aid
+        Task {
+            // Optional decoration: a missing or failed curve leaves the plain progress bar.
+            let curve = try? await api.highEnergy(aid: aid, bvid: id, cid: cid)
+            guard generation == videoGeneration else { return }
+            highEnergy = curve
+        }
         // Subtitles are independent: media failure must not discard a readable transcript.
         subtitleTask = Task {
             do {
