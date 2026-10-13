@@ -15,6 +15,7 @@ struct VideoCardView: View {
     @Environment(\.cardGridScrolling) private var scrolling
     @AppStorage("cards.hoverPreview") private var previewEnabled = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var inWatchLater: Bool { model.menu == BrowseDestination.watchLater }
 
     var body: some View {
         Button {
@@ -124,9 +125,9 @@ struct VideoCardView: View {
                         preview.stop()
                         model.open(video, background: true)
                     }
-                    Button(model.menu == "稍后再看" ? "从稍后再看移除" : "加入稍后再看") {
+                    Button(inWatchLater ? "从稍后再看移除" : "加入稍后再看") {
                         preview.stop()
-                        model.changeWatchLater(video, remove: model.menu == "稍后再看")
+                        model.changeWatchLater(video, remove: inWatchLater)
                     }.disabled(model.libraryBusy.contains(video.id))
                     Divider()
                     Toggle("悬停静音预览", isOn: $previewEnabled)
@@ -179,9 +180,9 @@ struct VideoCardView: View {
                 preview.stop()
                 model.open(video, background: true)
             }
-            Button(model.menu == "稍后再看" ? "从稍后再看移除" : "加入稍后再看") {
+            Button(inWatchLater ? "从稍后再看移除" : "加入稍后再看") {
                 preview.stop()
-                model.changeWatchLater(video, remove: model.menu == "稍后再看")
+                model.changeWatchLater(video, remove: inWatchLater)
             }.disabled(model.libraryBusy.contains(video.id))
         }
     }

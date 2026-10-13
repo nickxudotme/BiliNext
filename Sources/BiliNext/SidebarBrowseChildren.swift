@@ -6,11 +6,11 @@ private let dynamicDestinations = ["视频", "全部"]
 struct SidebarBrowseChildren: View {
     @ObservedObject var page: AppModel
     @ObservedObject var owner: AppModel
-    let destination: String
+    let destination: BrowseDestination
 
     var body: some View {
         VStack(spacing: 2) {
-            if destination == "收藏" {
+            if destination == .favorites {
                 ForEach(page.folders) { folder in
                     child(folder.title, count: folder.count, selected: page.folderID == folder.id) {
                         owner.selectFavoriteFolder(folder.id)
@@ -23,11 +23,11 @@ struct SidebarBrowseChildren: View {
                         .padding(.vertical, 6)
                 }
             } else {
-                ForEach(destination == "首页" ? homeDestinations : dynamicDestinations, id: \.self) {
+                ForEach(destination == .home ? homeDestinations : dynamicDestinations, id: \.self) {
                     title in
                     child(
                         title == "番剧" ? "番剧影视" : title,
-                        selected: (destination == "首页" ? page.homeSection : page.dynamicMode)
+                        selected: (destination == .home ? page.homeSection : page.dynamicMode)
                             == title
                     ) {
                         owner.selectBrowseSection(destination: destination, section: title)
@@ -48,13 +48,13 @@ struct SidebarBrowseChildren: View {
 }
 
 struct SidebarBrowsePlaceholder: View {
-    let destination: String
+    let destination: BrowseDestination
     let select: (String) -> Void
     var body: some View {
-        if destination == "收藏" {
+        if destination == .favorites {
             SidebarChildRow(title: "查看收藏夹", selected: false) { select("") }
         } else {
-            ForEach(destination == "首页" ? homeDestinations : dynamicDestinations, id: \.self) {
+            ForEach(destination == .home ? homeDestinations : dynamicDestinations, id: \.self) {
                 title in
                 SidebarChildRow(title: title == "番剧" ? "番剧影视" : title, selected: false) {
                     select(title)

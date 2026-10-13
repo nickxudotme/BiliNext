@@ -32,9 +32,9 @@ final class AppModel: ObservableObject {
             },
             onSuccess: { [weak self] in
                 guard let self else { return }
-                for history in self.browseInstances.values where history.menu == "历史" {
+                for history in self.browseInstances.values where history.menu == .history {
                     history.cachedLists = [:]
-                    if self.selected == nil && self.menu == "历史" { history.refresh() }
+                    if self.selected == nil && self.menu == .history { history.refresh() }
                 }
             }, onError: { error in NSLog("Watch history outbox: %@", error.localizedDescription) })
         ownedHistoryOutbox = outbox
@@ -72,7 +72,7 @@ final class AppModel: ObservableObject {
     @Published var buffering = false
     @Published var playbackRate = 1.0
     @Published var theater = false
-    @Published var menu = "动态"
+    @Published var menu = BrowseDestination.dynamic
     @Published var tabs: [SessionTab] = []
     @Published var selected: String?
     @Published var closed: [SessionTab] = []

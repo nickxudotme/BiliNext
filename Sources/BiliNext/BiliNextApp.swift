@@ -24,7 +24,7 @@ struct BiliNextApp: App {
         .commands {
             CommandGroup(after: .newItem) {
                 Button("下载管理") { model.downloadsPresented = true }.keyboardShortcut("j")
-                Button("搜索视频") { model.navigate("搜索") }.keyboardShortcut("l")
+                Button("搜索视频") { model.navigate(.search) }.keyboardShortcut("l")
                 Button("关闭视频标签") { if let id = model.selected { model.close(id) } }
                     .keyboardShortcut("w")
                     .disabled(model.selected == nil)

@@ -44,7 +44,7 @@ private func makeGridReturnFixture(count: Int = 24) -> GridReturnFixture {
         model.observer = nil
     }
     model.playbackTabActive = false
-    model.menu = "首页"
+    model.menu = .home
     model.videos = (0..<count).map { Video(bvid: "BV_grid_\($0)", title: "卡片 \($0)") }
     model.browseRevision = 1
     model.page = 3

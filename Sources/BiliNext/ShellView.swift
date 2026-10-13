@@ -5,7 +5,7 @@ struct ShellView: View {
     @ObservedObject var model: AppModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let drawerWidth: CGFloat = 220
-    @State private var expandedMenus: Set<String> = []
+    @State private var expandedMenus: Set<BrowseDestination> = []
     @State private var pinned = true
     @State private var fullScreen = false
     @State private var pinnedBeforePlaybackFullscreen: Bool?
@@ -15,10 +15,6 @@ struct ShellView: View {
     @State private var hideTask: Task<Void, Never>?
     @State private var revealTask: Task<Void, Never>?
     @State private var pointerZone = -1
-    private let menus = [
-        ("首页", "house"), ("搜索", "magnifyingglass"), ("动态", "rectangle.stack"), ("收藏", "star"),
-        ("历史", "clock.arrow.circlepath"), ("稍后再看", "clock"),
-    ]
 
     var body: some View {
         ZStack {
@@ -172,20 +168,21 @@ struct ShellView: View {
             }
             ScrollView {
                 VStack(spacing: 2) {
-                    ForEach(menus, id: \.0) { item in
-                        let hasChildren = ["首页", "动态", "收藏"].contains(item.0)
-                        let active = model.menu == item.0 && model.selected == nil
+                    ForEach(BrowseDestination.allCases, id: \.self) { item in
+                        let hasChildren = item.hasSidebarChildren
+                        let active = model.menu == item && model.selected == nil
                         HStack(spacing: 0) {
                             Button {
-                                model.navigate(item.0)
-                                if hasChildren { expandedMenus = [item.0] }
+                                model.navigate(item)
+                                if hasChildren { expandedMenus = [item] }
                             } label: {
                                 HStack(spacing: 8) {
-                                    Image(systemName: item.1).font(.system(size: 17)).frame(
-                                        width: 20
-                                    )
-                                    .foregroundStyle(active ? GlassTheme.accent : .secondary)
-                                    Text(item.0)
+                                    Image(systemName: item.systemImage).font(.system(size: 17))
+                                        .frame(
+                                            width: 20
+                                        )
+                                        .foregroundStyle(active ? GlassTheme.accent : .secondary)
+                                    Text(item.title)
                                     Spacer(minLength: 0)
                                 }.padding(.leading, 10).frame(
                                     height: GlassTheme.navigationRowHeight
@@ -195,39 +192,39 @@ struct ShellView: View {
                             if hasChildren {
                                 Button {
                                     withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) {
-                                        if expandedMenus.contains(item.0) {
-                                            expandedMenus.remove(item.0)
+                                        if expandedMenus.contains(item) {
+                                            expandedMenus.remove(item)
                                         } else {
-                                            expandedMenus.insert(item.0)
+                                            expandedMenus.insert(item)
                                         }
                                     }
                                 } label: {
                                     Image(systemName: "chevron.right")
                                         .font(.system(size: 11, weight: .semibold))
                                         .rotationEffect(
-                                            .degrees(expandedMenus.contains(item.0) ? 90 : 0)
+                                            .degrees(expandedMenus.contains(item) ? 90 : 0)
                                         )
                                         .foregroundStyle(.secondary).frame(
                                             width: 28, height: GlassTheme.navigationRowHeight)
                                 }.buttonStyle(InteractionButtonStyle(kind: .row))
                                     .accessibilityLabel(
-                                        (expandedMenus.contains(item.0) ? "折叠" : "展开") + item.0)
+                                        (expandedMenus.contains(item) ? "折叠" : "展开") + item.title)
                             }
                         }
                         .background {
-                            NavigationSelection(selected: active && !expandedMenus.contains(item.0))
+                            NavigationSelection(selected: active && !expandedMenus.contains(item))
                         }
                         .fontWeight(active ? .semibold : .regular)
-                        if hasChildren && expandedMenus.contains(item.0) {
-                            if let page = model.loadedBrowseInstance(for: item.0) {
-                                SidebarBrowseChildren(page: page, owner: model, destination: item.0)
+                        if hasChildren && expandedMenus.contains(item) {
+                            if let page = model.loadedBrowseInstance(for: item) {
+                                SidebarBrowseChildren(page: page, owner: model, destination: item)
                             } else {
-                                SidebarBrowsePlaceholder(destination: item.0) { title in
-                                    if item.0 == "收藏" {
-                                        model.navigate(item.0)
+                                SidebarBrowsePlaceholder(destination: item) { title in
+                                    if item == .favorites {
+                                        model.navigate(item)
                                     } else {
                                         model.selectBrowseSection(
-                                            destination: item.0, section: title)
+                                            destination: item, section: title)
                                     }
                                 }
                             }

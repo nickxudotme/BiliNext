@@ -41,7 +41,7 @@ private func browsingModel(
                 UUID().uuidString)),
         managesPlaybackTabs: managesPlaybackTabs, api: BilibiliAPI(restoreSession: false),
         browsePageLoader: loader)
-    model.menu = "首页"
+    model.menu = .home
     return model
 }
 
@@ -58,7 +58,7 @@ private func browsingVideo(_ number: Int) -> Video {
             videos: [browsingVideo(request.page)], next: String(request.page + 1))
     }
     workspace.refresh()
-    let page = workspace.browseInstance(for: "首页")
+    let page = workspace.browseInstance(for: .home)
     await page.browseTask?.value
     #expect(requests == [1, 2, 3])
     #expect(page.videos.count == 3 && page.browseRevision == 1 && workspace.videos.isEmpty)
@@ -107,7 +107,7 @@ private func browsingVideo(_ number: Int) -> Video {
         return BrowsePageResult(
             videos: [browsingVideo(request.page)], next: String(request.page + 1))
     }
-    model.menu = "搜索"
+    model.menu = .search
     model.query = "已提交关键词"
     model.refresh()
     await model.browseTask?.value
@@ -130,15 +130,15 @@ func browsingPrefetchFollowsNumericNextPagesAndSnapshotsSelection(_ destination:
         let next = request.page == 1 ? "3" : request.page == 3 ? "7" : nil
         return BrowsePageResult(
             videos: [browsingVideo(request.page)], next: next,
-            folderID: request.destination == "收藏" ? 42 : nil)
+            folderID: request.destination == .favorites ? 42 : nil)
     }
     model.profile = UserProfile(id: 8, name: "测试用户")
     switch destination {
     case "推荐", "热门": model.homeSection = destination
     case "历史搜索":
-        model.menu = "历史"
+        model.menu = .history
         model.libraryQuery = "  风景  "
-    default: model.menu = destination
+    default: model.menu = BrowseDestination(rawValue: destination)!
     }
     model.query = "  测试关键词  "
     model.searchOrder = "pubdate"
@@ -161,9 +161,10 @@ func browsingPrefetchFollowsNumericNextPagesAndSnapshotsSelection(_ destination:
 }
 
 @MainActor
-@Test(arguments: ["动态", "收藏", "历史", "稍后再看"])
-func browsingPrefetchExplicitNextSurvivesFilteredEmptyAndDuplicatePages(_ destination: String) async
-{
+@Test(arguments: [BrowseDestination.dynamic, .favorites, .history, .watchLater])
+func browsingPrefetchExplicitNextSurvivesFilteredEmptyAndDuplicatePages(
+    _ destination: BrowseDestination
+) async {
     var requests: [Int] = []
     let model = browsingModel { request in
         requests.append(request.page)
@@ -196,7 +197,7 @@ func browsingPrefetchExplicitNextSurvivesFilteredEmptyAndDuplicatePages(_ destin
             videos: request.page <= 3 ? [] : [browsingVideo(4)],
             next: request.page < 4 ? String(request.page + 1) : nil)
     }
-    model.menu = "历史"
+    model.menu = .history
     model.profile = UserProfile(id: 8, name: "测试用户")
     model.refresh()
     await model.browseTask?.value
@@ -219,7 +220,7 @@ func browsingPrefetchExplicitNextSurvivesFilteredEmptyAndDuplicatePages(_ destin
         requests.append(request.offset)
         return BrowsePageResult(videos: [browsingVideo(request.page)], next: "same-cursor")
     }
-    model.menu = "动态"
+    model.menu = .dynamic
     model.profile = UserProfile(id: 8, name: "测试用户")
     model.refresh()
     await model.browseTask?.value
@@ -239,7 +240,7 @@ func browsingPrefetchExplicitNextSurvivesFilteredEmptyAndDuplicatePages(_ destin
             ? "a" : request.offset == "a" ? "b" : request.offset == "b" ? "c" : "a"
         return BrowsePageResult(videos: [browsingVideo(request.page)], next: next)
     }
-    model.menu = "历史"
+    model.menu = .history
     model.profile = UserProfile(id: 8, name: "测试用户")
     model.refresh()
     await model.browseTask?.value
@@ -258,7 +259,7 @@ func browsingPrefetchDoesNotFollowInvalidOrRepeatedNumericNext(_ next: String) a
         requests.append(request.page)
         return BrowsePageResult(videos: [browsingVideo(1)], next: next)
     }
-    model.menu = "收藏"
+    model.menu = .favorites
     model.profile = UserProfile(id: 8, name: "测试用户")
     model.refresh()
     await model.browseTask?.value
@@ -364,7 +365,7 @@ func browsingPrefetchArrayEndpointsStopEmptyOrFullyRepeatedPages(_ duplicate: Bo
         await newGate.suspend()
         return BrowsePageResult(videos: [browsingVideo(1)], next: nil)
     }
-    model.menu = "搜索"
+    model.menu = .search
     model.query = "旧搜索"
     model.refresh()
     await oldGate.waitForEntry()
@@ -391,7 +392,7 @@ func browsingPrefetchArrayEndpointsStopEmptyOrFullyRepeatedPages(_ duplicate: Bo
         return BrowsePageResult(
             videos: [browsingVideo(request.page)], next: request.offset == nil ? "old" : nil)
     }
-    model.menu = "动态"
+    model.menu = .dynamic
     model.profile = UserProfile(id: 8, name: "测试用户")
     model.videos = [browsingVideo(90)]
     model.page = 1

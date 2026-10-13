@@ -152,11 +152,11 @@ extension AppModel {
         tabSubscriptions[key] = subscriptions
     }
 
-    func browsePageID(for destination: String) -> String {
+    func browsePageID(for destination: BrowseDestination) -> String {
         switch destination {
-        case "首页": return "首页:\(homeSection)"
-        case "动态": return "动态:\(dynamicMode)"
-        case "收藏":
+        case .home: return "首页:\(homeSection)"
+        case .dynamic: return "动态:\(dynamicMode)"
+        case .favorites:
             let key = "收藏:\(folderID)"
             if browseInstances[key] != nil { return key }
             // The default folder's original key remains stable after its real ID arrives.
@@ -167,21 +167,21 @@ extension AppModel {
             }
             if folderID != 0,
                 let loaded = browseInstances.sorted(by: { $0.key < $1.key }).first(where: {
-                    $0.value.menu == "收藏" && $0.value.folderID == folderID
+                    $0.value.menu == .favorites && $0.value.folderID == folderID
                 })
             {
                 return loaded.key
             }
             return key
-        default: return destination
+        case .search, .history, .watchLater: return destination.rawValue
         }
     }
 
-    func loadedBrowseInstance(for destination: String) -> AppModel? {
+    func loadedBrowseInstance(for destination: BrowseDestination) -> AppModel? {
         browseInstances[browsePageID(for: destination)]
     }
 
-    func browseInstance(for destination: String) -> AppModel {
+    func browseInstance(for destination: BrowseDestination) -> AppModel {
         let key = browsePageID(for: destination)
         if let existing = browseInstances[key] { return existing }
         let instance = AppModel(
@@ -193,11 +193,13 @@ extension AppModel {
         instance.dynamicMode = dynamicMode
         instance.folderID = folderID
         instance.playbackTabActive = false
-        if destination == "收藏" {
+        if destination == .favorites {
             instance.folders =
                 folders.isEmpty
-                ? browseInstances.values.first(where: { $0.menu == "收藏" && !$0.folders.isEmpty })?
-                    .folders ?? []
+                ? browseInstances.values.first(where: {
+                    $0.menu == .favorites && !$0.folders.isEmpty
+                })?
+                .folders ?? []
                 : folders
         }
         connectPage(instance, key: "browse:" + key)

@@ -118,18 +118,18 @@ func playbackTabSwitchRetainsLoadedMedia() async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
     let workspace = AppModel(sessionStore: SessionStore(directory: directory))
-    let home = workspace.browseInstance(for: "首页")
-    let dynamic = workspace.browseInstance(for: "动态")
-    let search = workspace.browseInstance(for: "搜索")
+    let home = workspace.browseInstance(for: .home)
+    let dynamic = workspace.browseInstance(for: .dynamic)
+    let search = workspace.browseInstance(for: .search)
     home.homeSection = "热门"
     home.videos = [Video(bvid: "BV1111111111", title: "保留的内容")]
     dynamic.dynamicMode = "全部"
     search.query = "4K 风景"
-    workspace.navigate("首页")
-    workspace.navigate("动态")
+    workspace.navigate(.home)
+    workspace.navigate(.dynamic)
     workspace.moveHistory(-1)
-    #expect(workspace.menu == "首页")
-    #expect(workspace.browseInstance(for: "首页") === home)
+    #expect(workspace.menu == .home)
+    #expect(workspace.browseInstance(for: .home) === home)
     #expect(home.homeSection == "热门" && home.videos.count == 1)
     #expect(dynamic.dynamicMode == "全部")
     #expect(search.query == "4K 风景")
