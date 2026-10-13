@@ -5,8 +5,8 @@ import SwiftUI
 enum VideoGridMetrics {
     static let minimumCardWidth: CGFloat = 260
     static let columnSpacing: CGFloat = 20
-    static let titleHeight: CGFloat = 48
-    static let authorAvatarSize: CGFloat = 22
+    static let titleHeight: CGFloat = 46
+    static let authorAvatarSize: CGFloat = 20
     static let historyMetadataHeight: CGFloat = 36
 
     static func itemSize(viewportWidth: CGFloat, history: Bool) -> NSSize {

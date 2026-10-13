@@ -31,6 +31,8 @@ struct InteractionButtonStyle: ButtonStyle {
         @State private var hovered = false
 
         private var highlighted: Bool { enabled && hovered && !scrolling }
+        /// Cards lift instead of drawing a grey plate behind artwork and text.
+        private var fills: Bool { kind != .card }
         private var pressed: Bool { enabled && configuration.isPressed }
         private var tint: Color { destructive ? .red : .primary }
         private var radius: CGFloat {
@@ -47,9 +49,11 @@ struct InteractionButtonStyle: ButtonStyle {
                     RoundedRectangle(cornerRadius: radius)
                         .fill(
                             tint.opacity(
-                                pressed
-                                    ? GlassTheme.pressOpacity
-                                    : highlighted ? GlassTheme.hoverOpacity : 0))
+                                !fills
+                                    ? 0
+                                    : pressed
+                                        ? GlassTheme.pressOpacity
+                                        : highlighted ? GlassTheme.hoverOpacity : 0))
                 }
                 .scaleEffect(reduceMotion ? 1 : pressed ? (kind == .card ? 0.985 : 0.95) : 1)
                 .offset(y: !reduceMotion && kind == .card && highlighted && !pressed ? -2 : 0)
