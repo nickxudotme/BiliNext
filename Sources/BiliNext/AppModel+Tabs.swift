@@ -18,7 +18,8 @@ extension AppModel {
                     video: video, cid: video.historyCID, position: max(0, video.progress ?? 0)))
         }
         if background {
-            toast = "已加入侧栏"
+            if selected != video.id { unseenTabs.insert(video.id) }
+            if !sidebarPinned { toast = "已在后台打开「\(video.title)」" }
             saveSession()
         } else {
             activate(video.id, autoplay: true)
@@ -27,6 +28,7 @@ extension AppModel {
     func close(_ id: String) {
         saveSession()
         closed = tabs.filter { $0.id == id }
+        unseenTabs.remove(id)
         let index = tabs.firstIndex(where: { $0.id == id }) ?? 0
         tabs.removeAll { $0.id == id }
         releasePlaybackTab(id)
@@ -58,6 +60,45 @@ extension AppModel {
             loadBrowseIfNeeded()
         }
     }
+    /// Closes every tab except one, or every tab after it; both stay undoable.
+    func closeOtherTabs(keeping id: String, onlyBelow: Bool = false) {
+        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        saveSession()
+        let closing = tabs.enumerated().filter { offset, _ in
+            onlyBelow ? offset > index : offset != index
+        }.map(\.element)
+        guard !closing.isEmpty else { return }
+        closed = closing
+        for tab in closing {
+            releasePlaybackTab(tab.id)
+            unseenTabs.remove(tab.id)
+        }
+        tabs.removeAll { tab in closing.contains { $0.id == tab.id } }
+        if let selected, !tabs.contains(where: { $0.id == selected }) { activate(id) }
+        saveSession()
+    }
+
+    /// ⌘1–8 pick a tab by position and ⌘9 the last one, as in browsers.
+    func activateTab(number: Int) {
+        guard !tabs.isEmpty else { return }
+        let index = number == 9 ? tabs.count - 1 : number - 1
+        guard tabs.indices.contains(index) else { return }
+        activate(tabs[index].id, autoplay: true)
+    }
+
+    /// ⌃Tab and ⌃⇧Tab step through tabs, wrapping, starting from browsing when none is open.
+    func cycleTab(_ delta: Int) {
+        guard !tabs.isEmpty else { return }
+        let current = selected.flatMap { id in tabs.firstIndex { $0.id == id } }
+        let next = Self.tabIndex(after: current, count: tabs.count, delta: delta)
+        activate(tabs[next].id, autoplay: true)
+    }
+
+    nonisolated static func tabIndex(after current: Int?, count: Int, delta: Int) -> Int {
+        guard let current else { return delta > 0 ? 0 : count - 1 }
+        return ((current + delta) % count + count) % count
+    }
+
     func undoClose() {
         for tab in closed where !tabs.contains(where: { $0.id == tab.id }) { tabs.append(tab) }
         closed = []
@@ -224,6 +265,7 @@ extension AppModel {
         hoverPreview.stop()
         saveSession()
         suspendPlaybackTabs(except: id)
+        unseenTabs.remove(id)
         let instance = playbackInstance(for: tab)
         instance.menu = menu
         selected = id

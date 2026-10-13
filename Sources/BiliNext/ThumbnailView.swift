@@ -9,6 +9,10 @@ private enum ThumbnailStore {
         return cache
     }()
 
+    static func cached(url: URL, pixels: Int) -> CGImage? {
+        cache.object(forKey: "\(url.absoluteString)#\(pixels)" as NSString)
+    }
+
     static func image(url: URL, pixels: Int) async -> CGImage? {
         let key = "\(url.absoluteString)#\(pixels)" as NSString
         if let image = cache.object(forKey: key) { return image }
@@ -45,6 +49,7 @@ struct ThumbnailView<Placeholder: View>: View {
     let pixels: Int
     @ViewBuilder let placeholder: () -> Placeholder
     @State private var image: CGImage?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var requestID: String { "\(url?.absoluteString ?? "")#\(pixels)" }
 
@@ -57,11 +62,12 @@ struct ThumbnailView<Placeholder: View>: View {
             }
         }
         .task(id: requestID) {
-            image = nil
-            guard let url else { return }
+            // Cached artwork appears at once; freshly downloaded artwork fades in.
+            image = url.flatMap { ThumbnailStore.cached(url: $0, pixels: pixels) }
+            guard let url, image == nil else { return }
             let result = await ThumbnailStore.image(url: url, pixels: pixels)
             guard !Task.isCancelled else { return }
-            image = result
+            withAnimation(Motion.standard(reduceMotion)) { image = result }
         }
     }
 }

@@ -34,6 +34,25 @@ struct BiliNextApp: App {
                 )
                 .disabled(model.closed.isEmpty)
             }
+            CommandMenu("标签") {
+                Button("下一个标签") { model.cycleTab(1) }
+                    .keyboardShortcut(.tab, modifiers: .control)
+                Button("上一个标签") { model.cycleTab(-1) }
+                    .keyboardShortcut(.tab, modifiers: [.control, .shift])
+                Divider()
+                ForEach(1..<10) { number in
+                    Button(number == 9 ? "最后一个标签" : "第 \(number) 个标签") {
+                        model.activateTab(number: number)
+                    }
+                    .keyboardShortcut(KeyEquivalent(Character("\(number)")), modifiers: .command)
+                }
+            }
+            CommandGroup(before: .sidebar) {
+                Button(model.sidebarPinned ? "隐藏侧栏" : "固定侧栏") {
+                    model.sidebarPinned.toggle()
+                }
+                .keyboardShortcut("s", modifiers: [.control, .command])
+            }
         }
     }
 }

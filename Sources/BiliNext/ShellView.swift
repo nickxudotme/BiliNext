@@ -7,12 +7,14 @@ struct ShellView: View {
     private let drawerWidth: CGFloat = 220
     private var cardGap: CGFloat { fullScreen ? 0 : GlassTheme.cardGap }
     @State private var expandedMenus: Set<BrowseDestination> = []
-    @State private var pinned = true
+    private var pinned: Bool {
+        get { model.sidebarPinned }
+        nonmutating set { model.sidebarPinned = newValue }
+    }
     @State private var fullScreen = false
     @State private var pinnedBeforePlaybackFullscreen: Bool?
     @State private var revealed = false
     @State private var hovering = false
-    @State private var hoveredTab: String?
     @State private var hideTask: Task<Void, Never>?
     @State private var revealTask: Task<Void, Never>?
     @State private var pointerZone = -1
@@ -109,6 +111,13 @@ struct ShellView: View {
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: pinned)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: revealed)
             .ignoresSafeArea(.container, edges: .top)
+            .onChange(of: model.sidebarPinned) { _, _ in
+                // The menu shortcut toggles pinning without passing through the header button.
+                revealTask?.cancel()
+                hideTask?.cancel()
+                revealed = false
+                pointerZone = -1
+            }
             .onExitCommand {
                 revealTask?.cancel()
                 hideTask?.cancel()
@@ -233,85 +242,7 @@ struct ShellView: View {
             .fixedSize(horizontal: false, vertical: true)
             .onAppear { expandedMenus.insert(model.menu) }
             .onChange(of: model.menu) { _, destination in expandedMenus = [destination] }
-            HStack(spacing: 8) {
-                Rectangle().fill(.primary.opacity(0.10)).frame(height: 1)
-                if hovering && !model.tabs.isEmpty {
-                    Button("clear") { model.clearTabs() }
-                        .buttonStyle(InteractionButtonStyle()).font(GlassTheme.captionFont)
-                        .foregroundStyle(.secondary)
-                        .help(model.selected == nil ? "清空打开的标签，可撤销" : "清空其他标签，保留当前视频，可撤销")
-                }
-            }.frame(height: 24).padding(.horizontal, 14)
-            ScrollView {
-                VStack(spacing: 2) {
-                    ForEach(Array(model.tabs.enumerated()), id: \.element.id) { index, tab in
-                        HStack(spacing: 6) {
-                            AvatarView(url: tab.video.avatar).frame(width: 20, height: 20)
-                            Text(tab.video.title).lineLimit(1).truncationMode(.tail)
-                            Spacer(minLength: 0)
-                            if model.isPlaying(tab.id) {
-                                Button {
-                                    model.togglePlayback()
-                                } label: {
-                                    Image(systemName: "speaker.wave.2.fill").font(.system(size: 12))
-                                        .iconControlFrame(size: 24)
-                                }.buttonStyle(InteractionButtonStyle()).help("暂停")
-                            }
-                            if hoveredTab == tab.id {
-                                Button {
-                                    model.close(tab.id)
-                                } label: {
-                                    Image(systemName: "xmark").font(.system(size: 11))
-                                        .iconControlFrame(size: 24)
-                                }
-                                .buttonStyle(InteractionButtonStyle(destructive: true)).help("关闭标签")
-                                .accessibilityLabel(
-                                    "关闭 \(tab.video.title)")
-                            }
-                        }.font(GlassTheme.labelFont).padding(.horizontal, 10).frame(
-                            height: GlassTheme.tabRowHeight
-                        )
-                        .background {
-                            NavigationSelection(selected: model.selected == tab.id)
-                                .background(
-                                    .primary.opacity(hoveredTab == tab.id ? 0.04 : 0),
-                                    in: RoundedRectangle(cornerRadius: GlassTheme.rowRadius))
-                        }
-                        .animation(
-                            reduceMotion ? nil : .easeOut(duration: 0.16),
-                            value: hoveredTab == tab.id
-                        )
-                        .contentShape(Rectangle()).onTapGesture {
-                            model.activate(tab.id, autoplay: true)
-                        }
-                        .onHover { inside in hoveredTab = inside ? tab.id : nil }
-                        .accessibilityElement(children: .contain)
-                        .accessibilityLabel(tab.video.title)
-                        .accessibilityAddTraits(.isButton)
-                        .accessibilityAction { model.activate(tab.id, autoplay: true) }
-                        .help(tab.video.title)
-                        .contextMenu {
-                            Button("关闭标签") { model.close(tab.id) }
-                            Button("复制链接") {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(
-                                    LiveSession.roomID(tab.id).map {
-                                        "https://live.bilibili.com/\($0)"
-                                    }
-                                        ?? "https://www.bilibili.com/video/\(tab.id)",
-                                    forType: .string
-                                )
-                            }
-                        }
-                    }
-                }.padding(.horizontal, 8)
-            }
-            if !model.closed.isEmpty {
-                Button("撤销关闭") { model.undoClose() }
-                    .buttonStyle(InteractionButtonStyle(kind: .row)).foregroundStyle(.secondary)
-                    .padding(12)
-                    .keyboardShortcut("z", modifiers: .command)
-            }
+            SidebarTabList(model: model, sidebarHovered: hovering)
         }
         .safeAreaInset(edge: .bottom) {
             HStack {

@@ -76,6 +76,9 @@ final class AppModel: ObservableObject {
     @Published var tabs: [SessionTab] = []
     @Published var selected: String?
     @Published var closed: [SessionTab] = []
+    /// Tabs opened in the background and not yet visited, marked in the sidebar.
+    @Published var unseenTabs = Set<String>()
+    @Published var sidebarPinned = true
     @Published var profile: UserProfile?
     var accountGeneration = UUID()
     @Published var query = ""
