@@ -44,21 +44,38 @@ struct VideoCommunityView: View {
                                     video, background: NSEvent.modifierFlags.contains(.command))
                             } label: {
                                 HStack(alignment: .top, spacing: 12) {
-                                    AsyncImage(url: video.cover) {
-                                        $0.resizable().scaledToFill()
-                                    } placeholder: {
-                                        Color.gray.opacity(0.15)
-                                    }.frame(width: 120, height: 72).clipped().clipShape(
-                                        RoundedRectangle(cornerRadius: 6))
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        Text(video.title).font(GlassTheme.bodyFont).lineSpacing(3)
-                                            .lineLimit(2)
-                                        Text(video.author).font(GlassTheme.metadataFont)
-                                            .foregroundStyle(
-                                                .secondary)
+                                    ThumbnailView(url: video.cover, pixels: 320) {
+                                        Color.primary.opacity(0.06)
                                     }
-                                    Spacer()
-                                }.contentShape(Rectangle())
+                                    .frame(width: 128, height: 72).clipped()
+                                    .overlay(alignment: .bottomTrailing) {
+                                        if let duration = video.duration, duration > 0 {
+                                            Text(timestamp(duration))
+                                                .font(GlassTheme.captionFont.weight(.medium))
+                                                .monospacedDigit().foregroundStyle(.white)
+                                                .padding(.horizontal, 5).padding(.vertical, 2)
+                                                .background(
+                                                    .black.opacity(0.55),
+                                                    in: RoundedRectangle(
+                                                        cornerRadius: GlassTheme.badgeRadius)
+                                                )
+                                                .padding(4)
+                                        }
+                                    }
+                                    .clipShape(RoundedRectangle(cornerRadius: GlassTheme.rowRadius))
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        Text(video.title).font(GlassTheme.labelFont.weight(.medium))
+                                            .lineSpacing(3).lineLimit(2)
+                                        Text(video.author).font(GlassTheme.metadataFont)
+                                            .foregroundStyle(.secondary).lineLimit(1)
+                                        if let views = video.viewCount {
+                                            Label(DisplayFormat.count(views), systemImage: "play")
+                                                .font(GlassTheme.captionFont)
+                                                .foregroundStyle(.tertiary)
+                                        }
+                                    }
+                                    Spacer(minLength: 0)
+                                }.padding(4).contentShape(Rectangle())
                             }.buttonStyle(InteractionButtonStyle(kind: .row))
                         }
                     } else {
@@ -75,12 +92,13 @@ struct VideoCommunityView: View {
                         if loading {
                             ProgressView().frame(maxWidth: .infinity)
                         } else if let error {
-                            Text(error).font(GlassTheme.metadataFont).foregroundStyle(.secondary)
-                            Button("重试") { load() }.controlSize(.large).font(GlassTheme.labelFont)
+                            ErrorBanner(message: error) { load() }
                         } else if section == "评论" && comments.isEmpty {
-                            Text("暂无评论").foregroundStyle(.secondary)
+                            ContentUnavailableView(
+                                "还没有评论", systemImage: "bubble.left.and.bubble.right",
+                                description: Text("来抢第一个沙发吧。"))
                         } else if section == "相关推荐" && related.isEmpty {
-                            Text("暂无相关推荐").foregroundStyle(.secondary)
+                            ContentUnavailableView("暂无相关推荐", systemImage: "play.rectangle")
                         }
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
@@ -262,7 +280,7 @@ private struct CommentContent: View {
                 AvatarView(url: comment.avatar).frame(width: 32, height: 32)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(comment.author).font(GlassTheme.bodyFont.weight(.medium)).lineLimit(1)
-                    Text(comment.date, style: .relative)
+                    Text(DisplayFormat.relativeDate(comment.date))
                         .font(GlassTheme.metadataFont).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 0)
@@ -298,7 +316,9 @@ private struct CommentContent: View {
                 Text(comment.text).font(GlassTheme.readingFont).lineSpacing(5)
                     .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 18) {
-                    Label("\(comment.likes)", systemImage: "hand.thumbsup")
+                    Label(
+                        comment.likes > 0 ? DisplayFormat.count(comment.likes) : "点赞",
+                        systemImage: "hand.thumbsup")
                     if count > 0 { Text("\(count) 条回复") }
                 }
                 .font(GlassTheme.metadataFont).foregroundStyle(.secondary)

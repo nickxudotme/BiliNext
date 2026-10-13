@@ -51,10 +51,11 @@ struct PlaybackView: View {
                         updateCursor()
                     } label: {
                         Image(systemName: model.theater ? "chevron.left" : "chevron.right")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(GlassTheme.iconFont.weight(.semibold))
                             .foregroundStyle(.white)
-                            .frame(width: 32, height: 64)
-                            .background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+                            .frame(width: 30, height: 60)
+                            .chromeSurface(in: Capsule())
+                            .environment(\.colorScheme, .dark)
                     }
                     .buttonStyle(InteractionButtonStyle())
                     .help(model.theater ? "展开视频详情" : "收起视频详情")
@@ -223,19 +224,20 @@ private struct PlaybackPanelSwitcher: View {
         HStack(spacing: 0) {
             ForEach(PlaybackPanel.allCases) { tab in
                 Button {
-                    withAnimation(reduceMotion ? nil : .smooth(duration: 0.22)) {
+                    withAnimation(Motion.emphasized(reduceMotion)) {
                         selection = tab
                     }
                 } label: {
                     Text(tab.rawValue)
                         .font(GlassTheme.labelFont.weight(selection == tab ? .semibold : .medium))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(selection == tab ? .primary : .secondary)
                         .frame(maxWidth: .infinity)
                         .frame(height: GlassTheme.controlHeight)
                         .contentShape(Capsule())
                         .background {
                             if selection == tab {
-                                Capsule().fill(.primary.opacity(0.12))
+                                Capsule().fill(GlassTheme.raisedFill)
+                                    .shadow(color: .black.opacity(0.12), radius: 1.5, y: 0.5)
                                     .matchedGeometryEffect(id: "selection", in: highlight)
                             }
                         }
@@ -244,8 +246,8 @@ private struct PlaybackPanelSwitcher: View {
                 .accessibilityAddTraits(selection == tab ? [.isSelected] : [])
             }
         }
-        .padding(4)
-        .chromeSurface(in: Capsule())
+        .padding(3)
+        .background(.primary.opacity(0.06), in: Capsule())
         .accessibilityElement(children: .contain)
         .accessibilityLabel("视频详情栏目")
     }
@@ -263,11 +265,13 @@ private struct VideoInformationView: View {
                         memberPresented = true
                     } label: {
                         HStack(spacing: 10) {
-                            AvatarView(url: video.avatar).frame(width: 40, height: 40)
+                            AvatarView(url: video.avatar).frame(width: 44, height: 44)
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(video.author).font(GlassTheme.bodyFont.weight(.semibold))
-                                Text("查看 UP 主主页").font(GlassTheme.metadataFont).foregroundStyle(
-                                    .secondary)
+                                Text(
+                                    video.pubdate.map { "发布于 " + DisplayFormat.relativeDate($0) }
+                                        ?? "查看 UP 主主页"
+                                ).font(GlassTheme.metadataFont).foregroundStyle(.secondary)
                             }
                             Spacer()
                             Image(systemName: "chevron.right").font(.caption).foregroundStyle(
@@ -277,9 +281,17 @@ private struct VideoInformationView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(video.title).font(GlassTheme.sectionTitleFont).textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
-                        Text("\(video.bvid) · \(timestamp(model.duration))").font(
-                            GlassTheme.metadataFont.monospacedDigit()
-                        ).foregroundStyle(.secondary)
+                        HStack(spacing: 12) {
+                            if let views = video.viewCount {
+                                Label(DisplayFormat.count(views), systemImage: "play")
+                            }
+                            if let danmaku = video.danmakuCount {
+                                Label(DisplayFormat.count(danmaku), systemImage: "text.bubble")
+                            }
+                            Text(video.bvid).textSelection(.enabled)
+                        }
+                        .font(GlassTheme.metadataFont.monospacedDigit()).foregroundStyle(.secondary)
+                        .labelStyle(.titleAndIcon)
                     }
                     VideoActionBar(model: model, video: video)
                     Divider()

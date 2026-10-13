@@ -254,6 +254,16 @@ final class AppModel: ObservableObject {
             instance.profile = profile
         }
         guard selected == nil else { return }
+        #if DEBUG
+            // Visual checks of the playback page without clicking: opens the first restored
+            // tab paused, which is not a viewing event and reports no watch history.
+            if ProcessInfo.processInfo.environment["BILINEXT_DEBUG_OPEN_FIRST_TAB"] == "1",
+                let first = tabs.first
+            {
+                activate(first.id)
+                return
+            }
+        #endif
         loadBrowseIfNeeded()
     }
 }

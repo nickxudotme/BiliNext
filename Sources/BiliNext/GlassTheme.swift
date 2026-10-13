@@ -118,15 +118,10 @@ struct SidebarSurface: View {
     }
 }
 
+/// Panels inside the content card share its opaque canvas; material over an opaque card
+/// only reads as grey.
 struct DetailSurface: View {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    var body: some View {
-        if reduceTransparency {
-            GlassTheme.canvas
-        } else {
-            Rectangle().fill(.regularMaterial)
-        }
-    }
+    var body: some View { GlassTheme.canvas }
 }
 
 /// A selected sidebar row is a small piece of the content card it opens, as in Arc:
