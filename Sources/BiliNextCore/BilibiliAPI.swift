@@ -134,7 +134,7 @@ public actor BilibiliAPI {
     func request(
         _ path: String, params: [String: String] = [:], passport: Bool = false,
         signed: Bool = false, allowGuestNav: Bool = false, form: [String: String]? = nil,
-        expectedUserID: Int64? = nil
+        expectedUserID: Int64? = nil, live: Bool = false
     ) async throws -> [String: Any] {
         var parameters = params
         if signed {
@@ -153,9 +153,11 @@ public actor BilibiliAPI {
                 params, key: signingKey!.value, timestamp: Int(Date().timeIntervalSince1970))
         }
         var u = URLComponents(
-            string: "https://\(passport ? "passport" : "api").bilibili.com" + path)!
+            string: "https://\(live ? "api.live" : (passport ? "passport" : "api")).bilibili.com"
+                + path)!
         u.percentEncodedQuery = WBISigner.query(parameters)
         var req = URLRequest(url: u.url!)
+        if live { req.setValue("https://live.bilibili.com/", forHTTPHeaderField: "Referer") }
         if let expectedUserID {
             guard let value = cookieJar.cookies?.first(where: { $0.name == "DedeUserID" })?.value,
                 Int64(value) == expectedUserID
@@ -191,6 +193,27 @@ public actor BilibiliAPI {
             "_array": root["data"] as? [[String: Any]] ?? []
         ]
     }
+    func liveDanmakuIdentity() -> (userID: Int64, buvid: String) {
+        let cookies = cookieJar.cookies ?? []
+        return (
+            Int64(cookies.first { $0.name == "DedeUserID" }?.value ?? "") ?? 0,
+            cookies.first { $0.name == "buvid3" }?.value ?? ""
+        )
+    }
+
+    public func makeLiveDanmakuSocket(
+        _ configuration: LiveDanmakuConfiguration, endpoint: URL? = nil
+    )
+        -> URLSessionWebSocketTask
+    {
+        var request = URLRequest(
+            url: endpoint.flatMap { configuration.endpoints.contains($0) ? $0 : nil }
+                ?? configuration.endpoint)
+        request.setValue("https://live.bilibili.com/", forHTTPHeaderField: "Origin")
+        request.setValue("https://live.bilibili.com/", forHTTPHeaderField: "Referer")
+        return session.webSocketTask(with: request)
+    }
+
     func requestArray(_ path: String, params: [String: String]) async throws -> [[String: Any]] {
         let result = try await request(path, params: params)
         return result["_array"] as? [[String: Any]] ?? []
