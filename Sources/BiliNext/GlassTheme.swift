@@ -41,6 +41,12 @@ enum GlassTheme {
                 : NSColor(srgbRed: 1.00, green: 0.40, blue: 0.60, alpha: 1)
         })
     static let canvas = Color(nsColor: .textBackgroundColor)
+    /// A raised selection inside the card: white in light appearance, a lifted grey in dark.
+    static let raisedFill = Color(
+        nsColor: NSColor(name: "BiliNextRaised") { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor(white: 1, alpha: 0.16) : .white
+        })
 
     /// One pointer-feedback scale for every control, row and card.
     static let hoverOpacity = 0.07

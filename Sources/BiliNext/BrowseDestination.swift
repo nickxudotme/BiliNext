@@ -29,11 +29,7 @@ enum BrowseDestination: String, CaseIterable, Sendable {
         }
     }
 
-    /// Pages with sidebar children: home sections, dynamic modes or favorite folders.
-    var hasSidebarChildren: Bool {
-        switch self {
-        case .home, .dynamic, .favorites: true
-        case .search, .history, .watchLater: false
-        }
-    }
+    /// Favorite folders are listed under their sidebar row; home sections and dynamic modes
+    /// live in the browse toolbar instead.
+    var hasSidebarChildren: Bool { self == .favorites }
 }

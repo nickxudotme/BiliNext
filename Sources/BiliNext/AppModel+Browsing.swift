@@ -113,6 +113,17 @@ extension AppModel {
         navigate(destination)
     }
 
+    /// Opens the search page with a keyword typed elsewhere, such as the browse toolbar.
+    func search(_ keyword: String) {
+        if let tabOwner {
+            tabOwner.search(keyword)
+            return
+        }
+        browseInstance(for: .search).query = keyword
+        navigate(.search)
+        browseInstance(for: .search).refresh()
+    }
+
     func selectFavoriteFolder(_ id: Int64) {
         if let tabOwner {
             tabOwner.selectFavoriteFolder(id)

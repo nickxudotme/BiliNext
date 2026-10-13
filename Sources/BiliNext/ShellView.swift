@@ -27,11 +27,16 @@ struct ShellView: View {
                         model: instance,
                         isActive: active
                     )
+                    .padding(.top, BrowseToolbar.height)
                     .id(ObjectIdentifier(instance))
                     .opacity(active ? 1 : 0)
                     .allowsHitTesting(active)
                     .accessibilityHidden(!active)
                 }
+            }
+            if model.selected == nil {
+                BrowseToolbar(model: model)
+                    .frame(maxHeight: .infinity, alignment: .top)
             }
             ForEach(model.tabs) { tab in
                 if let instance = model.playbackInstances[tab.id] {
@@ -202,7 +207,8 @@ struct ShellView: View {
                             }
                         }
                         .background {
-                            NavigationSelection(selected: active && !expandedMenus.contains(item))
+                            NavigationSelection(
+                                selected: active && !(hasChildren && expandedMenus.contains(item)))
                         }
                         .fontWeight(active ? .semibold : .regular)
                         if hasChildren && expandedMenus.contains(item) {

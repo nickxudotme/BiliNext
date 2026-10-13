@@ -16,26 +16,8 @@ struct BrowseView: View {
     @ObservedObject var model: AppModel
     var isActive = true
     @FocusState private var searching: Bool
-    private var pageTitle: String {
-        switch model.menu {
-        case .home: return model.homeSection == "番剧" ? "番剧影视" : model.homeSection
-        case .dynamic: return model.dynamicMode == "全部" ? "全部动态" : "视频动态"
-        case .favorites:
-            return model.folders.first(where: { $0.id == model.folderID })?.title ?? "收藏"
-        case .search, .history, .watchLater: return model.menu.title
-        }
-    }
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 20) {
-                Text(pageTitle).font(GlassTheme.pageTitleFont).lineLimit(1)
-                Spacer()
-                if model.loading { ProgressView().controlSize(.small) }
-            }.padding(.horizontal, GlassTheme.contentInset).padding(.top, 28).padding(.bottom, 20)
-                .background(GlassTheme.canvas)
-                .overlay(alignment: .bottom) {
-                    Divider().opacity(0.35).padding(.horizontal, GlassTheme.contentInset)
-                }
             if model.menu == .search {
                 HStack {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
