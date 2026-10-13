@@ -59,3 +59,20 @@ private func renderPreview(_ view: some View, name: String) throws {
     .padding(20).frame(width: 760).background(.black)
     try renderPreview(scrubber, name: "bilinext-scrubber")
 }
+
+@MainActor
+@Test func visualPreviewVideoActions() throws {
+    guard ProcessInfo.processInfo.environment["BILINEXT_RENDER_PREVIEW"] == "1" else { return }
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let model = AppModel(sessionStore: SessionStore(directory: directory))
+    let video = Video(bvid: "BV1111111111", title: "一", aid: 1)
+    model.detail = VideoDetail(
+        video: video, pages: [], description: "",
+        stats: VideoStats(likes: 128_000, coins: 3456, favorites: 23_400, shares: 812))
+    model.relation = VideoRelation(liked: true, coins: 1, favorited: false)
+    let view = VideoActionBar(model: model, video: video)
+        .padding(20).frame(width: 380).background(GlassTheme.canvas)
+        .environment(\.colorScheme, .dark)
+    try renderPreview(view, name: "bilinext-video-actions")
+}

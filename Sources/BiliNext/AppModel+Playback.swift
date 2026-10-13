@@ -101,6 +101,7 @@ extension AppModel {
                 }
                 guard !Task.isCancelled, generation == videoGeneration else { return }
                 detail = loaded
+                loadRelation(for: loaded.video.bvid)
                 if let index = tabs.firstIndex(where: { $0.id == id }) {
                     tabs[index].video = loaded.video
                 }

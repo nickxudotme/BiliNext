@@ -57,3 +57,18 @@ import Testing
     #expect(AppModel.tabIndex(after: 0, count: 3, delta: -1) == 2)
     #expect(AppModel.tabIndex(after: 1, count: 3, delta: 1) == 2)
 }
+
+@MainActor
+@Test func anonymousInteractionsAskToLogInWithoutWriting() {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let model = AppModel(sessionStore: SessionStore(directory: directory))
+    model.detail = VideoDetail(
+        video: Video(bvid: "BV1111111111", title: "一", aid: 1), pages: [], description: "")
+    model.triple()
+    #expect(model.loginPresented)
+    #expect(!model.interactionBusy)
+    model.loginPresented = false
+    model.requestCoin()
+    #expect(model.loginPresented && !model.coinDialogPresented)
+}

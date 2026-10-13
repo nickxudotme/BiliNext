@@ -128,6 +128,13 @@ final class AppModel: ObservableObject {
     var playbackCodec = ""
     @Published var qualities: [PlaybackQuality] = []
     @Published var highEnergy: HighEnergyCurve?
+    @Published var relation = VideoRelation()
+    var relationLoaded = false
+    @Published var interactionBusy = false
+    @Published var coinDialogPresented = false
+    @Published var favoritePresented = false
+    /// Bumped after 一键三连 succeeds so the three action icons bounce together.
+    @Published var tripleCount = 0
     var qualityTask: Task<Void, Never>?
     var qualitySwitchState: (position: Double, resume: Bool)?
     var playbackIntent = false

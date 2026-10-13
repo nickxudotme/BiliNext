@@ -221,6 +221,18 @@ struct CustomPlayerView: View {
             setVolume(model.playerVolume - 0.1)
             return .handled
         }
+        .onKeyPress("q") {
+            model.toggleLike()
+            return .handled
+        }
+        .onKeyPress("w") {
+            model.requestCoin()
+            return .handled
+        }
+        .onKeyPress("e") {
+            model.requestFavorite()
+            return .handled
+        }
         .onKeyPress("m") {
             toggleMute()
             return .handled

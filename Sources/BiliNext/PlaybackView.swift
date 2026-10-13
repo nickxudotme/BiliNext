@@ -110,6 +110,20 @@ struct PlaybackView: View {
             idleTask?.cancel()
             NSCursor.setHiddenUntilMouseMoves(false)
         }
+        // Coin and favorite live here so shortcuts work in theater mode too.
+        .confirmationDialog("向这部视频投币", isPresented: $model.coinDialogPresented) {
+            Button("投 1 枚硬币") { model.coin(1) }
+            if model.relation.coins == 0 { Button("投 2 枚硬币") { model.coin(2) } }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("B 站硬币投出后无法撤回，实际可投数量由视频规则决定。")
+        }
+        .sheet(
+            isPresented: $model.favoritePresented,
+            onDismiss: { if let id = model.detail?.video.bvid { model.loadRelation(for: id) } },
+            content: {
+                if let aid = model.detail?.video.aid { FavoritePickerView(model: model, aid: aid) }
+            })
     }
 
     private var playbackOptions: some View {
@@ -230,7 +244,6 @@ private struct PlaybackPanelSwitcher: View {
 private struct VideoInformationView: View {
     @ObservedObject var model: AppModel
     @State private var memberPresented = false
-    @State private var favoritePresented = false
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
@@ -258,47 +271,7 @@ private struct VideoInformationView: View {
                             GlassTheme.metadataFont.monospacedDigit()
                         ).foregroundStyle(.secondary)
                     }
-                    HStack(spacing: 8) {
-                        if video.episodeID == nil {
-                            VideoActions(model: model, video: video).id(video.bvid)
-                        }
-                        Button {
-                            if model.profile == nil {
-                                model.loginPresented = true
-                            } else {
-                                favoritePresented = true
-                            }
-                        } label: {
-                            VideoActionLabel(title: "收藏", systemImage: "star")
-                        }.help("收藏到文件夹").accessibilityLabel("收藏到文件夹").disabled(video.aid == nil)
-                        Button {
-                            model.changeWatchLater(video)
-                        } label: {
-                            VideoActionLabel(title: "稍后", systemImage: "text.badge.plus")
-                        }.help("加入稍后再看").accessibilityLabel("加入稍后再看").disabled(
-                            model.libraryBusy.contains(video.id))
-                        Button {
-                            if let cid = model.pageID {
-                                model.downloads.start(
-                                    video: video, cid: cid, quality: model.qualityID, api: model.api
-                                )
-                                model.downloadsPresented = true
-                            }
-                        } label: {
-                            VideoActionLabel(title: "缓存", systemImage: "arrow.down.circle")
-                        }.help("缓存当前分 P").accessibilityLabel("缓存当前分 P").disabled(
-                            model.pageID == nil)
-                        Button {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(
-                                "https://www.bilibili.com/video/\(video.bvid)?t=\(Int(model.time))",
-                                forType: .string)
-                            model.toast = "已复制当前时间链接"
-                        } label: {
-                            VideoActionLabel(title: "复制", systemImage: "square.and.arrow.up")
-                        }.help("复制当前时间链接").accessibilityLabel("复制当前时间链接")
-                    }.buttonStyle(InteractionButtonStyle()).font(.system(size: 18)).frame(
-                        maxWidth: .infinity)
+                    VideoActionBar(model: model, video: video)
                     Divider()
                     if !detail.description.isEmpty {
                         Text(detail.description).font(GlassTheme.bodyFont).lineSpacing(5)
@@ -345,9 +318,6 @@ private struct VideoInformationView: View {
             if let video = model.detail?.video, let mid = video.ownerID {
                 MemberView(model: model, mid: mid, name: video.author)
             }
-        }
-        .sheet(isPresented: $favoritePresented) {
-            if let aid = model.detail?.video.aid { FavoritePickerView(model: model, aid: aid) }
         }
     }
 }
