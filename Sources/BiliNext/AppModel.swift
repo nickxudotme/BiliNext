@@ -8,19 +8,36 @@ import WebKit
 final class AppModel: ObservableObject {
     let api: BilibiliAPI
     lazy var watchHistoryReporter = WatchHistoryReporter(
-        send: { [weak self, api] progress in
-            try await api.reportWatchProgress(
-                bvid: progress.bvid, cid: progress.cid, position: progress.position)
-            guard let self else { return }
-            let owner = self.tabOwner ?? self
-            if let history = owner.browseInstances["历史"] {
-                history.cachedLists = [:]
-                if owner.selected == nil && owner.menu == "历史" { history.refresh() }
-            }
+        send: { [outbox = historyOutbox] progress in
+            guard let account = progress.accountID else { return }
+            outbox.enqueue(progress, accountID: account)
         },
         onError: { error in
             NSLog("Watch history sync failed: %@", error.localizedDescription)
-        })
+        }, account: { [weak self] in self?.profile?.id })
+    private var ownedHistoryOutbox: WatchHistoryOutbox?
+    let historyStoreURL: URL?
+    var historyOutbox: WatchHistoryOutbox {
+        if let tabOwner { return tabOwner.historyOutbox }
+        if let ownedHistoryOutbox { return ownedHistoryOutbox }
+        let outbox = WatchHistoryOutbox(
+            store: historyStoreURL,
+            activeAccount: { [weak self] in self?.profile?.id },
+            send: { [api] entry in
+                try await api.reportWatchProgress(
+                    bvid: entry.progress.bvid, cid: entry.progress.cid,
+                    position: entry.progress.position, expectedUserID: entry.accountID)
+            },
+            onSuccess: { [weak self] in
+                guard let self else { return }
+                for history in self.browseInstances.values where history.menu == "历史" {
+                    history.cachedLists = [:]
+                    if self.selected == nil && self.menu == "历史" { history.refresh() }
+                }
+            }, onError: { error in NSLog("Watch history outbox: %@", error.localizedDescription) })
+        ownedHistoryOutbox = outbox
+        return outbox
+    }
     let hoverPreview: HoverPreview
     #if DEBUG
         let credentialNotice = "开发版：本机会话文件未加密，仅当前用户可读写"
@@ -33,6 +50,9 @@ final class AppModel: ObservableObject {
     let player = AVPlayer()
     @Published var mpv: MPVPlayer?
     var awaitingMPVLoad = false
+    var playbackRecovery: PlaybackRecovery?
+    var recoveryPosition = 0.0
+    var recoveryGeneration = UUID()
     var playerVolume: Double {
         get { mpv?.volume ?? Double(player.volume) }
         set { if let mpv { mpv.volume = newValue } else { player.volume = Float(newValue) } }
@@ -143,13 +163,16 @@ final class AppModel: ObservableObject {
         browsePageLoader: ((BrowsePageRequest) async throws -> BrowsePageResult)? = nil,
         profileLoader: (() async throws -> UserProfile)? = nil,
         subtitleLoader: ((SubtitleTrack) async throws -> [Cue])? = nil,
-        subtitlePreferences: UserDefaults = .standard
+        subtitlePreferences: UserDefaults = .standard, historyStoreURL: URL? = nil
     ) {
         #if DEBUG
             self.api = api ?? BilibiliAPI(credentialStorage: .developmentFile)
         #else
             self.api = api ?? BilibiliAPI()
         #endif
+        // API-injected models (including offline tests) don't touch the user's persistent outbox.
+        self.historyStoreURL =
+            historyStoreURL ?? (api == nil ? WatchHistoryOutbox.defaultStoreURL : nil)
         self.smartSubtitles = SmartSubtitleModel(defaults: subtitlePreferences)
         self.subtitleLoader =
             subtitleLoader ?? { [api = self.api] track in try await api.subtitles(track) }
@@ -211,6 +234,7 @@ final class AppModel: ObservableObject {
         let loadedProfile = try? await profileLoader()
         guard account == accountGeneration else { return }
         profile = loadedProfile
+        historyOutbox.accountChanged()
         for instance in Array(browseInstances.values) + Array(playbackInstances.values) {
             instance.profile = profile
         }

@@ -76,7 +76,11 @@ extension AppModel {
             let seconds =
                 instance.officialCore
                 ? instance.time : instance.mpv?.time ?? instance.player.currentTime().seconds
-            if instance.officialCore || instance.mpv?.loaded == true
+            if !instance.officialCore
+                && (instance.awaitingMPVLoad || instance.playbackRecovery?.recovering == true)
+            {
+                snapshot[index].position = instance.recoveryPosition
+            } else if instance.officialCore || instance.mpv?.loaded == true
                 || instance.player.currentItem?.status == .readyToPlay,
                 seconds.isFinite
             {

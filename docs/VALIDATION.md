@@ -1,6 +1,6 @@
 # 当前验证状态
 
-更新日期：2026-10-13。每一项仅表示列出的验证范围；历史专题中的验收不能自动算作本轮复测。
+更新日期：2026-10-14。每一项仅表示列出的验证范围；历史专题中的验收不能自动算作本轮复测。
 
 ## 本机打包与重复钥匙串授权（2026-10-12）
 
@@ -86,3 +86,19 @@
 - [mpv 播放与运行库](MPV-PLAYBACK.md)
 - [本机官方播放器](OFFICIAL-CLIENT-PLAYER.md)
 - [功能范围与待办](PILIPLUS-MIGRATION.md)
+
+## 2026-10-14 播放恢复与历史队列
+
+本轮增加原生 MPV 有界恢复（最多 8 次装载）：轮换视频/音频 CDN、刷新源、关闭失败编码并回退 MP4；保留进度、倍速和暂停意图，切视频或清晰度后拒绝过期恢复响应。权限错误终止。复制诊断仅包含源域名，不包含签名 URL 或凭据。
+
+原生普通视频历史新增共享串行持久队列：100 条、24 小时有效期，失败按 1/5/30/60 秒退避，按账号隔离，退出最多等待 2 秒，未完成记录保留。官方核心和番剧上报仍未覆盖。
+
+验证：默认 Swift 测试两组共 109 项通过（可选网络/画面测试仍按开关跳过）；真实 MPV 失效本地文件切换至有效视频、暂停进度和 1.5 倍速保持、旧失败事件隔离通过。Release 构建、Debug 应用包装、系统证书环境下 deep/strict 签名验证通过。签名应用实际播放、重启恢复至 11 秒、复制播放诊断及成功提示已检查。退出端到端复测通过：签名应用正常播放后 Command-Q，进程结束；本地会话保存 256.9666875 秒，退出后只读 API 查询云端为 256 秒，待发送队列 0 条。只读验收测试不调用历史上报，允许云端按秒取整。早先自动化进程失联不作为验收证据。
+
+全仓格式检查仍报告未修改的 InteractionStyle.swift、ThumbnailView.swift、MPVPlaybackTests.swift 等既有问题；本轮 Swift 文件已格式化，git diff --check 通过。OpenGL 弃用和现有 libmpv macOS 27 链接目标警告仍存在。
+
+退出后只读验收命令（应用必须已退出；期望区间取退出前实际进度，不可凭空填写）：
+
+```sh
+BILINEXT_EXIT_HISTORY_TEST=1 BILINEXT_EXIT_BVID=BV15Ypq6REjB BILINEXT_EXIT_MINIMUM=256 BILINEXT_EXIT_MAXIMUM=257 swift test --filter signedApplicationExitProgressAppearsInCloudHistory
+```

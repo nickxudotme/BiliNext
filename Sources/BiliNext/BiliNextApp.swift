@@ -4,12 +4,16 @@ import SwiftUI
 @main
 struct BiliNextApp: App {
     @StateObject private var model = AppModel()
+    @NSApplicationDelegateAdaptor(AppTerminationDelegate.self) private var terminationDelegate
     var body: some Scene {
         Window("BiliNext", id: "main") {
             ShellView(model: model)
                 .frame(minWidth: 940, minHeight: 600)
                 .task { await model.start() }
-                .onAppear { NSApp.activate(ignoringOtherApps: true) }
+                .onAppear {
+                    terminationDelegate.model = model
+                    NSApp.activate(ignoringOtherApps: true)
+                }
                 .onReceive(
                     NotificationCenter.default.publisher(
                         for: NSApplication.willTerminateNotification)

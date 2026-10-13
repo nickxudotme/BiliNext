@@ -99,3 +99,24 @@ func actualPlaybackAppearsInAccountHistory() async throws {
     #expect(sent.map(\.cid) == [1, 1, 2])
     #expect(sent.map(\.position) == [11, 12, 1])
 }
+
+@MainActor
+@Test(.enabled(if: ProcessInfo.processInfo.environment["BILINEXT_EXIT_HISTORY_TEST"] == "1"))
+func signedApplicationExitProgressAppearsInCloudHistory() async throws {
+    let environment = ProcessInfo.processInfo.environment
+    let bvid = try #require(environment["BILINEXT_EXIT_BVID"])
+    let minimum = try #require(Double(environment["BILINEXT_EXIT_MINIMUM"] ?? ""))
+    let maximum = try #require(Double(environment["BILINEXT_EXIT_MAXIMUM"] ?? ""))
+    let api = BilibiliAPI(credentialStorage: .developmentFile)
+    _ = try await api.profile()
+    var progress: Double = -1
+    for _ in 0..<10 {
+        let history = try await api.watchHistory(cursor: nil)
+        progress = history.videos.first(where: { $0.bvid == bvid })?.progress ?? -1
+        if progress >= minimum { break }
+        try await Task.sleep(for: .seconds(1))
+    }
+    #expect(progress >= minimum)
+    print(
+        "Signed application exit cloud history: \(bvid), progress=\(progress), minimum=\(minimum)")
+}

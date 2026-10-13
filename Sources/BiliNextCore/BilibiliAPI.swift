@@ -133,7 +133,8 @@ public actor BilibiliAPI {
     }
     func request(
         _ path: String, params: [String: String] = [:], passport: Bool = false,
-        signed: Bool = false, allowGuestNav: Bool = false, form: [String: String]? = nil
+        signed: Bool = false, allowGuestNav: Bool = false, form: [String: String]? = nil,
+        expectedUserID: Int64? = nil
     ) async throws -> [String: Any] {
         var parameters = params
         if signed {
@@ -155,6 +156,17 @@ public actor BilibiliAPI {
             string: "https://\(passport ? "passport" : "api").bilibili.com" + path)!
         u.percentEncodedQuery = WBISigner.query(parameters)
         var req = URLRequest(url: u.url!)
+        if let expectedUserID {
+            guard let value = cookieJar.cookies?.first(where: { $0.name == "DedeUserID" })?.value,
+                Int64(value) == expectedUserID
+            else { throw APIError(code: -101, message: "历史记录的账号已变化") }
+            // Bind this request to a cookie snapshot before the first suspension point.
+            req.httpShouldHandleCookies = false
+            let cookies = cookieJar.cookies(for: u.url!) ?? []
+            for (key, value) in HTTPCookie.requestHeaderFields(with: cookies) {
+                req.setValue(value, forHTTPHeaderField: key)
+            }
+        }
         if var form {
             guard let csrf = cookieJar.cookies?.first(where: { $0.name == "bili_jct" })?.value,
                 !csrf.isEmpty
@@ -420,7 +432,9 @@ public actor BilibiliAPI {
         let data = try await request("/x/web-interface/history/cursor", params: params)
         return LibraryParser.history(data, previousCursor: cursor)
     }
-    public func reportWatchProgress(bvid: String, cid: Int64, position: Double) async throws {
+    public func reportWatchProgress(
+        bvid: String, cid: Int64, position: Double, expectedUserID: Int64? = nil
+    ) async throws {
         guard position.isFinite, position >= 0, cid > 0 else { return }
         _ = try await request(
             "/x/click-interface/web/heartbeat",
@@ -428,7 +442,7 @@ public actor BilibiliAPI {
                 "bvid": bvid, "cid": String(cid),
                 "played_time": String(Int(min(position, Double(Int32.max)))),
                 "type": "3", "dt": "2", "play_type": "0",
-            ])
+            ], expectedUserID: expectedUserID)
     }
     public func searchHistory(keyword: String, page: Int) async throws -> Feed {
         let data = try await request(

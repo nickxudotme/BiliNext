@@ -12,13 +12,19 @@ final class MPVPlayer {
     private let playbackActivity = PlaybackActivity()
     private(set) var loaded = false
     private(set) var failure: String?
+    private(set) var failureCode: Int32?
+    private(set) var diagnosticContext: PlaybackDiagnosticContext?
+    private var commandSequence: UInt64 = 0
+    private var loadCommandID: UInt64 = 0
+    private var entryID: Int64?
+    private var waitingForStart = false
     private var reported = false
     private var wasCachePaused = false
     var captureVideoFrame: (() -> SubtitleFrame?)?
     var onUpdate: ((Double, Double, Bool, Bool) -> Void)?
     var time: Double { number("time-pos") }
     var duration: Double { number("duration") }
-    var playing: Bool { loaded && !flag("pause") && !flag("eof-reached") }
+    var playing: Bool { loaded && failure == nil && !flag("pause") && !flag("eof-reached") }
     var volume: Double {
         get { number("volume") / 100 }
         set { set("volume", String(max(0, min(1, newValue)) * 100)) }
@@ -69,16 +75,26 @@ final class MPVPlayer {
         poll?.invalidate()
         mpv_terminate_destroy(handle)
     }
-    func load(_ playback: Playback, position: Double, autoplay: Bool) throws {
+    func load(
+        _ playback: Playback, position: Double, autoplay: Bool,
+        videoURL: URL? = nil, audioURL: URL? = nil,
+        diagnostics: PlaybackDiagnosticContext? = nil
+    ) throws {
+        while let event = mpv_wait_event(handle, 0), event.pointee.event_id != MPV_EVENT_NONE {}
         failure = nil
+        failureCode = nil
+        entryID = nil
+        waitingForStart = true
+        diagnosticContext = diagnostics
+        if let diagnostics { NSLog("mpv request: %@", diagnostics.summary) }
         reported = false
         wasCachePaused = false
         loaded = false
         playbackActivity.setActive(false)
         set("pause", autoplay ? "no" : "yes")
         // mpv accepts an independently fetched audio stream without a local HLS bridge.
-        let source = playback.videoStream?.urls.first ?? playback.url
-        let audio = playback.audioStream?.urls.first
+        let source = videoURL ?? playback.videoStream?.urls.first ?? playback.url
+        let audio = audioURL ?? playback.audioStream?.urls.first
         let options = "start=\(max(0, position)),speed=\(speed)"
         let media: String
         if let audio {
@@ -90,7 +106,9 @@ final class MPVPlayer {
         } else {
             media = source.absoluteString
         }
-        try command(["loadfile", media, "replace", "-1", options])
+        commandSequence += 1
+        loadCommandID = commandSequence
+        try command(["loadfile", media, "replace", "-1", options], id: loadCommandID)
     }
     func pause() {
         set("pause", "yes")
@@ -103,6 +121,8 @@ final class MPVPlayer {
     }
 
     func stop() {
+        waitingForStart = true
+        loadCommandID = 0
         try? command(["stop"])
         loaded = false
         playbackActivity.setActive(false)
@@ -127,26 +147,41 @@ final class MPVPlayer {
         mpv_get_property(handle, name, MPV_FORMAT_FLAG, &result)
         return result != 0
     }
-    private func command(_ arguments: [String]) throws {
+    private func command(_ arguments: [String], id: UInt64 = 0) throws {
         let strings = arguments.map { strdup($0) }
         defer { for string in strings { free(string) } }
         var pointers = strings.map { UnsafePointer<CChar>($0) } + [nil]
-        let result = mpv_command_async(handle, 0, &pointers)
-        if result < 0 { throw MPVError(message: String(cString: mpv_error_string(result))) }
+        let result = mpv_command_async(handle, id, &pointers)
+        if result < 0 {
+            throw MPVError(message: String(cString: mpv_error_string(result)), code: result)
+        }
     }
     private func update() {
         while let event = mpv_wait_event(handle, 0), event.pointee.event_id != MPV_EVENT_NONE {
             switch event.pointee.event_id {
-            case MPV_EVENT_FILE_LOADED: loaded = true
+            case MPV_EVENT_START_FILE:
+                entryID =
+                    event.pointee.data?.assumingMemoryBound(to: mpv_event_start_file.self).pointee
+                    .playlist_entry_id
+                waitingForStart = false
+            case MPV_EVENT_FILE_LOADED: if !waitingForStart { loaded = true }
             case MPV_EVENT_END_FILE:
                 if let data = event.pointee.data?.assumingMemoryBound(to: mpv_event_end_file.self),
+                    !waitingForStart, data.pointee.playlist_entry_id == entryID,
                     data.pointee.error < 0
                 {
                     failure = String(cString: mpv_error_string(data.pointee.error))
+                    failureCode = data.pointee.error
+                    NSLog(
+                        "mpv failure: session=%@ stage=media code=%d",
+                        diagnosticContext?.session.uuidString ?? "none", data.pointee.error)
                 }
             case MPV_EVENT_COMMAND_REPLY:
-                if event.pointee.error < 0 {
+                if event.pointee.reply_userdata == loadCommandID, loadCommandID != 0,
+                    event.pointee.error < 0
+                {
                     failure = String(cString: mpv_error_string(event.pointee.error))
+                    failureCode = event.pointee.error
                 }
             default: break
             }
@@ -171,10 +206,17 @@ final class MPVPlayer {
         playbackActivity.setActive(playing && failure == nil)
         onUpdate?(time, duration, playing, cachePaused || (!loaded && failure == nil))
     }
+
+    var diagnosticSummary: String {
+        let context = diagnosticContext?.summary ?? "尚未加载播放源"
+        return
+            "\(context)\nmpv=\(text("mpv-version")) decoder=\(text("hwdec-current")) buffer-seconds=\(number("demuxer-cache-duration")) download-bps=\(number("cache-speed")) speed=\(speed) decoder-drops=\(number("decoder-frame-drop-count")) output-drops=\(number("frame-drop-count")) error-code=\(failureCode ?? 0)"
+    }
 }
 
 struct MPVError: LocalizedError {
     let message: String
+    var code: Int32? = nil
     var errorDescription: String? { message }
 }
 

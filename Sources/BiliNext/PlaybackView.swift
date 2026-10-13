@@ -117,6 +117,13 @@ struct PlaybackView: View {
             Button("返回浏览") { model.navigate(model.menu) }
             Button(model.officialCore ? "使用原播放器" : "使用本机官方核心") { model.switchPlayer() }
                 .disabled(model.pageID == nil)
+            Button("复制播放诊断") {
+                if let mpv = model.mpv {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(mpv.diagnosticSummary, forType: .string)
+                    model.toast = "播放诊断已复制"
+                }
+            }.disabled(model.mpv == nil || model.officialCore)
             if let id = model.selected,
                 let url = URL(string: "https://www.bilibili.com/video/\(id)")
             {

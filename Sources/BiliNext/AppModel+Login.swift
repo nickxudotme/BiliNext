@@ -13,6 +13,7 @@ extension AppModel {
         let loadedProfile = try? await api.profile()
         guard account == accountGeneration else { return }
         profile = loadedProfile
+        historyOutbox.accountChanged()
         for instance in playbackInstances.values {
             instance.profile = profile
         }
@@ -32,6 +33,7 @@ extension AppModel {
             try await api.logout()
             accountGeneration = UUID()
             profile = nil
+            historyOutbox.accountChanged()
             for (pageID, instance) in browseInstances {
                 instance.invalidateBrowseCache()
                 tabSubscriptions.removeValue(forKey: "browse:" + pageID)

@@ -8,6 +8,11 @@ extension AppModel {
     // MARK: - Media playback
 
     func switchPlayer() {
+        let reloadNative = mpv?.failure != nil || mpv?.loaded != true
+        cancelPlaybackRecovery()
+        videoTask?.cancel()
+        qualityTask?.cancel()
+        qualitySwitchState = nil
         smartSubtitles.redetect()
         watchHistoryReporter.flush()
         saveSession()
@@ -17,7 +22,16 @@ extension AppModel {
         if officialCore {
             officialWebView?.evaluateJavaScript("window.biliPlayer?.pause()")
             officialCore = false
-            seek(time)
+            if reloadNative, let id = mediaID, let cid = pageID {
+                let position = time
+                let generation = videoGeneration
+                playbackIntent = false
+                videoTask = Task {
+                    await loadMedia(id: id, cid: cid, position: position, generation: generation)
+                }
+            } else {
+                seek(time)
+            }
         } else {
             officialCore = true
         }
@@ -43,6 +57,7 @@ extension AppModel {
         saveSession()
         watchHistoryReporter.flush()
         officialCore = false
+        cancelPlaybackRecovery()
         mpv?.pause()
         player.pause()
         playing = false
@@ -109,6 +124,7 @@ extension AppModel {
     func selectPage(_ cid: Int64) {
         guard let id = selected, cid != pageID else { return }
         watchHistoryReporter.flush()
+        cancelPlaybackRecovery()
         saveSession()
         mpv?.pause()
         player.pause()
@@ -143,6 +159,7 @@ extension AppModel {
     private func loadMedia(
         id: String, cid: Int64, position: Double, generation: UUID, autoplay: Bool = false
     ) async {
+        let qualityRequest = qualityGeneration
         smartSubtitles.configure(video: id, cid: cid, owner: detail?.video.ownerID, track: "")
         videoLoading = true
         playerError = nil
@@ -170,7 +187,9 @@ extension AppModel {
         do {
             let source = try await api.playback(
                 bvid: id, cid: cid, quality: 80, episodeID: detail?.video.episodeID)
-            guard !Task.isCancelled, generation == videoGeneration else { return }
+            guard !Task.isCancelled, generation == videoGeneration,
+                qualityRequest == qualityGeneration, !officialCore
+            else { return }
             let core = try ensureMPV()
             quality = source.quality
             qualityID = source.qualityID
@@ -178,8 +197,7 @@ extension AppModel {
             qualities = source.qualities
             playbackIntent = autoplay && playbackTabActive
             core.speed = playbackRate
-            awaitingMPVLoad = true
-            try core.load(source, position: position, autoplay: playbackIntent)
+            try beginPlaybackRecovery(source, requestedQuality: 80, position: position, core: core)
         } catch {
             guard !Task.isCancelled, generation == videoGeneration else { return }
             playerError = error.localizedDescription
@@ -194,15 +212,23 @@ extension AppModel {
         core.volume = Double(player.volume)
         core.onUpdate = { [weak self, weak core] time, duration, playing, buffering in
             guard let self, let core, !self.officialCore else { return }
+            if let failure = core.failure {
+                self.playbackRecovery?.failed(code: core.failureCode, message: failure)
+                let recovering = self.playbackRecovery?.recovering == true
+                self.updatePlayback(
+                    time: self.recoveryPosition, duration: self.duration,
+                    playing: recovering && self.playbackIntent && self.playbackTabActive,
+                    buffering: recovering)
+                if !recovering { self.videoLoading = false }
+                return
+            }
+            if core.loaded { self.recoveryPosition = time }
             self.updatePlayback(
                 time: time, duration: duration, playing: playing, buffering: buffering)
             if self.awaitingMPVLoad && core.loaded {
                 self.awaitingMPVLoad = false
                 self.videoLoading = false
-            }
-            if let failure = core.failure {
-                self.playerError = failure
-                self.videoLoading = false
+                self.playbackRecovery?.loaded()
             }
             if self.playbackTabActive { self.updateDanmaku() }
             if core.loaded && self.playbackTabActive && Date().timeIntervalSince(self.lastSaved) > 5
@@ -212,6 +238,67 @@ extension AppModel {
         }
         mpv = core
         return core
+    }
+
+    func cancelPlaybackRecovery() {
+        awaitingMPVLoad = false
+        playbackRecovery?.cancel()
+        playbackRecovery = nil
+        recoveryGeneration = UUID()
+    }
+
+    private func beginPlaybackRecovery(
+        _ source: Playback, requestedQuality: Int, position: Double, core: MPVPlayer
+    ) throws {
+        cancelPlaybackRecovery()
+        recoveryPosition = max(0, position.isFinite ? position : 0)
+        let request = recoveryGeneration
+        let video = videoGeneration
+        let id = mediaID
+        let cid = pageID
+        let episodeID = detail?.video.episodeID
+        let session = UUID()
+        let recovery = PlaybackRecovery(
+            playback: source,
+            fetch: { [weak self] options in
+                guard let self, self.recoveryGeneration == request, self.videoGeneration == video,
+                    self.mediaID == id, self.pageID == cid, let id, let cid, !self.officialCore
+                else { throw CancellationError() }
+                return try await self.api.playback(
+                    bvid: id, cid: cid, quality: requestedQuality,
+                    episodeID: episodeID, preferDASH: options.preferDASH,
+                    allowAV1: options.allowAV1, allowHEVC: options.allowHEVC)
+            },
+            load: { [weak self, weak core] candidate, attempt, phase in
+                guard let self, let core, self.recoveryGeneration == request,
+                    self.videoGeneration == video, self.mediaID == id, self.pageID == cid,
+                    !self.officialCore
+                else { throw CancellationError() }
+                self.quality = candidate.playback.quality
+                self.qualityID = candidate.playback.qualityID
+                self.qualities = candidate.playback.qualities
+                self.playbackCodec = "mpv · " + (candidate.playback.videoStream?.codec ?? "MP4")
+                self.awaitingMPVLoad = true
+                core.speed = self.playbackRate
+                try core.load(
+                    candidate.playback, position: self.recoveryPosition,
+                    autoplay: self.playbackIntent && self.playbackTabActive,
+                    videoURL: candidate.video, audioURL: candidate.audio,
+                    diagnostics: PlaybackDiagnosticContext(
+                        session: session, requestedQuality: requestedQuality,
+                        source: candidate, attempt: attempt, phase: phase))
+            },
+            onState: { [weak self] recovering, error in
+                guard let self, self.recoveryGeneration == request, self.videoGeneration == video
+                else { return }
+                self.videoLoading = recovering
+                self.buffering = recovering
+                self.playerError = error
+            })
+        playbackRecovery = recovery
+        do { try recovery.start() } catch {
+            recovery.failed(code: (error as? MPVError)?.code, message: error.localizedDescription)
+        }
     }
 
     private func loadAVMedia(
@@ -343,13 +430,17 @@ extension AppModel {
         guard let id = mediaID, let cid = pageID, force || value != qualityID || videoLoading else {
             return
         }
+        let recovering = playbackRecovery?.recovering == true
         qualityTask?.cancel()
+        cancelPlaybackRecovery()
         let generation = videoGeneration
         let request = UUID()
         qualityGeneration = request
-        let current = mpv?.time ?? player.currentTime().seconds
+        let current = recovering ? recoveryPosition : mpv?.time ?? player.currentTime().seconds
         let position = qualitySwitchState?.position ?? (current.isFinite ? current : time)
-        let resume = qualitySwitchState?.resume ?? (mpv?.playing ?? (player.rate != 0))
+        let resume =
+            qualitySwitchState?.resume
+            ?? (recovering ? playbackIntent : mpv?.playing ?? (player.rate != 0))
         qualitySwitchState = (position, resume)
         playbackIntent = resume
         mpv?.pause()
@@ -368,8 +459,8 @@ extension AppModel {
                     qualityID = source.qualityID
                     qualities = source.qualities
                     playbackCodec = "mpv · " + (source.videoStream?.codec ?? "MP4")
-                    awaitingMPVLoad = true
-                    try mpv.load(source, position: position, autoplay: resume && playbackTabActive)
+                    try beginPlaybackRecovery(
+                        source, requestedQuality: value, position: position, core: mpv)
                     qualitySwitchState = nil
                     return
                 }
@@ -415,6 +506,7 @@ extension AppModel {
             return
         }
         if let mpv {
+            recoveryPosition = max(0, seconds)
             mpv.seek(seconds)
             return
         }
@@ -479,6 +571,7 @@ extension AppModel {
         return id == mediaID && playing
     }
     func stopMedia() {
+        cancelPlaybackRecovery()
         resetSecondarySubtitles()
         smartSubtitles.configure(video: nil, cid: nil, owner: nil, track: "")
         watchHistoryReporter.flush()
