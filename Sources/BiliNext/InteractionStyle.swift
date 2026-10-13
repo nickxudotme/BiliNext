@@ -35,9 +35,9 @@ struct InteractionButtonStyle: ButtonStyle {
         private var tint: Color { destructive ? .red : .primary }
         private var radius: CGFloat {
             switch kind {
-            case .control: 7
-            case .row: 6
-            case .card: 12
+            case .control: GlassTheme.rowRadius
+            case .row: GlassTheme.rowRadius
+            case .card: GlassTheme.artworkRadius
             }
         }
 
@@ -45,21 +45,17 @@ struct InteractionButtonStyle: ButtonStyle {
             configuration.label
                 .background {
                     RoundedRectangle(cornerRadius: radius)
-                        .fill(tint.opacity(pressed ? 0.14 : highlighted ? 0.065 : 0))
+                        .fill(
+                            tint.opacity(
+                                pressed
+                                    ? GlassTheme.pressOpacity
+                                    : highlighted ? GlassTheme.hoverOpacity : 0))
                 }
-                .overlay {
-                    RoundedRectangle(cornerRadius: radius)
-                        .strokeBorder(tint.opacity(highlighted || pressed ? 0.10 : 0), lineWidth: 1)
-                        .allowsHitTesting(false)
-                }
-                .scaleEffect(reduceMotion ? 1 : pressed ? (kind == .card ? 0.985 : 0.96) : 1)
+                .scaleEffect(reduceMotion ? 1 : pressed ? (kind == .card ? 0.985 : 0.95) : 1)
                 .offset(y: !reduceMotion && kind == .card && highlighted && !pressed ? -2 : 0)
                 .opacity(enabled ? 1 : 0.45)
-                .animation(
-                    reduceMotion || scrolling ? nil : .easeOut(duration: pressed ? 0.09 : 0.16),
-                    value: hovered
-                )
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: pressed)
+                .animation(scrolling ? nil : Motion.quick(reduceMotion), value: hovered)
+                .animation(Motion.quick(reduceMotion), value: pressed)
                 .onHover { hovered = $0 }
         }
     }
@@ -70,11 +66,11 @@ struct MenuHoverFeedback: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hovered = false
     func body(content: Content) -> some View {
-        content.overlay {
-            Circle().strokeBorder(.primary.opacity(hovered ? 0.18 : 0), lineWidth: 1)
+        content.background {
+            Circle().fill(.primary.opacity(hovered ? GlassTheme.hoverOpacity : 0))
                 .allowsHitTesting(false)
         }
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: hovered)
+        .animation(Motion.quick(reduceMotion), value: hovered)
         .onHover { hovered = $0 }
     }
 }

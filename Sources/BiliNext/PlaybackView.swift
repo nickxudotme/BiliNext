@@ -252,7 +252,7 @@ private struct VideoInformationView: View {
                         }.contentShape(Rectangle())
                     }.buttonStyle(InteractionButtonStyle()).disabled(video.ownerID == nil)
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(video.title).font(.title3.weight(.semibold)).textSelection(.enabled)
+                        Text(video.title).font(GlassTheme.sectionTitleFont).textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                         Text("\(video.bvid) · \(timestamp(model.duration))").font(
                             GlassTheme.metadataFont.monospacedDigit()
@@ -324,11 +324,11 @@ private struct VideoInformationView: View {
                                         .contentShape(Rectangle())
                                         .background(
                                             model.pageID == page.cid
-                                                ? Color.accentColor.opacity(0.1)
+                                                ? GlassTheme.accent.opacity(0.1)
                                                 : Color.primary.opacity(0.035),
                                             in: RoundedRectangle(cornerRadius: 8))
                                 }.buttonStyle(InteractionButtonStyle()).foregroundStyle(
-                                    model.pageID == page.cid ? Color.accentColor : .primary)
+                                    model.pageID == page.cid ? GlassTheme.accent : .primary)
                             }
                         }
                     }

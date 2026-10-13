@@ -153,7 +153,7 @@ struct DownloadsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("下载").font(.title2.bold())
+                Text("下载").font(GlassTheme.sheetTitleFont)
                 Spacer()
                 Button("完成") { dismiss() }.controlSize(.large).font(GlassTheme.labelFont)
                     .keyboardShortcut(.cancelAction)

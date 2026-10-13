@@ -115,7 +115,7 @@ struct TranscriptView: View {
                                             if group.contains(where: { activeIDs.contains($0.id) })
                                             {
                                                 Label("正在播放", systemImage: "waveform")
-                                                    .foregroundStyle(Color.accentColor)
+                                                    .foregroundStyle(GlassTheme.accent)
                                             } else if matchIDs.contains(first.id) {
                                                 Label("匹配", systemImage: "magnifyingglass")
                                                     .foregroundStyle(.secondary)
@@ -130,7 +130,7 @@ struct TranscriptView: View {
                                     }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
                                         .background(
                                             group.contains { activeIDs.contains($0.id) }
-                                                ? Color.accentColor.opacity(0.1)
+                                                ? GlassTheme.accent.opacity(0.1)
                                                 : matchIDs.contains(first.id)
                                                     ? Color.yellow.opacity(0.12) : .clear,
                                             in: RoundedRectangle(cornerRadius: 8)

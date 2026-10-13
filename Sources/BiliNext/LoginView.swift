@@ -12,7 +12,7 @@ struct LoginView: View {
     var body: some View {
         VStack(spacing: 20) {
             HStack {
-                Text("登录 B 站").font(.title2.bold())
+                Text("登录 B 站").font(GlassTheme.sheetTitleFont)
                 Spacer()
                 Button {
                     dismiss()

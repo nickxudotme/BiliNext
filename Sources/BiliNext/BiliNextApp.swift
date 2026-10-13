@@ -8,6 +8,7 @@ struct BiliNextApp: App {
     var body: some Scene {
         Window("BiliNext", id: "main") {
             ShellView(model: model)
+                .tint(GlassTheme.accent)
                 .frame(minWidth: 940, minHeight: 600)
                 .task { await model.start() }
                 .onAppear {

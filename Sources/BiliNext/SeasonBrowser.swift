@@ -114,7 +114,7 @@ private struct SeasonDetailView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text(season.title).font(.title2.bold())
+                Text(season.title).font(GlassTheme.sheetTitleFont)
                 Spacer()
                 Button("完成") { dismiss() }.controlSize(.large).font(GlassTheme.labelFont)
                     .keyboardShortcut(.cancelAction)

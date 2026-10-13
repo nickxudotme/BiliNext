@@ -17,7 +17,7 @@ struct VideoCommunityView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(section == "评论" ? "评论" : "接着看").font(.title3.weight(.semibold))
+                Text(section == "评论" ? "评论" : "接着看").font(GlassTheme.sectionTitleFont)
                 if section == "评论", count > 0 {
                     Text("\(count) 条").font(GlassTheme.metadataFont).foregroundStyle(.secondary)
                 }

@@ -5,6 +5,7 @@ struct ShellView: View {
     @ObservedObject var model: AppModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let drawerWidth: CGFloat = 220
+    private var cardGap: CGFloat { fullScreen ? 0 : GlassTheme.cardGap }
     @State private var expandedMenus: Set<BrowseDestination> = []
     @State private var pinned = true
     @State private var fullScreen = false
@@ -51,8 +52,14 @@ struct ShellView: View {
                 }
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.leading, pinned ? drawerWidth : 0)
+            // Content is an inset card on the wallpaper-tinted backdrop, as in Arc.
+            // Fullscreen drops the inset so video and pages reach the screen edges.
             .background(GlassTheme.canvas)
+            .clipShape(RoundedRectangle(cornerRadius: fullScreen ? 0 : GlassTheme.cardRadius))
+            .shadow(color: .black.opacity(fullScreen ? 0 : 0.18), radius: 1.5)
+            .padding(.leading, pinned ? drawerWidth : cardGap)
+            .padding([.top, .bottom, .trailing], cardGap)
+            .background { WindowBackdrop().ignoresSafeArea() }
             .background(WindowChrome { fullScreen = $0 })
             .onChange(of: fullScreen) { _, entered in
                 if entered && model.selected != nil {
@@ -108,13 +115,17 @@ struct ShellView: View {
             }
             .overlay(alignment: .bottom) {
                 if let toast = model.toast {
-                    Text(toast).font(.callout).padding(12).chromeSurface(in: Capsule()).padding(20)
+                    Text(toast).font(GlassTheme.labelFont)
+                        .padding(.horizontal, 18).padding(.vertical, 10)
+                        .chromeSurface(in: Capsule()).padding(28)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                         .task(id: toast) {
                             try? await Task.sleep(for: .seconds(2))
                             if !Task.isCancelled { model.toast = nil }
                         }
                 }
             }
+            .animation(Motion.standard(reduceMotion), value: model.toast)
             .sheet(isPresented: $model.downloadsPresented) {
                 DownloadsView(manager: model.downloads, model: model)
             }
@@ -123,49 +134,28 @@ struct ShellView: View {
 
     private var sidebar: some View {
         VStack(spacing: 0) {
-            GlassEffectContainer(spacing: 6) {
-                HStack(spacing: 4) {
-                    if !fullScreen {
-                        TrafficLights().frame(width: 56, height: 24)
-                    }
-                    Button {
-                        revealTask?.cancel()
-                        hideTask?.cancel()
-                        pinned.toggle()
-                        revealed = false
-                        pointerZone = -1
-                    } label: {
-                        Image(systemName: "sidebar.left").frame(width: 28, height: 32)
-                    }
-                    .chromeSurface(in: Circle(), interactive: true)
-                    .help(pinned ? "隐藏侧栏" : "固定侧栏")
-                    .accessibilityLabel(pinned ? "隐藏侧栏" : "固定侧栏")
-                    Spacer(minLength: 0)
-                    HStack(spacing: 2) {
-                        Button {
-                            model.moveHistory(-1)
-                        } label: {
-                            Image(systemName: "arrow.left").frame(width: 26, height: 32)
-                        }
-                        .disabled(!model.canBack).accessibilityLabel("后退")
-                        Button {
-                            model.moveHistory(1)
-                        } label: {
-                            Image(systemName: "arrow.right").frame(width: 26, height: 32)
-                        }
-                        .disabled(!model.canForward).accessibilityLabel("前进")
-                        Button {
-                            model.refresh()
-                        } label: {
-                            Image(systemName: "arrow.clockwise").frame(width: 26, height: 32)
-                        }
-                        .accessibilityLabel("刷新")
-                    }.padding(.horizontal, 3)
-                        .chromeSurface(in: Capsule(), interactive: true)
+            HStack(spacing: 2) {
+                if !fullScreen {
+                    // Room for the system window buttons, which stay in the titlebar.
+                    Color.clear.frame(width: 64, height: 24)
                 }
-                .font(.system(size: 15)).buttonStyle(InteractionButtonStyle())
-                .frame(height: 44).padding(.horizontal, 10)
+                headerButton("sidebar.left", label: pinned ? "隐藏侧栏" : "固定侧栏") {
+                    revealTask?.cancel()
+                    hideTask?.cancel()
+                    pinned.toggle()
+                    revealed = false
+                    pointerZone = -1
+                }
+                Spacer(minLength: 0)
+                headerButton("chevron.left", label: "后退") { model.moveHistory(-1) }
+                    .disabled(!model.canBack)
+                headerButton("chevron.right", label: "前进") { model.moveHistory(1) }
+                    .disabled(!model.canForward)
+                headerButton("arrow.clockwise", label: "刷新") { model.refresh() }
             }
+            // Centre the row on the system window buttons (16pt from the window top).
+            .frame(height: fullScreen || pinned ? 32 : 24)
+            .padding(.top, fullScreen ? 8 : 0).padding(.horizontal, 8).padding(.bottom, 10)
             ScrollView {
                 VStack(spacing: 2) {
                     ForEach(BrowseDestination.allCases, id: \.self) { item in
@@ -347,6 +337,17 @@ struct ShellView: View {
                 .overlay(alignment: .top) { Divider().opacity(0.35).padding(.horizontal, 14) }
         }
         .font(GlassTheme.bodyFont)
+    }
+
+    private func headerButton(
+        _ symbol: String, label: String, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(GlassTheme.iconFont.weight(.medium))
+                .foregroundStyle(.secondary).iconControlFrame(size: 30)
+        }
+        .buttonStyle(InteractionButtonStyle())
+        .help(label).accessibilityLabel(label)
     }
 
     private func updatePointer(_ point: NSPoint?) {

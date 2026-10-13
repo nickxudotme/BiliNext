@@ -28,7 +28,7 @@ struct BrowseView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: 20) {
-                Text(pageTitle).font(.system(size: 26, weight: .bold)).lineLimit(1)
+                Text(pageTitle).font(GlassTheme.pageTitleFont).lineLimit(1)
                 Spacer()
                 if model.loading { ProgressView().controlSize(.small) }
             }.padding(.horizontal, GlassTheme.contentInset).padding(.top, 28).padding(.bottom, 20)

@@ -2,23 +2,63 @@ import AppKit
 import SwiftUI
 
 /// Glass belongs to navigation and controls; artwork stays on a quiet, opaque canvas.
+/// Pink marks state (selection, hover, progress, activated actions), never resting chrome.
 enum GlassTheme {
     static let contentInset: CGFloat = 28
+    static let badgeRadius: CGFloat = 4
     static let artworkRadius: CGFloat = 12
     static let rowRadius: CGFloat = 8
     static let panelRadius: CGFloat = 16
+    /// Gap between the window edge and the content card, and the card's concentric corner.
+    static let cardGap: CGFloat = 8
+    static let cardRadius: CGFloat = 10
+
+    static let pageTitleFont = Font.system(size: 26, weight: .bold)
+    static let sheetTitleFont = Font.system(size: 20, weight: .bold)
+    static let sectionTitleFont = Font.system(size: 17, weight: .semibold)
     static let readingFont = Font.system(size: 16)
     static let bodyFont = Font.system(size: 15)
     static let labelFont = Font.system(size: 14)
     static let metadataFont = Font.system(size: 13)
     static let captionFont = Font.system(size: 12)
+
+    /// SF Symbol sizes: small disclosure/close glyphs, regular toolbar icons, player icons.
+    static let smallIconFont = Font.system(size: 11, weight: .semibold)
+    static let iconFont = Font.system(size: 15)
+    static let largeIconFont = Font.system(size: 18)
+
     static let controlHeight: CGFloat = 34
     static let iconControlSize: CGFloat = 32
     static let navigationRowHeight: CGFloat = 38
     static let childRowHeight: CGFloat = 34
     static let tabRowHeight: CGFloat = 36
-    static let accent = Color.pink
-    static let canvas = Color(nsColor: .windowBackgroundColor)
+
+    /// Bilibili pink, slightly deeper in dark appearance so white labels stay legible.
+    static let accent = Color(
+        nsColor: NSColor(name: "BiliNextAccent") { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor(srgbRed: 0.93, green: 0.36, blue: 0.55, alpha: 1)
+                : NSColor(srgbRed: 1.00, green: 0.40, blue: 0.60, alpha: 1)
+        })
+    static let canvas = Color(nsColor: .textBackgroundColor)
+
+    /// One pointer-feedback scale for every control, row and card.
+    static let hoverOpacity = 0.07
+    static let pressOpacity = 0.14
+    static let selectionOpacity = 0.14
+}
+
+/// Three motion speeds: hover/press feedback, standard state changes and larger layout moves.
+enum Motion {
+    static let quick = Animation.easeOut(duration: 0.15)
+    static let standard = Animation.easeOut(duration: 0.2)
+    static let emphasized = Animation.timingCurve(0.65, 0, 0.35, 1, duration: 0.3)
+
+    static func quick(_ reduceMotion: Bool) -> Animation? { reduceMotion ? nil : quick }
+    static func standard(_ reduceMotion: Bool) -> Animation? { reduceMotion ? nil : standard }
+    static func emphasized(_ reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : emphasized
+    }
 }
 
 struct ChromeSurface<S: Shape>: ViewModifier {
@@ -44,23 +84,30 @@ struct ChromeSurface<S: Shape>: ViewModifier {
     }
 }
 
+/// Pinned, the sidebar sits directly on the window backdrop. Revealed from the edge,
+/// it floats over content as a glass panel.
 struct SidebarSurface: View {
     let pinned: Bool
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: pinned ? 0 : GlassTheme.panelRadius)
-        Group {
-            if reduceTransparency {
-                shape.fill(GlassTheme.canvas)
-            } else {
-                // A material foundation lets the glass controls above it remain legible.
-                shape.fill(.thinMaterial)
+        let shape = RoundedRectangle(cornerRadius: GlassTheme.panelRadius)
+        if pinned {
+            Color.clear
+        } else {
+            Group {
+                if reduceTransparency {
+                    shape.fill(GlassTheme.canvas)
+                } else {
+                    Color.clear.glassEffect(
+                        .regular.tint(GlassTheme.canvas.opacity(0.45)), in: shape)
+                }
             }
-        }
-        .overlay {
-            shape.strokeBorder(.primary.opacity(contrast == .increased ? 0.30 : 0.08), lineWidth: 1)
+            .overlay {
+                shape.strokeBorder(
+                    .primary.opacity(contrast == .increased ? 0.30 : 0.08), lineWidth: 1)
+            }
         }
     }
 }
@@ -76,18 +123,20 @@ struct DetailSurface: View {
     }
 }
 
+/// A selected sidebar row is a small piece of the content card it opens, as in Arc:
+/// card-coloured, lifted by a hairline shadow. The outline returns under Increase Contrast.
 struct NavigationSelection: View {
     let selected: Bool
     @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         RoundedRectangle(cornerRadius: GlassTheme.rowRadius)
-            .fill(.primary.opacity(selected ? 0.10 : 0))
+            .fill(GlassTheme.canvas.opacity(selected ? 1 : 0))
+            .shadow(color: .black.opacity(selected ? 0.16 : 0), radius: 1, y: 0.5)
             .overlay {
-                if selected {
+                if selected && contrast == .increased {
                     RoundedRectangle(cornerRadius: GlassTheme.rowRadius)
-                        .strokeBorder(
-                            .primary.opacity(contrast == .increased ? 0.45 : 0.10), lineWidth: 1)
+                        .strokeBorder(.primary.opacity(0.45), lineWidth: 1)
                 }
             }
             .allowsHitTesting(false)

@@ -52,65 +52,20 @@ struct WindowChrome: NSViewRepresentable {
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
             window.styleMask.insert(.fullSizeContentView)
-            for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-                window.standardWindowButton(kind)?.isHidden =
-                    !fullScreen
-            }
         }
     }
 }
 
-struct TrafficLights: NSViewRepresentable {
-    func makeNSView(context: Context) -> Controls { Controls() }
-    func updateNSView(_ view: Controls, context: Context) {}
-    final class Controls: NSView {
-        private var notifications: [NSObjectProtocol] = []
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            notifications.forEach(NotificationCenter.default.removeObserver)
-            notifications = []
-            isHidden = window?.styleMask.contains(.fullScreen) ?? false
-            guard let window else { return }
-            for name in [
-                NSWindow.willEnterFullScreenNotification,
-                NSWindow.didEnterFullScreenNotification, NSWindow.didExitFullScreenNotification,
-            ] {
-                notifications.append(
-                    NotificationCenter.default.addObserver(
-                        forName: name, object: window, queue: .main
-                    ) { [weak self] notification in
-                        MainActor.assumeIsolated {
-                            self?.isHidden =
-                                notification.name != NSWindow.didExitFullScreenNotification
-                        }
-                    })
-            }
-        }
-        deinit { notifications.forEach(NotificationCenter.default.removeObserver) }
-        override init(frame: NSRect) {
-            super.init(frame: frame)
-            for (index, kind) in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
-                .enumerated()
-            {
-                guard
-                    let button = NSWindow.standardWindowButton(
-                        kind, for: [.titled, .closable, .miniaturizable, .resizable])
-                else { continue }
-                button.setFrameOrigin(NSPoint(x: index * 20, y: 5))
-                button.target = self
-                button.action =
-                    [
-                        #selector(closeWindow), #selector(minimizeWindow),
-                        #selector(fullscreenWindow),
-                    ][index]
-                addSubview(button)
-            }
-        }
-        required init?(coder: NSCoder) { fatalError() }
-        @objc private func closeWindow() { window?.performClose(nil) }
-        @objc private func minimizeWindow() { window?.miniaturize(nil) }
-        @objc private func fullscreenWindow() { window?.toggleFullScreen(nil) }
+/// Wallpaper-tinted window backdrop; the pinned sidebar draws directly on it.
+struct WindowBackdrop: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .sidebar
+        view.blendingMode = .behindWindow
+        view.state = .followsWindowActiveState
+        return view
     }
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
 }
 
 // A window-wide observer remains present while the drawer is hidden. Local

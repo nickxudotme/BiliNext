@@ -21,7 +21,7 @@ struct MemberView: View {
             HStack(spacing: 14) {
                 AvatarView(url: profile?.avatar).frame(width: 48, height: 48)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(profile?.name ?? name).font(.title2.bold())
+                    Text(profile?.name ?? name).font(GlassTheme.sheetTitleFont)
                     Text(profile?.signature ?? "UP 主的投稿").font(GlassTheme.metadataFont)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
