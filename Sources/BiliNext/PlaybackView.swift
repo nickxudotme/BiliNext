@@ -332,6 +332,10 @@ private struct VideoInformationView: View {
                             }
                         }
                     }
+                } else if let error = model.playerError, !model.videoLoading {
+                    ErrorBanner(message: error) {
+                        if let id = model.selected { model.activate(id, force: true) }
+                    }
                 } else {
                     ProgressView().frame(maxWidth: .infinity)
                 }

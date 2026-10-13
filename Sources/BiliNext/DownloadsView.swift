@@ -149,21 +149,16 @@ final class DownloadManager: ObservableObject {
 struct DownloadsView: View {
     @ObservedObject var manager: DownloadManager
     @ObservedObject var model: AppModel
-    @Environment(\.dismiss) private var dismiss
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("下载").font(GlassTheme.sheetTitleFont)
-                Spacer()
-                Button("完成") { dismiss() }.controlSize(.large).font(GlassTheme.labelFont)
-                    .keyboardShortcut(.cancelAction)
-            }
+            SheetHeader(title: "下载")
             Text("保存到 下载 / BiliNext · 当前支持单段 MP4，退出应用会中断未完成任务。").font(GlassTheme.metadataFont)
                 .foregroundStyle(
                     .secondary)
             if manager.items.isEmpty {
                 ContentUnavailableView(
-                    "还没有下载", systemImage: "arrow.down.circle", description: Text("在视频页面点击下载按钮。"))
+                    "还没有下载", systemImage: "arrow.down.circle",
+                    description: Text("在播放页点击「缓存」，视频会保存到这里。"))
             }
             ScrollView {
                 LazyVStack(spacing: 16) {

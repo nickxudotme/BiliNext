@@ -16,6 +16,20 @@ struct BrowseView: View {
     @ObservedObject var model: AppModel
     var isActive = true
     @FocusState private var searching: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var emptyState: (title: String, message: String, symbol: String) {
+        switch model.menu {
+        case .search where model.query.isEmpty:
+            ("找一部想看的视频", "支持关键词、BV 号和视频链接。", "magnifyingglass")
+        case .search: ("没有找到相关视频", "换个关键词，或者换一种排序试试。", "magnifyingglass")
+        case .favorites: ("这个收藏夹还是空的", "在播放页点「收藏」，视频就会出现在这里。", "star")
+        case .history: ("还没有观看记录", "看过的视频会出现在这里，点击即可从上次进度继续。", "clock.arrow.circlepath")
+        case .watchLater: ("稍后再看是空的", "悬停视频卡片，点右上角的时钟就能加入。", "clock")
+        case .dynamic: ("关注的 UP 主暂时没有新视频", "可以稍后刷新再看看。", "rectangle.stack")
+        case .home: ("暂时没有视频", "可以稍后刷新再看看。", "play.rectangle")
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if model.menu == .search {
@@ -83,15 +97,8 @@ struct BrowseView: View {
                 ).padding(.bottom, 12)
             }
             if let error = model.browseError {
-                HStack {
-                    Image(systemName: "exclamationmark.triangle")
-                    Text(error)
-                    Spacer()
-                    Button("重试") { model.retryBrowse() }
-                }
-                .font(GlassTheme.bodyFont).controlSize(.large).padding().background(
-                    .orange.opacity(0.08)
-                ).padding(.horizontal, GlassTheme.contentInset)
+                ErrorBanner(message: error) { model.retryBrowse() }
+                    .padding(.horizontal, GlassTheme.contentInset).padding(.bottom, 16)
             }
             if model.menu == .home && model.homeSection == "番剧" {
                 SeasonBrowser(model: model)
@@ -108,16 +115,14 @@ struct BrowseView: View {
 
             } else if model.menu == .dynamic && model.dynamicMode == "全部" {
                 ActivityView(model: model)
+            } else if model.videos.isEmpty && model.loading && model.browseError == nil {
+                SkeletonVideoGrid(history: model.menu == .history)
+                    .transition(.opacity)
             } else if model.videos.isEmpty && !model.loading && model.browseError == nil {
                 ContentUnavailableView {
-                    Label(
-                        model.menu == .search && model.query.isEmpty ? "找一部想看的视频" : "暂时没有视频",
-                        systemImage: "play.rectangle")
+                    Label(emptyState.title, systemImage: emptyState.symbol)
                 } description: {
-                    Text(
-                        model.hasMore
-                            ? "这一批暂时没有视频，可以继续加载。"
-                            : model.menu == .search ? "支持关键词、BV 号和视频链接。" : "可以稍后刷新再看看。")
+                    Text(model.hasMore ? "这一批暂时没有视频，可以继续加载。" : emptyState.message)
                 } actions: {
                     if model.hasMore {
                         Button("继续加载视频") { model.refresh(more: true) }.buttonStyle(.glass)
@@ -128,6 +133,7 @@ struct BrowseView: View {
                     .id(model.menu)
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .animation(Motion.standard(reduceMotion), value: model.videos.isEmpty)
             .onChange(of: isActive) { _, active in
                 if !active { searching = false }
             }

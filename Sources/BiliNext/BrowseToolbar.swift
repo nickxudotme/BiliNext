@@ -25,7 +25,10 @@ struct BrowseToolbar: View {
             case .favorites, .search, .history, .watchLater:
                 Text(title).font(GlassTheme.pageTitleFont).lineLimit(1)
             }
-            if model.loadedBrowseInstance(for: model.menu)?.loading == true {
+            // A first load shows skeleton cards; the spinner is for refreshing existing content.
+            if let page = model.loadedBrowseInstance(for: model.menu), page.loading,
+                !page.videos.isEmpty
+            {
                 ProgressView().controlSize(.small)
             }
             Spacer(minLength: 12)

@@ -29,8 +29,8 @@ struct MemberView: View {
                 Spacer()
                 Link("B 站空间", destination: URL(string: "https://space.bilibili.com/\(mid)")!)
                     .font(GlassTheme.labelFont).frame(minHeight: GlassTheme.controlHeight)
-                Button("完成") { dismiss() }.controlSize(.large).font(GlassTheme.labelFont)
-                    .keyboardShortcut(.cancelAction)
+                Button("完成") { dismiss() }.buttonStyle(.glass).controlSize(.large)
+                    .font(GlassTheme.labelFont).keyboardShortcut(.cancelAction)
             }
             HStack {
                 TextField("搜索此 UP 主的视频", text: $keyword).textFieldStyle(.roundedBorder).onSubmit {
