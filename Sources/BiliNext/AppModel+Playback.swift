@@ -42,6 +42,11 @@ extension AppModel {
             return
         }
         guard tabs.contains(where: { $0.id == id }) else { return }
+        if let roomID = LiveSession.roomID(id) {
+            activateLive(roomID, force: force, autoplay: autoplay)
+            return
+        }
+        if liveSession != nil { stopMedia() }
         selected = id
         if mediaID == id && !force {
             if autoplay {
@@ -537,6 +542,10 @@ extension AppModel {
             )
             return
         }
+        if let liveSession {
+            liveSession.togglePlayback()
+            return
+        }
         if let mpv {
             playbackIntent = !playbackIntent
             if playbackIntent { mpv.play() } else { mpv.pause() }
@@ -571,6 +580,8 @@ extension AppModel {
         return id == mediaID && playing
     }
     func stopMedia() {
+        liveSession?.stop()
+        liveSession = nil
         cancelPlaybackRecovery()
         resetSecondarySubtitles()
         smartSubtitles.configure(video: nil, cid: nil, owner: nil, track: "")

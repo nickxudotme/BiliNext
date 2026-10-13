@@ -112,6 +112,7 @@ extension AppModel {
             }
             instance.player.pause()
             instance.mpv?.pause()
+            instance.liveSession?.suspend()
             instance.officialWebView?.evaluateJavaScript("window.biliPlayer?.pause()")
             instance.playbackIntent = false
             instance.playing = false
@@ -143,6 +144,9 @@ extension AppModel {
             if let value { self?.toast = value }
         }.store(in: &subscriptions)
         instance.$playing.dropFirst().sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }.store(in: &subscriptions)
+        instance.$liveSession.dropFirst().sink { [weak self] _ in
             self?.objectWillChange.send()
         }.store(in: &subscriptions)
         tabSubscriptions[key] = subscriptions

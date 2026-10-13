@@ -38,13 +38,20 @@ struct ShellView: View {
             }
             ForEach(model.tabs) { tab in
                 if let instance = model.playbackInstances[tab.id] {
-                    PlaybackView(
-                        model: instance, navigationOverlayVisible: !pinned && revealed,
-                        isActive: model.selected == tab.id
-                    )
-                    .opacity(model.selected == tab.id ? 1 : 0)
-                    .allowsHitTesting(model.selected == tab.id)
-                    .accessibilityHidden(model.selected != tab.id)
+                    if let session = instance.liveSession {
+                        LiveRoomView(session: session, isActive: model.selected == tab.id)
+                            .opacity(model.selected == tab.id ? 1 : 0)
+                            .allowsHitTesting(model.selected == tab.id)
+                            .accessibilityHidden(model.selected != tab.id)
+                    } else {
+                        PlaybackView(
+                            model: instance, navigationOverlayVisible: !pinned && revealed,
+                            isActive: model.selected == tab.id
+                        )
+                        .opacity(model.selected == tab.id ? 1 : 0)
+                        .allowsHitTesting(model.selected == tab.id)
+                        .accessibilityHidden(model.selected != tab.id)
+                    }
                 }
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -295,7 +302,11 @@ struct ShellView: View {
                             Button("复制链接") {
                                 NSPasteboard.general.clearContents()
                                 NSPasteboard.general.setString(
-                                    "https://www.bilibili.com/video/\(tab.id)", forType: .string
+                                    LiveSession.roomID(tab.id).map {
+                                        "https://live.bilibili.com/\($0)"
+                                    }
+                                        ?? "https://www.bilibili.com/video/\(tab.id)",
+                                    forType: .string
                                 )
                             }
                         }

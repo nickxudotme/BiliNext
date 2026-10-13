@@ -7,6 +7,8 @@ import WebKit
 @MainActor
 final class AppModel: ObservableObject {
     let api: BilibiliAPI
+    lazy var followedLives = FollowedLives(api: api)
+    @Published var liveSession: LiveSession?
     lazy var watchHistoryReporter = WatchHistoryReporter(
         send: { [outbox = historyOutbox] progress in
             guard let account = progress.accountID else { return }
@@ -192,7 +194,9 @@ final class AppModel: ObservableObject {
             forInterval: CMTime(seconds: 0.25, preferredTimescale: 600), queue: .main
         ) { [weak self] value in
             Task { @MainActor in
-                guard let self, !self.officialCore, self.mpv == nil else { return }
+                guard let self, !self.officialCore, self.mpv == nil, self.liveSession == nil else {
+                    return
+                }
                 self.updatePlayback(
                     time: value.seconds, duration: self.player.currentItem?.duration.seconds ?? 0,
                     playing: self.player.rate != 0,

@@ -80,6 +80,24 @@ final class MPVPlayer {
         videoURL: URL? = nil, audioURL: URL? = nil,
         diagnostics: PlaybackDiagnosticContext? = nil
     ) throws {
+        try loadSource(
+            videoURL ?? playback.videoStream?.urls.first ?? playback.url,
+            audio: audioURL ?? playback.audioStream?.urls.first, position: position,
+            autoplay: autoplay, diagnostics: diagnostics)
+    }
+
+    func loadLive(_ url: URL, autoplay: Bool) throws {
+        set("referrer", "https://live.bilibili.com/")
+        set("cache-secs", "5")
+        set("demuxer-readahead-secs", "5")
+        set("cache-pause-wait", "1")
+        try loadSource(url, audio: nil, position: 0, autoplay: autoplay, diagnostics: nil)
+    }
+
+    private func loadSource(
+        _ source: URL, audio: URL?, position: Double, autoplay: Bool,
+        diagnostics: PlaybackDiagnosticContext?
+    ) throws {
         while let event = mpv_wait_event(handle, 0), event.pointee.event_id != MPV_EVENT_NONE {}
         failure = nil
         failureCode = nil
@@ -92,9 +110,6 @@ final class MPVPlayer {
         loaded = false
         playbackActivity.setActive(false)
         set("pause", autoplay ? "no" : "yes")
-        // mpv accepts an independently fetched audio stream without a local HLS bridge.
-        let source = videoURL ?? playback.videoStream?.urls.first ?? playback.url
-        let audio = audioURL ?? playback.audioStream?.urls.first
         let options = "start=\(max(0, position)),speed=\(speed)"
         let media: String
         if let audio {

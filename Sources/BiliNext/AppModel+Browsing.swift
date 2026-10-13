@@ -181,6 +181,7 @@ extension AppModel {
             request.offset = offset
         }
         if !more {
+            if menu == "动态", profile != nil { followedLives.refresh() }
             page = 0
             offset = nil
             browseRequestedOffsets = []

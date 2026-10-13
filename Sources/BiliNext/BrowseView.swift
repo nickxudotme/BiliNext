@@ -53,6 +53,9 @@ struct BrowseView: View {
                     )
                     .padding(.horizontal, GlassTheme.contentInset).padding(.bottom, 20)
             }
+            if model.menu == "动态", model.profile != nil {
+                FollowedLiveView(lives: model.followedLives, model: model)
+            }
             if ["收藏", "历史"].contains(model.menu) {
                 HStack {
                     TextField(model.menu == "收藏" ? "搜索当前收藏夹" : "搜索观看历史", text: $model.libraryQuery)

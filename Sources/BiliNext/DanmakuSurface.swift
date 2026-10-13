@@ -113,6 +113,7 @@ struct DanmakuSurface: NSViewRepresentable {
     }
     final class Surface: NSView {
         override var isFlipped: Bool { true }
+        var liveClock: (() -> Double)?
         var player: AVPlayer?
         weak var mpv: MPVPlayer?
         var items: [DanmakuPlacement] = []
@@ -163,7 +164,9 @@ struct DanmakuSurface: NSViewRepresentable {
             }
         }
         @objc private func tick() {
-            if let mpv {
+            if let liveClock {
+                render(time: liveClock())
+            } else if let mpv {
                 render(time: mpv.time)
             } else if let player {
                 render(time: player.currentTime().seconds)

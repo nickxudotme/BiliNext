@@ -68,6 +68,9 @@ struct ActivityView: View {
                                 }.contentShape(Rectangle())
                             }.buttonStyle(InteractionButtonStyle(kind: .row))
                         }
+                        if let room = activity.live {
+                            LiveActivityCard(room: room, model: model)
+                        }
                         if !activity.images.isEmpty {
                             LazyVGrid(
                                 columns: [GridItem(.adaptive(minimum: 180), spacing: 10)],
