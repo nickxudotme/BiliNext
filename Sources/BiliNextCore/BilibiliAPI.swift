@@ -498,4 +498,23 @@ public actor BilibiliAPI {
         return try DanmakuDecoder.decode(data)
     }
 
+    /// Public, credential-free curve the official player loads beside the progress bar.
+    public func highEnergy(aid: Int64?, bvid: String, cid: Int64) async throws -> HighEnergyCurve? {
+        var url = URLComponents(string: "https://bvc.bilivideo.com/pbp/data")!
+        url.queryItems =
+            [
+                URLQueryItem(name: "bvid", value: bvid),
+                URLQueryItem(name: "cid", value: String(cid)),
+                URLQueryItem(name: "r", value: "loader"),
+            ] + (aid.map { [URLQueryItem(name: "aid", value: String($0))] } ?? [])
+        var request = URLRequest(url: url.url!)
+        request.httpShouldHandleCookies = false
+        request.setValue("https://www.bilibili.com/", forHTTPHeaderField: "Referer")
+        let (data, response) = try await session.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200,
+            let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        return HighEnergyCurve.parse(body)
+    }
+
 }
