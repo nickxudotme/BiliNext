@@ -2,6 +2,8 @@
 
 Profile: standard. Keep the compact browser sidebar and artwork-led video grid.
 
+> 2026-10-14 起外壳与设计系统由 [2026-10 体验重设计](redesign-2026-10.md) 取代：壁纸底层 + 嵌入内容卡片、系统红绿灯、共享工具栏和 GlassTheme v2。下文为此前方案的历史记录。
+
 Considered directions: editorial discovery with a large hero; cinematic artwork-driven atmosphere; restrained native glass. The third fits the approved 220pt sidebar and main-window playback and avoids adding decorative content or extra motion.
 
 ## Design system
