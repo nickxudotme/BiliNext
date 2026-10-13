@@ -55,6 +55,7 @@ extension AppModel {
         }
         hoverPreview.stop()
         suspendPlaybackTabs()
+        if miniPlayer { toggleMiniPlayer() }
         selected = nil
         menu = destination
         libraryQuery = ""

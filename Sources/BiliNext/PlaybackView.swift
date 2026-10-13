@@ -24,6 +24,8 @@ private enum PlaybackPanel: String, CaseIterable, Identifiable {
 struct PlaybackView: View {
     @ObservedObject var model: AppModel
     var navigationOverlayVisible = false
+    var miniPlayer = false
+    var windowPinned = false
     var isActive = true
     @State private var panel = PlaybackPanel.info
     @State private var playerWidth: CGFloat = 0
@@ -58,9 +60,9 @@ struct PlaybackView: View {
                     .help(model.theater ? "展开视频详情" : "收起视频详情")
                     .accessibilityLabel(model.theater ? "展开视频详情" : "收起视频详情")
                     .padding(.trailing, 6)
-                    .opacity(hoveringDetails || (hoveringVideo && !idle) ? 1 : 0)
-                    .allowsHitTesting(hoveringDetails || (hoveringVideo && !idle))
-                    .accessibilityHidden(!(hoveringDetails || (hoveringVideo && !idle)))
+                    .opacity(detailsToggleVisible ? 1 : 0)
+                    .allowsHitTesting(detailsToggleVisible)
+                    .accessibilityHidden(!detailsToggleVisible)
                 }
             if !model.theater {
                 VStack(spacing: 0) {
@@ -124,6 +126,10 @@ struct PlaybackView: View {
             content: {
                 if let aid = model.detail?.video.aid { FavoritePickerView(model: model, aid: aid) }
             })
+    }
+
+    private var detailsToggleVisible: Bool {
+        !miniPlayer && (hoveringDetails || (hoveringVideo && !idle))
     }
 
     private var playbackOptions: some View {
@@ -194,7 +200,11 @@ struct PlaybackView: View {
                         ).allowsHitTesting(false)
                 }
             } else {
-                CustomPlayerView(model: model, danmaku: model.danmaku, isActive: isActive) {
+                CustomPlayerView(
+                    model: model, danmaku: model.danmaku, isActive: isActive,
+                    miniPlayer: miniPlayer,
+                    windowPinned: windowPinned
+                ) {
                     visible in
                     idle = !visible && hoveringVideo && model.playing
                     updateCursor()

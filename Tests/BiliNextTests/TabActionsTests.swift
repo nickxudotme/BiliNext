@@ -72,3 +72,24 @@ import Testing
     model.requestCoin()
     #expect(model.loginPresented && !model.coinDialogPresented)
 }
+
+@MainActor
+@Test func miniPlayerRestoresSidebarDetailsAndPinning() {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let model = AppModel(sessionStore: SessionStore(directory: directory))
+    model.tabs = [SessionTab(video: Video(bvid: "BV1111111111", title: "一"))]
+    let page = model.playbackInstance(for: model.tabs[0])
+    model.selected = "BV1111111111"
+
+    page.toggleMiniPlayer()
+    #expect(model.miniPlayer && model.windowPinned && !model.sidebarPinned && page.theater)
+
+    model.toggleMiniPlayer()
+    #expect(!model.miniPlayer && !model.windowPinned && model.sidebarPinned && !page.theater)
+
+    model.toggleWindowPin()
+    model.toggleMiniPlayer()
+    model.toggleMiniPlayer()
+    #expect(model.windowPinned)
+}

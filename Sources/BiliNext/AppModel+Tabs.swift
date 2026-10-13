@@ -78,6 +78,38 @@ extension AppModel {
         saveSession()
     }
 
+    func toggleWindowPin() {
+        if let tabOwner {
+            tabOwner.toggleWindowPin()
+            return
+        }
+        windowPinned.toggle()
+    }
+
+    /// Enters or leaves 小窗 for the open video, restoring the sidebar, details and pinning.
+    func toggleMiniPlayer() {
+        if let tabOwner {
+            tabOwner.toggleMiniPlayer()
+            return
+        }
+        let page = selected.flatMap { playbackInstances[$0] }
+        if miniPlayer {
+            let previous = stateBeforeMiniPlayer
+            miniPlayer = false
+            sidebarPinned = previous?.sidebarPinned ?? true
+            windowPinned = previous?.windowPinned ?? false
+            page?.theater = previous?.theater ?? false
+            stateBeforeMiniPlayer = nil
+        } else {
+            guard let page else { return }
+            stateBeforeMiniPlayer = (sidebarPinned, page.theater, windowPinned)
+            sidebarPinned = false
+            page.theater = true
+            windowPinned = true
+            miniPlayer = true
+        }
+    }
+
     /// ⌘1–8 pick a tab by position and ⌘9 the last one, as in browsers.
     func activateTab(number: Int) {
         guard !tabs.isEmpty else { return }

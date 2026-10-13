@@ -79,6 +79,11 @@ final class AppModel: ObservableObject {
     /// Tabs opened in the background and not yet visited, marked in the sidebar.
     @Published var unseenTabs = Set<String>()
     @Published var sidebarPinned = true
+    /// Window floats above other apps (置顶).
+    @Published var windowPinned = false
+    /// Window shrinks to a floating corner player (小窗) showing only the current video.
+    @Published var miniPlayer = false
+    var stateBeforeMiniPlayer: (sidebarPinned: Bool, theater: Bool, windowPinned: Bool)?
     @Published var profile: UserProfile?
     var accountGeneration = UUID()
     @Published var query = ""

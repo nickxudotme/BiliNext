@@ -2,6 +2,8 @@ import AppKit
 import SwiftUI
 
 struct WindowChrome: NSViewRepresentable {
+    var pinned = false
+    var miniPlayer = false
     var onFullScreenChange: (Bool) -> Void = { _ in }
     func makeNSView(context: Context) -> ChromeView {
         let view = ChromeView()
@@ -11,9 +13,31 @@ struct WindowChrome: NSViewRepresentable {
     func updateNSView(_ view: ChromeView, context: Context) {
         view.onFullScreenChange = onFullScreenChange
         view.configure()
+        view.apply(pinned: pinned, miniPlayer: miniPlayer)
     }
     final class ChromeView: NSView {
         var onFullScreenChange: (Bool) -> Void = { _ in }
+        private var frameBeforeMiniPlayer: NSRect?
+
+        /// 置顶 floats the window; 小窗 moves it to a 16:9 corner player and back again.
+        func apply(pinned: Bool, miniPlayer: Bool) {
+            guard let window else { return }
+            let level: NSWindow.Level = pinned ? .floating : .normal
+            if window.level != level { window.level = level }
+            if miniPlayer, frameBeforeMiniPlayer == nil {
+                if window.styleMask.contains(.fullScreen) { window.toggleFullScreen(nil) }
+                frameBeforeMiniPlayer = window.frame
+                let screen = (window.screen ?? NSScreen.main)?.visibleFrame ?? window.frame
+                let size = NSSize(width: 480, height: 270)
+                let frame = NSRect(
+                    x: screen.maxX - size.width - 24, y: screen.minY + 24, width: size.width,
+                    height: size.height)
+                DispatchQueue.main.async { window.setFrame(frame, display: true, animate: true) }
+            } else if !miniPlayer, let previous = frameBeforeMiniPlayer {
+                frameBeforeMiniPlayer = nil
+                DispatchQueue.main.async { window.setFrame(previous, display: true, animate: true) }
+            }
+        }
         private var reportedFullScreen: Bool?
         private var notifications: [NSObjectProtocol] = []
         override func viewDidMoveToWindow() {

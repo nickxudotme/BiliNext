@@ -5,7 +5,9 @@ struct ShellView: View {
     @ObservedObject var model: AppModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let drawerWidth: CGFloat = 220
-    private var cardGap: CGFloat { fullScreen ? 0 : GlassTheme.cardGap }
+    /// Fullscreen and 小窗 drop the inset so video reaches the window edges.
+    private var edgeToEdge: Bool { fullScreen || model.miniPlayer }
+    private var cardGap: CGFloat { edgeToEdge ? 0 : GlassTheme.cardGap }
     @State private var expandedMenus: Set<BrowseDestination> = []
     private var pinned: Bool {
         get { model.sidebarPinned }
@@ -50,6 +52,7 @@ struct ShellView: View {
                     } else {
                         PlaybackView(
                             model: instance, navigationOverlayVisible: !pinned && revealed,
+                            miniPlayer: model.miniPlayer, windowPinned: model.windowPinned,
                             isActive: model.selected == tab.id
                         )
                         .opacity(model.selected == tab.id ? 1 : 0)
@@ -62,12 +65,16 @@ struct ShellView: View {
             // Content is an inset card on the wallpaper-tinted backdrop, as in Arc.
             // Fullscreen drops the inset so video and pages reach the screen edges.
             .background(GlassTheme.canvas)
-            .clipShape(RoundedRectangle(cornerRadius: fullScreen ? 0 : GlassTheme.cardRadius))
-            .shadow(color: .black.opacity(fullScreen ? 0 : 0.18), radius: 1.5)
+            .clipShape(RoundedRectangle(cornerRadius: edgeToEdge ? 0 : GlassTheme.cardRadius))
+            .shadow(color: .black.opacity(edgeToEdge ? 0 : 0.18), radius: 1.5)
             .padding(.leading, pinned ? drawerWidth : cardGap)
             .padding([.top, .bottom, .trailing], cardGap)
             .background { WindowBackdrop().ignoresSafeArea() }
-            .background(WindowChrome { fullScreen = $0 })
+            .background(
+                WindowChrome(pinned: model.windowPinned, miniPlayer: model.miniPlayer) {
+                    fullScreen = $0
+                }
+            )
             .onChange(of: fullScreen) { _, entered in
                 if entered && model.selected != nil {
                     pinnedBeforePlaybackFullscreen = pinned
@@ -111,6 +118,10 @@ struct ShellView: View {
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: pinned)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: revealed)
             .ignoresSafeArea(.container, edges: .top)
+            .onChange(of: model.selected) { _, selected in
+                // 小窗 only shows a video; closing the last one returns to the full window.
+                if selected == nil && model.miniPlayer { model.toggleMiniPlayer() }
+            }
             .onChange(of: model.sidebarPinned) { _, _ in
                 // The menu shortcut toggles pinning without passing through the header button.
                 revealTask?.cancel()
@@ -119,6 +130,10 @@ struct ShellView: View {
                 pointerZone = -1
             }
             .onExitCommand {
+                if model.miniPlayer {
+                    model.toggleMiniPlayer()
+                    return
+                }
                 revealTask?.cancel()
                 hideTask?.cancel()
                 if !pinned { revealed = false }

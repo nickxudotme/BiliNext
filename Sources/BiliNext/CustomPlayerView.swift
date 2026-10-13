@@ -35,10 +35,12 @@ struct CustomPlayerView: View {
     @ObservedObject var model: AppModel
     @ObservedObject private var clock: PlaybackClock
     init(
-        model: AppModel, danmaku: DanmakuModel, isActive: Bool = true,
-        onControlsVisibility: @escaping (Bool) -> Void = { _ in }
+        model: AppModel, danmaku: DanmakuModel, isActive: Bool = true, miniPlayer: Bool = false,
+        windowPinned: Bool = false, onControlsVisibility: @escaping (Bool) -> Void = { _ in }
     ) {
         self.isActive = isActive
+        self.miniPlayer = miniPlayer
+        self.windowPinned = windowPinned
         self.onControlsVisibility = onControlsVisibility
         self.model = model
         self.danmaku = danmaku
@@ -47,6 +49,9 @@ struct CustomPlayerView: View {
     }
 
     var isActive: Bool
+    var miniPlayer: Bool
+    /// 置顶 lives on the workspace model, so the shell passes it down with 小窗.
+    var windowPinned: Bool
     var onControlsVisibility: (Bool) -> Void
     private var controlsVisible: Bool {
         controls || !model.playing || scrubbing || settings || qualitySettings || rateSettings
@@ -282,7 +287,7 @@ struct CustomPlayerView: View {
         .onDisappear { hideTask?.cancel() }
     }
     private var controlsBar: some View {
-        let compact = availableWidth <= 540
+        let compact = availableWidth <= 540 || miniPlayer
         return VStack(spacing: 2) {
             HStack(spacing: 10) {
                 PlaybackScrubber(
@@ -331,21 +336,24 @@ struct CustomPlayerView: View {
                             }
                         }
                 }
-                textButton(
-                    model.playbackRate == 1 ? "倍速" : String(format: "%g×", model.playbackRate),
-                    active: rateSettings
-                ) { rateSettings.toggle() }
-                .help("播放速度 · 长按 → 2×")
-                .popover(isPresented: $rateSettings, arrowEdge: .top) {
-                    optionList(
-                        "播放速度",
-                        options: [0.5, 0.75, 1, 1.25, 1.5, 2, 3].map {
-                            (Int($0 * 100), String(format: "%g×", $0))
-                        },
-                        selected: Int(model.playbackRate * 100)
-                    ) {
-                        model.setRate(Double($0) / 100)
-                        rateSettings = false
+                if !miniPlayer {
+                    textButton(
+                        model.playbackRate == 1
+                            ? "倍速" : String(format: "%g×", model.playbackRate),
+                        active: rateSettings
+                    ) { rateSettings.toggle() }
+                    .help("播放速度 · 长按 → 2×")
+                    .popover(isPresented: $rateSettings, arrowEdge: .top) {
+                        optionList(
+                            "播放速度",
+                            options: [0.5, 0.75, 1, 1.25, 1.5, 2, 3].map {
+                                (Int($0 * 100), String(format: "%g×", $0))
+                            },
+                            selected: Int(model.playbackRate * 100)
+                        ) {
+                            model.setRate(Double($0) / 100)
+                            rateSettings = false
+                        }
                     }
                 }
                 Button {
@@ -356,7 +364,7 @@ struct CustomPlayerView: View {
                         .contentTransition(.symbolEffect(.replace))
                         .iconControlFrame()
                 }.help(danmaku.enabled ? "关闭弹幕 · D" : "开启弹幕 · D").accessibilityLabel("弹幕开关")
-                if !compact || availableWidth > 480 {
+                if !miniPlayer && (!compact || availableWidth > 480) {
                     Button {
                         smartSubtitles.setVisible(!smartSubtitles.visible)
                     } label: {
@@ -370,26 +378,50 @@ struct CustomPlayerView: View {
                     }.help("画面字幕").accessibilityLabel(
                         smartSubtitles.visible ? "隐藏画面软字幕" : "显示画面软字幕")
                 }
+                if !miniPlayer {
+                    Button {
+                        settings.toggle()
+                    } label: {
+                        Image(systemName: "slider.horizontal.3").iconControlFrame()
+                    }.help("字幕与弹幕设置").accessibilityLabel("字幕与弹幕设置")
+                        .popover(isPresented: $settings, arrowEdge: .top) { settingsPanel }
+                }
                 Button {
-                    settings.toggle()
+                    model.toggleWindowPin()
                 } label: {
-                    Image(systemName: "slider.horizontal.3").iconControlFrame()
-                }.help("字幕与弹幕设置").accessibilityLabel("字幕与弹幕设置")
-                    .popover(isPresented: $settings, arrowEdge: .top) { settingsPanel }
+                    Image(systemName: windowPinned ? "pin.fill" : "pin")
+                        .foregroundStyle(windowPinned ? GlassTheme.accent : .white)
+                        .contentTransition(.symbolEffect(.replace))
+                        .iconControlFrame()
+                }.help(windowPinned ? "取消置顶 · ⌥⌘P" : "窗口置顶 · ⌥⌘P")
+                    .accessibilityLabel(windowPinned ? "取消置顶" : "窗口置顶")
                 Button {
-                    model.theater.toggle()
+                    model.toggleMiniPlayer()
                 } label: {
                     Image(
-                        systemName: model.theater ? "sidebar.trailing" : "rectangle.expand.vertical"
+                        systemName: miniPlayer
+                            ? "arrow.up.backward.and.arrow.down.forward" : "pip"
                     )
                     .iconControlFrame()
-                }.help(model.theater ? "显示视频详情" : "剧场模式")
-                    .accessibilityLabel(model.theater ? "显示视频详情" : "剧场模式")
-                Button {
-                    toggleFullscreen()
-                } label: {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right").iconControlFrame()
-                }.help("全屏 · F").accessibilityLabel("全屏")
+                }.help(miniPlayer ? "退出小窗 · Esc" : "小窗播放 · ⌥⌘M")
+                    .accessibilityLabel(miniPlayer ? "退出小窗" : "小窗播放")
+                if !miniPlayer {
+                    Button {
+                        model.theater.toggle()
+                    } label: {
+                        Image(
+                            systemName: model.theater
+                                ? "sidebar.trailing" : "rectangle.expand.vertical"
+                        )
+                        .iconControlFrame()
+                    }.help(model.theater ? "显示视频详情" : "剧场模式")
+                        .accessibilityLabel(model.theater ? "显示视频详情" : "剧场模式")
+                    Button {
+                        toggleFullscreen()
+                    } label: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right").iconControlFrame()
+                    }.help("全屏 · F").accessibilityLabel("全屏")
+                }
             }
             .font(.system(size: 17, weight: .medium)).buttonStyle(InteractionButtonStyle())
             .foregroundStyle(.white)

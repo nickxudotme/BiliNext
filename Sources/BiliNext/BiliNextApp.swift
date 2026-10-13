@@ -9,7 +9,9 @@ struct BiliNextApp: App {
         Window("BiliNext", id: "main") {
             ShellView(model: model)
                 .tint(GlassTheme.accent)
-                .frame(minWidth: 940, minHeight: 600)
+                .frame(
+                    minWidth: model.miniPlayer ? 320 : 940, minHeight: model.miniPlayer ? 180 : 600
+                )
                 .task { await model.start() }
                 .onAppear {
                     terminationDelegate.model = model
@@ -46,6 +48,13 @@ struct BiliNextApp: App {
                     }
                     .keyboardShortcut(KeyEquivalent(Character("\(number)")), modifiers: .command)
                 }
+            }
+            CommandGroup(after: .windowArrangement) {
+                Button(model.windowPinned ? "取消置顶" : "窗口置顶") { model.toggleWindowPin() }
+                    .keyboardShortcut("p", modifiers: [.command, .option])
+                Button(model.miniPlayer ? "退出小窗" : "小窗播放") { model.toggleMiniPlayer() }
+                    .keyboardShortcut("m", modifiers: [.command, .option])
+                    .disabled(!model.miniPlayer && model.selected == nil)
             }
             CommandGroup(before: .sidebar) {
                 Button(model.sidebarPinned ? "隐藏侧栏" : "固定侧栏") {
