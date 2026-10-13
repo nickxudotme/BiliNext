@@ -350,7 +350,9 @@ public actor BilibiliAPI {
                 cid: cid, number: (p["page"] as? NSNumber)?.intValue ?? 1,
                 title: p["part"] as? String ?? "")
         }
-        return VideoDetail(video: v, pages: pages, description: d["desc"] as? String ?? "")
+        return VideoDetail(
+            video: v, pages: pages, description: d["desc"] as? String ?? "",
+            stats: VideoStats(stat: d["stat"] as? [String: Any] ?? [:]))
     }
     public func playback(
         bvid: String, cid: Int64, quality: Int = 80, episodeID: Int64? = nil,

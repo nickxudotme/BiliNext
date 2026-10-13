@@ -61,10 +61,59 @@ public struct VideoDetail: Sendable {
     public let video: Video
     public let pages: [VideoPage]
     public let description: String
-    public init(video: Video, pages: [VideoPage], description: String) {
+    public var stats: VideoStats
+    public init(
+        video: Video, pages: [VideoPage], description: String, stats: VideoStats = VideoStats()
+    ) {
         self.video = video
         self.pages = pages
         self.description = description
+        self.stats = stats
+    }
+}
+
+/// Public counters from the video page; nil when the response omits one.
+public struct VideoStats: Equatable, Sendable {
+    public var likes: Int?
+    public var coins: Int?
+    public var favorites: Int?
+    public var shares: Int?
+    public var replies: Int?
+    public init(
+        likes: Int? = nil, coins: Int? = nil, favorites: Int? = nil, shares: Int? = nil,
+        replies: Int? = nil
+    ) {
+        self.likes = likes
+        self.coins = coins
+        self.favorites = favorites
+        self.shares = shares
+        self.replies = replies
+    }
+
+    public init(stat: [String: Any]) {
+        func value(_ key: String) -> Int? { (stat[key] as? NSNumber)?.intValue }
+        self.init(
+            likes: value("like"), coins: value("coin"), favorites: value("favorite"),
+            shares: value("share"), replies: value("reply"))
+    }
+}
+
+/// The signed-in account's like, coin and favorite state for one video.
+public struct VideoRelation: Equatable, Sendable {
+    public var liked: Bool
+    public var coins: Int
+    public var favorited: Bool
+    public init(liked: Bool = false, coins: Int = 0, favorited: Bool = false) {
+        self.liked = liked
+        self.coins = coins
+        self.favorited = favorited
+    }
+
+    public init(_ data: [String: Any]) {
+        self.init(
+            liked: data["like"] as? Bool ?? false,
+            coins: (data["coin"] as? NSNumber)?.intValue ?? 0,
+            favorited: data["favorite"] as? Bool ?? false)
     }
 }
 public struct SubtitleTrack: Identifiable, Sendable {

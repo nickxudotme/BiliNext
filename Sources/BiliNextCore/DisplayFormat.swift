@@ -13,6 +13,8 @@ public enum DisplayFormat {
         return String(Int(value))
     }
 
+    public static func count(_ value: Int) -> String { count(Double(value)) }
+
     public static func count(_ text: String) -> String {
         Double(text).map(count) ?? text
     }

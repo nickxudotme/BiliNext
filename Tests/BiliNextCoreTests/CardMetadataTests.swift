@@ -33,3 +33,14 @@ import Testing
     let restored = try JSONDecoder().decode(Video.self, from: legacy)
     #expect(restored.viewCount == nil && restored.danmakuCount == nil)
 }
+
+@Test func videoStatsAndRelationReadOfficialKeys() {
+    let stats = VideoStats(stat: [
+        "like": NSNumber(value: 1200), "coin": NSNumber(value: 30), "favorite": NSNumber(value: 45),
+        "share": NSNumber(value: 6), "reply": NSNumber(value: 78),
+    ])
+    #expect(stats == VideoStats(likes: 1200, coins: 30, favorites: 45, shares: 6, replies: 78))
+    #expect(VideoStats(stat: [:]) == VideoStats())
+    let relation = VideoRelation(["like": true, "coin": NSNumber(value: 2), "favorite": false])
+    #expect(relation == VideoRelation(liked: true, coins: 2, favorited: false))
+}

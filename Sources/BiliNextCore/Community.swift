@@ -69,9 +69,19 @@ public struct CommentPage: Sendable {
 }
 
 extension BilibiliAPI {
-    public func videoRelation(bvid: String) async throws -> (liked: Bool, coins: Int) {
-        let data = try await request("/x/web-interface/archive/relation", params: ["bvid": bvid])
-        return (data["like"] as? Bool ?? false, (data["coin"] as? NSNumber)?.intValue ?? 0)
+    public func videoRelation(bvid: String) async throws -> VideoRelation {
+        VideoRelation(
+            try await request("/x/web-interface/archive/relation", params: ["bvid": bvid]))
+    }
+    /// 一键三连: like, two coins where allowed, and favorite to the default folder.
+    public func tripleVideo(aid: Int64) async throws -> VideoRelation {
+        let data = try await request(
+            "/x/web-interface/archive/like/triple", form: ["aid": String(aid)])
+        return VideoRelation(
+            liked: data["like"] as? Bool ?? false,
+            coins: (data["multiply"] as? NSNumber)?.intValue
+                ?? (data["coin"] as? Bool == true ? 1 : 0),
+            favorited: data["fav"] as? Bool ?? false)
     }
     public func likeVideo(bvid: String, liked: Bool) async throws {
         _ = try await request(
