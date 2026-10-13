@@ -35,8 +35,8 @@ extension AppModel {
             selected = nil
             if !tabs.isEmpty {
                 activate(tabs[min(index, tabs.count - 1)].id)
-            } else if browseInstances[menu] == nil {
-                refresh()
+            } else {
+                loadBrowseIfNeeded()
             }
         }
         saveSession()
@@ -55,7 +55,7 @@ extension AppModel {
             selected = nil
             stopMedia()
             saveSession()
-            if browseInstances[menu] == nil { refresh() }
+            loadBrowseIfNeeded()
         }
     }
     func undoClose() {
@@ -144,14 +144,56 @@ extension AppModel {
         tabSubscriptions[key] = subscriptions
     }
 
+    func browsePageID(for destination: String) -> String {
+        switch destination {
+        case "首页": return "首页:\(homeSection)"
+        case "动态": return "动态:\(dynamicMode)"
+        case "收藏":
+            let key = "收藏:\(folderID)"
+            if browseInstances[key] != nil { return key }
+            // The default folder's original key remains stable after its real ID arrives.
+            if folderID != 0, let defaultPage = browseInstances["收藏:0"],
+                defaultPage.folderID == folderID
+            {
+                return "收藏:0"
+            }
+            if folderID != 0,
+                let loaded = browseInstances.sorted(by: { $0.key < $1.key }).first(where: {
+                    $0.value.menu == "收藏" && $0.value.folderID == folderID
+                })
+            {
+                return loaded.key
+            }
+            return key
+        default: return destination
+        }
+    }
+
+    func loadedBrowseInstance(for destination: String) -> AppModel? {
+        browseInstances[browsePageID(for: destination)]
+    }
+
     func browseInstance(for destination: String) -> AppModel {
-        if let existing = browseInstances[destination] { return existing }
+        let key = browsePageID(for: destination)
+        if let existing = browseInstances[key] { return existing }
         let instance = AppModel(
             sessionStore: sessionStore, managesPlaybackTabs: false, downloads: downloads, api: api,
-            hoverPreview: hoverPreview)
+            hoverPreview: hoverPreview, browsePageLoader: browsePageLoader,
+            profileLoader: profileLoader)
         instance.menu = destination
-        connectPage(instance, key: "browse:" + destination)
-        browseInstances[destination] = instance
+        instance.homeSection = homeSection
+        instance.dynamicMode = dynamicMode
+        instance.folderID = folderID
+        instance.playbackTabActive = false
+        if destination == "收藏" {
+            instance.folders =
+                folders.isEmpty
+                ? browseInstances.values.first(where: { $0.menu == "收藏" && !$0.folders.isEmpty })?
+                    .folders ?? []
+                : folders
+        }
+        connectPage(instance, key: "browse:" + key)
+        browseInstances[key] = instance
         return instance
     }
 
@@ -173,6 +215,7 @@ extension AppModel {
         saveSession()
         suspendPlaybackTabs(except: id)
         let instance = playbackInstance(for: tab)
+        instance.menu = menu
         selected = id
         instance.profile = profile
         instance.playbackTabActive = true

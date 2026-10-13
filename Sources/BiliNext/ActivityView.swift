@@ -110,6 +110,7 @@ struct ActivityView: View {
             }
     }
     private func load(append: Bool = false) {
+        model.browseLoadAttempted = true
         task?.cancel()
         generation = UUID()
         let token = generation

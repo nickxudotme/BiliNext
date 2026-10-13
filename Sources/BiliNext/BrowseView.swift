@@ -99,7 +99,7 @@ struct BrowseView: View {
                     Image(systemName: "exclamationmark.triangle")
                     Text(error)
                     Spacer()
-                    Button("重试") { model.refresh() }
+                    Button("重试") { model.retryBrowse() }
                 }
                 .font(GlassTheme.bodyFont).controlSize(.large).padding().background(
                     .orange.opacity(0.08)
@@ -121,10 +121,20 @@ struct BrowseView: View {
             } else if model.menu == "动态" && model.dynamicMode == "全部" {
                 ActivityView(model: model)
             } else if model.videos.isEmpty && !model.loading && model.browseError == nil {
-                ContentUnavailableView(
-                    model.menu == "搜索" && model.query.isEmpty ? "找一部想看的视频" : "暂时没有视频",
-                    systemImage: "play.rectangle",
-                    description: Text(model.menu == "搜索" ? "支持关键词、BV 号和视频链接。" : "可以稍后刷新再看看。"))
+                ContentUnavailableView {
+                    Label(
+                        model.menu == "搜索" && model.query.isEmpty ? "找一部想看的视频" : "暂时没有视频",
+                        systemImage: "play.rectangle")
+                } description: {
+                    Text(
+                        model.hasMore
+                            ? "这一批暂时没有视频，可以继续加载。"
+                            : model.menu == "搜索" ? "支持关键词、BV 号和视频链接。" : "可以稍后刷新再看看。")
+                } actions: {
+                    if model.hasMore {
+                        Button("继续加载视频") { model.refresh(more: true) }.buttonStyle(.glass)
+                    }
+                }
             } else {
                 NativeVideoGrid(model: model, isActive: isActive)
                     .id(model.menu)

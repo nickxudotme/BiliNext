@@ -55,6 +55,7 @@ final class AppModel: ObservableObject {
     @Published var selected: String?
     @Published var closed: [SessionTab] = []
     @Published var profile: UserProfile?
+    var accountGeneration = UUID()
     @Published var query = ""
     @Published var homeSection = "推荐"
     @Published var dynamicMode = "视频"
@@ -64,6 +65,7 @@ final class AppModel: ObservableObject {
     @Published var libraryQuery = ""
     @Published var favoriteOrder = "mtime"
     @Published var videos: [Video] = []
+    @Published var browseRevision = 0
     @Published var loading = false
     @Published var browseError: String?
     @Published var hasMore = false
@@ -105,6 +107,12 @@ final class AppModel: ObservableObject {
     var playbackIntent = false
     var failedCodecItem: ObjectIdentifier?
     var browseTask: Task<Void, Never>?
+    let browsePageLoader: (BrowsePageRequest) async throws -> BrowsePageResult
+    let profileLoader: () async throws -> UserProfile
+    var browseLoadAttempted = false
+    var browseContext: BrowsePageRequest?
+    var browseRequestedOffsets = Set<String>()
+    var browseRetryMore = false
     var videoTask: Task<Void, Never>?
     var subtitleTask: Task<Void, Never>?
     var mediaID: String?
@@ -121,7 +129,7 @@ final class AppModel: ObservableObject {
     var subtitleGeneration = UUID()
     var qualityGeneration = UUID()
     var cachedLists: [String: [Video]] = [:]
-    var history = ["动态"]
+    var history = ["动态:视频"]
     var historyIndex = 0
     var lastSaved = Date.distantPast
     let sessionStore: SessionStore
@@ -132,6 +140,8 @@ final class AppModel: ObservableObject {
         sessionStore: SessionStore = SessionStore(), managesPlaybackTabs: Bool = true,
         downloads: DownloadManager? = nil, api: BilibiliAPI? = nil,
         hoverPreview: HoverPreview? = nil,
+        browsePageLoader: ((BrowsePageRequest) async throws -> BrowsePageResult)? = nil,
+        profileLoader: (() async throws -> UserProfile)? = nil,
         subtitleLoader: ((SubtitleTrack) async throws -> [Cue])? = nil,
         subtitlePreferences: UserDefaults = .standard
     ) {
@@ -143,6 +153,11 @@ final class AppModel: ObservableObject {
         self.smartSubtitles = SmartSubtitleModel(defaults: subtitlePreferences)
         self.subtitleLoader =
             subtitleLoader ?? { [api = self.api] track in try await api.subtitles(track) }
+        self.browsePageLoader =
+            browsePageLoader ?? { [api = self.api] request in
+                try await Self.loadBrowsePage(request, api: api)
+            }
+        self.profileLoader = profileLoader ?? { [api = self.api] in try await api.profile() }
         self.hoverPreview = hoverPreview ?? HoverPreview(api: self.api)
         self.sessionStore = sessionStore
         self.managesPlaybackTabs = managesPlaybackTabs
@@ -192,7 +207,14 @@ final class AppModel: ObservableObject {
     func start() async {
         guard !started else { return }
         started = true
-        profile = try? await api.profile()
-        refresh()
+        let account = accountGeneration
+        let loadedProfile = try? await profileLoader()
+        guard account == accountGeneration else { return }
+        profile = loadedProfile
+        for instance in Array(browseInstances.values) + Array(playbackInstances.values) {
+            instance.profile = profile
+        }
+        guard selected == nil else { return }
+        loadBrowseIfNeeded()
     }
 }

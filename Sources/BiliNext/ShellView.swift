@@ -22,15 +22,18 @@ struct ShellView: View {
 
     var body: some View {
         ZStack {
-            ForEach(model.browseInstances.keys.sorted(), id: \.self) { destination in
-                if let instance = model.browseInstances[destination] {
+            ForEach(model.browseInstances.keys.sorted(), id: \.self) { pageID in
+                if let instance = model.browseInstances[pageID] {
+                    let active =
+                        model.selected == nil && pageID == model.browsePageID(for: model.menu)
                     BrowseView(
                         model: instance,
-                        isActive: model.selected == nil && model.menu == destination
+                        isActive: active
                     )
-                    .opacity(model.selected == nil && model.menu == destination ? 1 : 0)
-                    .allowsHitTesting(model.selected == nil && model.menu == destination)
-                    .accessibilityHidden(model.selected != nil || model.menu != destination)
+                    .id(ObjectIdentifier(instance))
+                    .opacity(active ? 1 : 0)
+                    .allowsHitTesting(active)
+                    .accessibilityHidden(!active)
                 }
             }
             ForEach(model.tabs) { tab in
@@ -209,15 +212,16 @@ struct ShellView: View {
                         }
                         .fontWeight(active ? .semibold : .regular)
                         if hasChildren && expandedMenus.contains(item.0) {
-                            if let page = model.browseInstances[item.0] {
+                            if let page = model.loadedBrowseInstance(for: item.0) {
                                 SidebarBrowseChildren(page: page, owner: model, destination: item.0)
                             } else {
                                 SidebarBrowsePlaceholder(destination: item.0) { title in
-                                    model.navigate(item.0)
-                                    let page = model.browseInstance(for: item.0)
-                                    if item.0 == "首页" { page.homeSection = title }
-                                    if item.0 == "动态" { page.dynamicMode = title }
-                                    page.refresh()
+                                    if item.0 == "收藏" {
+                                        model.navigate(item.0)
+                                    } else {
+                                        model.selectBrowseSection(
+                                            destination: item.0, section: title)
+                                    }
                                 }
                             }
                         }

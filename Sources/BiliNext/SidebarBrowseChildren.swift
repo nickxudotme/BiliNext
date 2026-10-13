@@ -13,8 +13,7 @@ struct SidebarBrowseChildren: View {
             if destination == "收藏" {
                 ForEach(page.folders) { folder in
                     child(folder.title, count: folder.count, selected: page.folderID == folder.id) {
-                        owner.navigate(destination)
-                        page.selectFolder(folder.id)
+                        owner.selectFavoriteFolder(folder.id)
                     }
                 }
                 if page.folders.isEmpty {
@@ -31,16 +30,7 @@ struct SidebarBrowseChildren: View {
                         selected: (destination == "首页" ? page.homeSection : page.dynamicMode)
                             == title
                     ) {
-                        owner.navigate(destination)
-                        let changed =
-                            destination == "首页"
-                            ? page.homeSection != title : page.dynamicMode != title
-                        if destination == "首页" {
-                            page.homeSection = title
-                        } else {
-                            page.dynamicMode = title
-                        }
-                        if changed { page.refresh() }
+                        owner.selectBrowseSection(destination: destination, section: title)
                     }
                 }
             }

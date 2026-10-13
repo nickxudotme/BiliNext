@@ -8,10 +8,19 @@ extension AppModel {
     // MARK: - Login
 
     func loggedIn() async {
-        profile = try? await api.profile()
-        for instance in Array(playbackInstances.values) + Array(browseInstances.values) {
+        accountGeneration = UUID()
+        let account = accountGeneration
+        let loadedProfile = try? await api.profile()
+        guard account == accountGeneration else { return }
+        profile = loadedProfile
+        for instance in playbackInstances.values {
             instance.profile = profile
         }
+        for (pageID, instance) in browseInstances {
+            instance.invalidateBrowseCache()
+            tabSubscriptions.removeValue(forKey: "browse:" + pageID)
+        }
+        browseInstances.removeAll()
         cachedLists.removeAll()
         folders = []
         folderID = 0
@@ -21,9 +30,11 @@ extension AppModel {
     func logout() async {
         do {
             try await api.logout()
+            accountGeneration = UUID()
             profile = nil
-            for destination in browseInstances.keys {
-                tabSubscriptions.removeValue(forKey: "browse:" + destination)
+            for (pageID, instance) in browseInstances {
+                instance.invalidateBrowseCache()
+                tabSubscriptions.removeValue(forKey: "browse:" + pageID)
             }
             browseInstances.removeAll()
             cachedLists.removeAll()

@@ -4,10 +4,49 @@ import Combine
 import SwiftUI
 import WebKit
 
+struct BrowsePageRequest: Sendable {
+    let destination: String
+    let homeSection: String
+    let keyword: String
+    let libraryKeyword: String
+    let favoriteOrder: String
+    let searchOrder: String
+    let memberID: Int64?
+    var folderID: Int64
+    var page: Int
+    var offset: String?
+    var reloadFolders: Bool
+
+    var usesCursor: Bool {
+        destination == "动态" || (destination == "历史" && libraryKeyword.isEmpty)
+    }
+
+    var usesFeedContinuation: Bool {
+        ["动态", "收藏", "历史", "稍后再看"].contains(destination)
+    }
+
+    var cacheKey: String {
+        switch destination {
+        case "收藏": "收藏:\(folderID):\(libraryKeyword):\(favoriteOrder)"
+        case "搜索": "搜索:\(keyword):\(searchOrder)"
+        case "首页": "首页:\(homeSection)"
+        case "历史": "历史:\(libraryKeyword)"
+        default: destination
+        }
+    }
+}
+
+struct BrowsePageResult: Sendable {
+    let videos: [Video]
+    let next: String?
+    var folders: [FavoriteFolder]? = nil
+    var folderID: Int64? = nil
+}
+
 extension AppModel {
     // MARK: - Browsing and library
 
-    var canBack: Bool { historyIndex > 0 }
+    var canBack: Bool { selected != nil || historyIndex > 0 }
     var canForward: Bool { historyIndex < history.count - 1 }
     func navigate(_ destination: String) {
         if let tabOwner {
@@ -19,19 +58,98 @@ extension AppModel {
         selected = nil
         menu = destination
         libraryQuery = ""
-        history = Array(history.prefix(historyIndex + 1))
-        history.append(destination)
-        historyIndex += 1
-        if destination == "历史" || browseInstances[destination] == nil { refresh() }
+        let route = browsePageID(for: destination)
+        if !history.indices.contains(historyIndex) || history[historyIndex] != route {
+            history = Array(history.prefix(historyIndex + 1))
+            history.append(route)
+            historyIndex = history.count - 1
+        }
+        if destination == "历史" { refresh() } else { loadBrowseIfNeeded() }
     }
     func moveHistory(_ delta: Int) {
+        if let tabOwner {
+            tabOwner.moveHistory(delta)
+            return
+        }
         suspendPlaybackTabs()
+        if selected != nil && delta < 0 {
+            selected = nil
+            if menu == "历史" { refresh() } else { loadBrowseIfNeeded() }
+            return
+        }
         let next = historyIndex + delta
         guard history.indices.contains(next) else { return }
         historyIndex = next
-        menu = history[next]
+        restoreBrowseRoute(history[next])
         selected = nil
-        if menu == "历史" || browseInstances[menu] == nil { refresh() }
+        if menu == "历史" { refresh() } else { loadBrowseIfNeeded() }
+    }
+
+    private func restoreBrowseRoute(_ route: String) {
+        let parts = route.split(separator: ":", maxSplits: 1).map(String.init)
+        guard let destination = parts.first else { return }
+        menu = destination
+        guard parts.count == 2 else { return }
+        switch menu {
+        case "首页": homeSection = parts[1]
+        case "动态": dynamicMode = parts[1]
+        case "收藏": folderID = Int64(parts[1]) ?? 0
+        default: break
+        }
+    }
+
+    func selectBrowseSection(destination: String, section: String) {
+        if let tabOwner {
+            tabOwner.selectBrowseSection(destination: destination, section: section)
+            return
+        }
+        switch destination {
+        case "首页": homeSection = section
+        case "动态": dynamicMode = section
+        default: return
+        }
+        navigate(destination)
+    }
+
+    func selectFavoriteFolder(_ id: Int64) {
+        if let tabOwner {
+            tabOwner.selectFavoriteFolder(id)
+            return
+        }
+        folderID = id
+        navigate("收藏")
+    }
+
+    func loadBrowseIfNeeded() {
+        guard selected == nil else { return }
+        if managesPlaybackTabs {
+            browseInstance(for: menu).loadBrowseIfNeeded()
+            return
+        }
+        guard !loading, !browseLoadAttempted, browseContext == nil, videos.isEmpty,
+            browseError == nil
+        else { return }
+        // An anonymous page is still unattempted: startup/login may make it available later.
+        guard !["动态", "收藏", "历史", "稍后再看"].contains(menu) || profile != nil else { return }
+        refresh()
+    }
+
+    func invalidateBrowseCache() {
+        browseTask?.cancel()
+        browseTask = nil
+        browseGeneration = UUID()
+        browseLoadAttempted = false
+        cachedLists = [:]
+        browseContext = nil
+        browseRequestedOffsets = []
+        browseRetryMore = false
+        videos = []
+        folders = []
+        browseError = nil
+        loading = false
+        hasMore = false
+        page = 0
+        offset = nil
     }
     func refresh(more: Bool = false) {
         if managesPlaybackTabs, selected == nil {
@@ -48,128 +166,171 @@ extension AppModel {
         browseGeneration = generation
         let destination = menu
         let keyword = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let requestedFolder = folderID
         let libraryKeyword = libraryQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        let sort = favoriteOrder
-        let searchSort = searchOrder
-        let cacheKey =
-            destination == "收藏"
-            ? "收藏:\(requestedFolder):\(libraryKeyword):\(sort)"
-            : destination == "搜索"
-                ? "搜索:\(keyword):\(searchSort)"
-                : destination == "首页"
-                    ? "首页:\(homeSection)"
-                    : destination == "历史" ? "历史:\(libraryKeyword)" : destination
+        var request = BrowsePageRequest(
+            destination: destination, homeSection: homeSection, keyword: keyword,
+            libraryKeyword: libraryKeyword, favoriteOrder: favoriteOrder, searchOrder: searchOrder,
+            memberID: profile?.id, folderID: folderID, page: 1, offset: more ? offset : nil,
+            reloadFolders: !more)
+        if more {
+            if let context = browseContext {
+                request = context
+                request.reloadFolders = false
+            }
+            request.page = request.usesCursor ? page + 1 : (offset.flatMap(Int.init) ?? page + 1)
+            request.offset = offset
+        }
         if !more {
-            page = 1
+            page = 0
             offset = nil
-            videos = cachedLists[cacheKey] ?? []
+            browseRequestedOffsets = []
+            browseContext = nil
+            videos = cachedLists[request.cacheKey] ?? []
             hasMore = false
         }
         browseError = nil
-        if destination == "动态" && dynamicMode == "全部" {
+        browseRetryMore = more
+        if ["动态", "收藏", "历史", "稍后再看"].contains(request.destination) && profile == nil {
+            videos = []
+            browseLoadAttempted = false
+            loading = false
+            hasMore = false
+            return
+        }
+        if request.destination == "动态" && dynamicMode == "全部" {
+            browseLoadAttempted = true
             loading = false
             timelineRefresh += 1
             return
         }
-        if destination == "首页" && homeSection == "番剧" {
+        if request.destination == "首页" && request.homeSection == "番剧" {
+            browseLoadAttempted = true
             loading = false
             catalogRefresh += 1
             return
         }
-        if ["动态", "收藏", "历史", "稍后再看"].contains(destination) && profile == nil {
+        if request.destination == "搜索" && request.keyword.isEmpty {
+            browseLoadAttempted = true
             videos = []
             loading = false
             hasMore = false
             return
         }
-        if destination == "搜索" && keyword.isEmpty {
-            videos = []
-            loading = false
-            hasMore = false
-            return
-        }
-        if destination == "搜索", let bvid = Video.extractBVID(keyword) {
+        if request.destination == "搜索", let bvid = Video.extractBVID(request.keyword) {
+            browseLoadAttempted = true
             loading = false
             open(Video(bvid: bvid, title: bvid))
             return
         }
+        browseLoadAttempted = true
         loading = true
-        let requestedPage = more ? page + 1 : 1
-        let requestedOffset = offset
         browseTask = Task {
+            defer {
+                if generation == browseGeneration { loading = false }
+            }
             do {
-                let result: [Video]
-                var next: String?
-                var moreAvailable = false
-                switch destination {
-                case "动态":
-                    let feed = try await api.feed(offset: more ? requestedOffset : nil)
-                    result = feed.videos
-                    next = feed.next
-                    moreAvailable = next != nil
-                case "收藏":
-                    guard let mid = profile?.id else { throw APIError(code: -101, message: "请先登录") }
-                    let available = try await api.favoriteFolders(mid: mid)
+                // Publish each successful page immediately; prefetching must not delay the first.
+                for index in 0..<(more ? 2 : 3) {
                     guard !Task.isCancelled, generation == browseGeneration else { return }
-                    folders = available
-                    let folder =
-                        available.first(where: { $0.id == requestedFolder }) ?? available.first
-                    folderID = folder?.id ?? 0
-                    if let folder {
-                        let feed = try await api.favorites(
-                            folder: folder.id, page: requestedPage, keyword: libraryKeyword,
-                            order: sort)
-                        result = feed.videos
-                        moreAvailable = feed.next != nil
-                    } else {
-                        result = []
+                    if request.usesCursor, let cursor = request.offset {
+                        browseRequestedOffsets.insert(cursor)
                     }
-                case "稍后再看":
-                    let feed = try await api.watchLater(page: requestedPage)
-                    result = feed.videos
-                    moreAvailable = feed.next != nil
-                case "历史":
-                    let feed =
-                        try await libraryKeyword.isEmpty
-                        ? api.watchHistory(cursor: more ? requestedOffset : nil)
-                        : api.searchHistory(keyword: libraryKeyword, page: requestedPage)
-                    result = feed.videos
-                    next = feed.next
-                    moreAvailable = next != nil
-                case "搜索":
-                    result = try await api.search(keyword, page: requestedPage, order: searchSort)
-                    moreAvailable = !result.isEmpty
-                default:
-                    if homeSection == "排行榜" {
-                        result = try await api.ranking()
-                    } else if homeSection == "热门" {
-                        result = try await api.popular(page: requestedPage)
-                        moreAvailable = !result.isEmpty
-                    } else {
-                        result = try await api.recommended(page: requestedPage)
-                        moreAvailable = !result.isEmpty
+                    let result = try await browsePageLoader(request)
+                    guard !Task.isCancelled, generation == browseGeneration else { return }
+                    if let available = result.folders { folders = available }
+                    if let actualFolder = result.folderID {
+                        folderID = actualFolder
+                        request.folderID = actualFolder
                     }
-                }
-                guard !Task.isCancelled, generation == browseGeneration else { return }
-                let previousCount = videos.count
-                var seen = Set<String>()
-                videos = ((more ? videos : []) + result).filter { seen.insert($0.id).inserted }
-                cachedLists[
-                    destination == "收藏" ? "收藏:\(folderID):\(libraryKeyword):\(sort)" : cacheKey] =
-                    videos
-                offset = next
-                page = requestedPage
-                hasMore = moreAvailable
-                if more && videos.count == previousCount && (next == nil || next == requestedOffset)
-                {
-                    hasMore = false
+                    let replacing = !more && index == 0
+                    let previousCount = replacing ? 0 : videos.count
+                    var seen = Set<String>()
+                    videos = ((replacing ? [] : videos) + result.videos).filter {
+                        seen.insert($0.id).inserted
+                    }
+                    if replacing { browseRevision += 1 }
+                    cachedLists[request.cacheKey] = videos
+                    browseContext = request
+                    page = request.page
+                    let next = result.next.flatMap { $0.isEmpty ? nil : $0 }
+                    offset = next
+                    let advances =
+                        request.usesCursor
+                        ? next.map { !browseRequestedOffsets.contains($0) } ?? false
+                        : next.flatMap(Int.init).map { $0 > request.page } ?? false
+                    // Feed.next reflects the API's has_more, including pages whose non-video
+                    // resources were filtered out. Array-only endpoints have no such metadata.
+                    hasMore =
+                        advances
+                        && (request.usesFeedContinuation
+                            || (!result.videos.isEmpty && videos.count > previousCount))
+                    browseRetryMore = true
+                    guard hasMore, let next else { break }
+                    request.page =
+                        request.usesCursor ? request.page + 1 : (Int(next) ?? request.page + 1)
+                    request.offset = next
+                    request.reloadFolders = false
                 }
             } catch {
                 guard !Task.isCancelled, generation == browseGeneration else { return }
                 browseError = error.localizedDescription
             }
-            loading = false
+        }
+    }
+    func retryBrowse() {
+        refresh(more: browseRetryMore)
+    }
+
+    static func loadBrowsePage(_ request: BrowsePageRequest, api: BilibiliAPI) async throws
+        -> BrowsePageResult
+    {
+        switch request.destination {
+        case "动态":
+            let feed = try await api.feed(offset: request.offset)
+            return BrowsePageResult(videos: feed.videos, next: feed.next)
+        case "收藏":
+            guard let mid = request.memberID else { throw APIError(code: -101, message: "请先登录") }
+            let available = request.reloadFolders ? try await api.favoriteFolders(mid: mid) : nil
+            try Task.checkCancellation()
+            let actualFolder: Int64
+            if let available {
+                actualFolder =
+                    (available.first(where: { $0.id == request.folderID }) ?? available.first)?.id
+                    ?? 0
+            } else {
+                actualFolder = request.folderID
+            }
+            guard actualFolder != 0 else {
+                return BrowsePageResult(videos: [], next: nil, folders: available, folderID: 0)
+            }
+            let feed = try await api.favorites(
+                folder: actualFolder, page: request.page, keyword: request.libraryKeyword,
+                order: request.favoriteOrder)
+            return BrowsePageResult(
+                videos: feed.videos, next: feed.next, folders: available, folderID: actualFolder)
+        case "稍后再看":
+            let feed = try await api.watchLater(page: request.page)
+            return BrowsePageResult(videos: feed.videos, next: feed.next)
+        case "历史":
+            let feed =
+                try await request.libraryKeyword.isEmpty
+                ? api.watchHistory(cursor: request.offset)
+                : api.searchHistory(keyword: request.libraryKeyword, page: request.page)
+            return BrowsePageResult(videos: feed.videos, next: feed.next)
+        case "搜索":
+            let videos = try await api.search(
+                request.keyword, page: request.page, order: request.searchOrder)
+            return BrowsePageResult(
+                videos: videos, next: videos.isEmpty ? nil : String(request.page + 1))
+        default:
+            if request.homeSection == "排行榜" {
+                return BrowsePageResult(videos: try await api.ranking(), next: nil)
+            }
+            let videos =
+                try await request.homeSection == "热门"
+                ? api.popular(page: request.page) : api.recommended(page: request.page)
+            return BrowsePageResult(
+                videos: videos, next: videos.isEmpty ? nil : String(request.page + 1))
         }
     }
     func loadMoreIfNeeded() {
@@ -179,6 +340,10 @@ extension AppModel {
         refresh(more: true)
     }
     func selectFolder(_ id: Int64) {
+        if let tabOwner {
+            tabOwner.selectFavoriteFolder(id)
+            return
+        }
         guard id != folderID else { return }
         folderID = id
         refresh()

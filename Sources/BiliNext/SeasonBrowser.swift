@@ -73,6 +73,7 @@ struct SeasonBrowser: View {
             .sheet(item: $selected) { SeasonDetailView(model: model, season: $0) }
     }
     private func load(append: Bool = false) {
+        model.browseLoadAttempted = true
         task?.cancel()
         generation = UUID()
         let token = generation
