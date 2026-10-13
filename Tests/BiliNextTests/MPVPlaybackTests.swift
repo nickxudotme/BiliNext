@@ -56,7 +56,9 @@ func mpvTripleSpeedMaintainsForwardBuffer() async throws {
     #expect(core.time >= 150)
     #expect(core.number("speed") == 3)
     #expect(rebuffered == 0)
-    print("3x network playback: time=\(core.time), cache=\(core.number("demuxer-cache-duration"))s, download=\(core.number("cache-speed"))B/s, buffering-samples=\(rebuffered)")
+    print(
+        "3x network playback: time=\(core.time), cache=\(core.number("demuxer-cache-duration"))s, download=\(core.number("cache-speed"))B/s, buffering-samples=\(rebuffered)"
+    )
 }
 
 @MainActor

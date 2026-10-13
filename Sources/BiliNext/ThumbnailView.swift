@@ -14,22 +14,28 @@ private enum ThumbnailStore {
         if let image = cache.object(forKey: key) { return image }
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
-            guard (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true,
-                !Task.isCancelled else { return nil }
+            guard
+                (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true,
+                !Task.isCancelled
+            else { return nil }
             let image = await Task.detached(priority: .utility) { () -> CGImage? in
-                guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
-                return CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                    kCGImageSourceCreateThumbnailFromImageAlways: true,
-                    kCGImageSourceCreateThumbnailWithTransform: true,
-                    kCGImageSourceThumbnailMaxPixelSize: pixels,
-                    kCGImageSourceShouldCacheImmediately: true,
-                ] as CFDictionary)
+                guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+                    return nil
+                }
+                return CGImageSourceCreateThumbnailAtIndex(
+                    source, 0,
+                    [
+                        kCGImageSourceCreateThumbnailFromImageAlways: true,
+                        kCGImageSourceCreateThumbnailWithTransform: true,
+                        kCGImageSourceThumbnailMaxPixelSize: pixels,
+                        kCGImageSourceShouldCacheImmediately: true,
+                    ] as CFDictionary)
             }.value
             if let image, !Task.isCancelled {
                 cache.setObject(image, forKey: key, cost: image.bytesPerRow * image.height)
                 return image
             }
-        } catch { }
+        } catch {}
         return nil
     }
 }

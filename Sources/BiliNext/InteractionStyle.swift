@@ -56,7 +56,8 @@ struct InteractionButtonStyle: ButtonStyle {
                 .offset(y: !reduceMotion && kind == .card && highlighted && !pressed ? -2 : 0)
                 .opacity(enabled ? 1 : 0.45)
                 .animation(
-                    reduceMotion || scrolling ? nil : .easeOut(duration: pressed ? 0.09 : 0.16), value: hovered
+                    reduceMotion || scrolling ? nil : .easeOut(duration: pressed ? 0.09 : 0.16),
+                    value: hovered
                 )
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: pressed)
                 .onHover { hovered = $0 }
