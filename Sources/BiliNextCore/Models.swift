@@ -16,11 +16,12 @@ public struct Video: Identifiable, Codable, Equatable, Sendable {
     public let episodeID: Int64?
     public let viewCount: String?
     public let danmakuCount: String?
+    public let pubdate: Date?
     public init(
         bvid: String, title: String, author: String = "", cover: URL? = nil, avatar: URL? = nil,
         aid: Int64? = nil, duration: Double? = nil, progress: Double? = nil, viewedAt: Date? = nil,
         historyCID: Int64? = nil, ownerID: Int64? = nil, episodeID: Int64? = nil,
-        viewCount: String? = nil, danmakuCount: String? = nil
+        viewCount: String? = nil, danmakuCount: String? = nil, pubdate: Date? = nil
     ) {
         self.bvid = bvid
         self.title = title
@@ -36,6 +37,7 @@ public struct Video: Identifiable, Codable, Equatable, Sendable {
         self.episodeID = episodeID
         self.viewCount = viewCount
         self.danmakuCount = danmakuCount
+        self.pubdate = pubdate
     }
     public static func extractBVID(_ text: String) -> String? {
         guard let range = text.range(of: #"BV[0-9A-Za-z]{10}"#, options: .regularExpression) else {

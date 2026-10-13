@@ -293,7 +293,8 @@ public actor BilibiliAPI {
             duration: duration,
             ownerID: (owner["mid"] as? NSNumber)?.int64Value ?? (d["mid"] as? NSNumber)?.int64Value,
             viewCount: count(stat["view"] ?? stat["play"] ?? d["play"] ?? d["view"]),
-            danmakuCount: count(stat["danmaku"] ?? d["video_review"] ?? d["danmaku"]))
+            danmakuCount: count(stat["danmaku"] ?? d["video_review"] ?? d["danmaku"]),
+            pubdate: DisplayFormat.date(fromUnix: d["pubdate"] ?? d["ctime"]))
     }
     public func popular(page: Int = 1) async throws -> [Video] {
         let d = try await request(
@@ -334,6 +335,7 @@ public actor BilibiliAPI {
             let major = dynamic["major"] as? [String: Any] ?? [:]
             guard var archive = major["archive"] as? [String: Any] else { return nil }
             archive["owner"] = ["name": author["name"] ?? "", "face": author["face"] ?? ""]
+            archive["pubdate"] = author["pub_ts"]
             return video(archive)
         }
         return Feed(
