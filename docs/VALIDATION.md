@@ -2,6 +2,15 @@
 
 更新日期：2026-10-14。每一项仅表示列出的验证范围；历史专题中的验收不能自动算作本轮复测。
 
+## 代码整理：格式、旧播放路径与浏览入口类型（2026-10-14）
+
+- 修正 `ThumbnailView`、`InteractionStyle`、`MPVPlaybackTests` 的遗留格式问题，全仓库严格格式检查首次全绿。
+- 删除 `AppModel` 中无调用者的 AVPlayer 载入路径（`loadAVMedia`、`playableMedia`、`prepareMedia`、状态与时长观察）及相关状态；清晰度切换只走 mpv 与 `PlaybackRecovery`。`DASHResourceLoader` / `MediaResourceLoader` 仍供 DASH 兼容测试和悬停预览使用。
+- 侧栏六个浏览入口由字符串改为 `BrowseDestination` 枚举；原始值保持中文标题，导航历史路由与列表缓存键字符串不变。
+- 默认 `swift test` 129 项测试运行通过（opt-in 网络、硬件测试仍默认跳过）；Debug、Release 构建与严格格式检查通过。
+- `BILINEXT_MPV_TEST=1 swift test --filter playbackTabSwitchRetainsLoadedMedia`：播放、标签切换暂停、实例保留和位置保持通过；暂停切换 720P 后 `qualityID` 为 32（480P），断言失败。在未修改的 `80a50c7` 上以相同方式复现同样两处失败，属于既有问题，推测与本机会话可取的清晰度有关，未进一步确认。
+- 未验证：签名 App 实际界面（侧栏切换与展开、前进后退、收藏夹、稍后再看右键菜单、清晰度切换）尚未复测。
+
 ## 动态直播观看（2026-10-14）
 
 - 后续 UI 修订撤去直播常驻标题／底栏，沿用点播播放器的渐变悬浮控件；新增可收起的实时弹幕列表、历史消息、重连、手动阅读与跟随最新。实际签名 App 已收到新弹幕，面板收起／展开、全屏隐藏与退出恢复通过。滚动画面弹幕和发送未实现。
