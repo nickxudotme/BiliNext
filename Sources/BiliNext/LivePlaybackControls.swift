@@ -23,8 +23,9 @@ struct LivePlaybackControls: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Label("直播", systemImage: "dot.radiowaves.left.and.right")
-                        .font(GlassTheme.captionFont.weight(.semibold)).foregroundStyle(
-                            .white.opacity(0.8))
+                        .font(GlassTheme.captionFont.weight(.semibold)).foregroundStyle(.white)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(.red.opacity(0.85), in: Capsule())
                     Text(session.room?.author ?? "").font(GlassTheme.metadataFont).lineLimit(1)
                 }
                 Text(session.room?.title ?? "正在连接直播")
@@ -34,10 +35,12 @@ struct LivePlaybackControls: View {
                 panel = .quality
             } label: {
                 Text(session.qualities.first(where: { $0.id == session.quality })?.title ?? "画质")
-                    .font(GlassTheme.metadataFont).padding(.horizontal, 6)
-                    .frame(height: GlassTheme.controlHeight).contentShape(Rectangle())
+                    .font(GlassTheme.labelFont.weight(.semibold)).lineLimit(1)
+                    .foregroundStyle(panel == .quality ? GlassTheme.accent : .white)
+                    .padding(.horizontal, 8).frame(minHeight: GlassTheme.iconControlSize)
+                    .contentShape(Rectangle())
             }.disabled(session.qualities.isEmpty).help("清晰度")
-                .popover(isPresented: presentation(for: .quality)) {
+                .popover(isPresented: presentation(for: .quality), arrowEdge: .top) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("清晰度").font(GlassTheme.bodyFont.weight(.semibold))
                         ForEach(session.qualities) { quality in
@@ -54,6 +57,8 @@ struct LivePlaybackControls: View {
                 danmakuEnabled.toggle()
             } label: {
                 Image(systemName: danmakuEnabled ? "text.bubble.fill" : "text.bubble")
+                    .foregroundStyle(danmakuEnabled ? GlassTheme.accent : .white)
+                    .contentTransition(.symbolEffect(.replace))
                     .iconControlFrame()
             }.help(danmakuEnabled ? "关闭画面弹幕" : "开启画面弹幕")
                 .accessibilityLabel(danmakuEnabled ? "关闭画面弹幕" : "开启画面弹幕")
@@ -62,14 +67,16 @@ struct LivePlaybackControls: View {
             } label: {
                 Image(systemName: "slider.horizontal.3").iconControlFrame()
             }.help("画面弹幕设置").accessibilityLabel("画面弹幕设置")
-                .popover(isPresented: presentation(for: .danmaku)) { LiveDanmakuSettings() }
+                .popover(isPresented: presentation(for: .danmaku), arrowEdge: .top) {
+                    LiveDanmakuSettings()
+                }
             Button {
                 panel = .volume
             } label: {
-                Image(systemName: session.volume == 0 ? "speaker.slash" : "speaker.wave.2")
+                Image(systemName: volumeSymbol).contentTransition(.symbolEffect(.replace))
                     .iconControlFrame()
             }.help("音量").accessibilityLabel("直播音量")
-                .popover(isPresented: presentation(for: .volume)) {
+                .popover(isPresented: presentation(for: .volume), arrowEdge: .top) {
                     Slider(value: $session.volume, in: 0...1).frame(width: 140).padding(20)
                         .accessibilityLabel("音量")
                 }
@@ -78,7 +85,7 @@ struct LivePlaybackControls: View {
             } label: {
                 Image(systemName: "ellipsis").iconControlFrame()
             }.help("播放选项").accessibilityLabel("播放选项")
-                .popover(isPresented: presentation(for: .options)) {
+                .popover(isPresented: presentation(for: .options), arrowEdge: .top) {
                     PlayerOptionRow(title: "重新连接", selected: false) {
                         panel = nil
                         session.reload()
@@ -91,20 +98,36 @@ struct LivePlaybackControls: View {
                 Image(systemName: "sidebar.right").iconControlFrame()
             }.help(chatVisible ? "收起弹幕列表" : "展开弹幕列表")
                 .accessibilityLabel(chatVisible ? "收起弹幕列表" : "展开弹幕列表")
-        }.font(.system(size: 18)).buttonStyle(InteractionButtonStyle()).foregroundStyle(.white)
-            .padding(.horizontal, 16).padding(.top, 36).padding(.bottom, 14)
+        }.font(.system(size: 17, weight: .medium)).buttonStyle(InteractionButtonStyle())
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14).padding(.top, 44).padding(.bottom, 12)
             .background {
                 if reduceTransparency {
                     Color.black
                 } else {
                     LinearGradient(
-                        colors: [.clear, .black.opacity(0.85)], startPoint: .top, endPoint: .bottom)
+                        stops: [
+                            .init(color: .clear, location: 0),
+                            .init(color: .black.opacity(0.45), location: 0.45),
+                            .init(color: .black.opacity(0.82), location: 1),
+                        ], startPoint: .top, endPoint: .bottom)
                 }
             }
+            // Same dark controls as on-demand playback, in both appearances.
+            .environment(\.colorScheme, .dark)
             .onChange(of: panel) { _, value in panelPresented = value != nil }
             .onChange(of: isActive) { _, active in if !active { panel = nil } }
             .onDisappear { panelPresented = false }
     }
+    private var volumeSymbol: String {
+        switch session.volume {
+        case ...0: "speaker.slash.fill"
+        case ..<0.34: "speaker.wave.1.fill"
+        case ..<0.67: "speaker.wave.2.fill"
+        default: "speaker.wave.3.fill"
+        }
+    }
+
     private func presentation(for value: Panel) -> Binding<Bool> {
         Binding(get: { panel == value }, set: { panel = $0 ? value : nil })
     }
