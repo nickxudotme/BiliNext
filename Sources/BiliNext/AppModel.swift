@@ -127,7 +127,6 @@ final class AppModel: ObservableObject {
     var qualityTask: Task<Void, Never>?
     var qualitySwitchState: (position: Double, resume: Bool)?
     var playbackIntent = false
-    var failedCodecItem: ObjectIdentifier?
     var browseTask: Task<Void, Never>?
     let browsePageLoader: (BrowsePageRequest) async throws -> BrowsePageResult
     let profileLoader: () async throws -> UserProfile
@@ -139,10 +138,6 @@ final class AppModel: ObservableObject {
     var subtitleTask: Task<Void, Never>?
     var mediaID: String?
     var observer: Any?
-    var mediaLoader: MediaResourceLoader?
-    var dashLoader: DASHResourceLoader?
-    var statusObserver: NSKeyValueObservation?
-    var durationObserver: NSKeyValueObservation?
     private var started = false
     var page = 1
     var offset: String?
