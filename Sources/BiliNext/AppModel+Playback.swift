@@ -97,7 +97,13 @@ extension AppModel {
                         video: source, pages: [VideoPage(cid: cid, number: 1, title: source.title)],
                         description: "番剧内容的播放权限由 B 站账号及地区授权决定。")
                 } else {
-                    loaded = try await api.detail(id)
+                    // The page endpoint adds the UP card, tags, 合集 and related videos; the
+                    // plain one remains the fallback.
+                    if let page = try? await api.videoPage(id) {
+                        loaded = page
+                    } else {
+                        loaded = try await api.detail(id)
+                    }
                 }
                 guard !Task.isCancelled, generation == videoGeneration else { return }
                 detail = loaded

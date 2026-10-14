@@ -343,16 +343,72 @@ public actor BilibiliAPI {
     }
     public func detail(_ bvid: String) async throws -> VideoDetail {
         let d = try await request("/x/web-interface/view", params: ["bvid": bvid])
+        return try parseDetail(d)
+    }
+    /// The video page in one request: the video, its UP card, tags, 合集 and related videos.
+    public func videoPage(_ bvid: String) async throws -> VideoDetail {
+        try parseVideoPage(
+            try await request("/x/web-interface/view/detail", params: ["bvid": bvid]))
+    }
+    func parseVideoPage(_ d: [String: Any]) throws -> VideoDetail {
+        var detail = try parseDetail(d["View"] as? [String: Any] ?? [:])
+        let card = d["Card"] as? [String: Any] ?? [:]
+        detail.extras.uploaderFollowers = (card["follower"] as? NSNumber)?.intValue
+        detail.extras.uploaderVideos = (card["archive_count"] as? NSNumber)?.intValue
+        detail.extras.uploaderSign = (card["card"] as? [String: Any])?["sign"] as? String ?? ""
+        detail.extras.tags = (d["Tags"] as? [[String: Any]] ?? []).compactMap {
+            ($0["tag_name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        }
+        detail.extras.related = (d["Related"] as? [[String: Any]] ?? []).compactMap(video)
+        return detail
+    }
+    func parseDetail(_ d: [String: Any]) throws -> VideoDetail {
         guard let v = video(d) else { throw APIError(code: -1, message: "没有找到视频") }
         let pages = (d["pages"] as? [[String: Any]] ?? []).compactMap { p -> VideoPage? in
             guard let cid = (p["cid"] as? NSNumber)?.int64Value else { return nil }
             return VideoPage(
                 cid: cid, number: (p["page"] as? NSNumber)?.intValue ?? 1,
-                title: p["part"] as? String ?? "")
+                title: p["part"] as? String ?? "",
+                duration: (p["duration"] as? NSNumber)?.doubleValue ?? 0)
         }
-        return VideoDetail(
+        var detail = VideoDetail(
             video: v, pages: pages, description: d["desc"] as? String ?? "",
             stats: VideoStats(stat: d["stat"] as? [String: Any] ?? [:]))
+        detail.extras.partition = d["tname_v2"] as? String ?? d["tname"] as? String ?? ""
+        detail.extras.original = (d["copyright"] as? NSNumber)?.intValue != 2
+        detail.extras.noReprint =
+            ((d["rights"] as? [String: Any])?["no_reprint"] as? NSNumber)?.intValue == 1
+        detail.extras.honors =
+            ((d["honor_reply"] as? [String: Any])?["honor"] as? [[String: Any]]
+            ?? []).compactMap { $0["desc"] as? String }
+        detail.extras.season = (d["ugc_season"] as? [String: Any]).flatMap(Self.season)
+        return detail
+    }
+    static func season(_ s: [String: Any]) -> VideoSeason? {
+        guard let id = (s["id"] as? NSNumber)?.int64Value else { return nil }
+        let sections = (s["sections"] as? [[String: Any]] ?? []).map { section in
+            VideoSeason.Section(
+                id: (section["id"] as? NSNumber)?.int64Value ?? 0,
+                title: section["title"] as? String ?? "",
+                episodes: (section["episodes"] as? [[String: Any]] ?? []).compactMap { e in
+                    guard let bvid = e["bvid"] as? String else { return nil }
+                    let arc = e["arc"] as? [String: Any] ?? [:]
+                    return VideoSeason.Episode(
+                        bvid: bvid, aid: (e["aid"] as? NSNumber)?.int64Value,
+                        cid: (e["cid"] as? NSNumber)?.int64Value,
+                        title: e["title"] as? String ?? arc["title"] as? String ?? "",
+                        cover: secureURL(arc["pic"] as? String ?? ""),
+                        duration: (arc["duration"] as? NSNumber)?.doubleValue ?? 0,
+                        views: ((arc["stat"] as? [String: Any])?["view"] as? NSNumber)?.intValue,
+                        pubdate: DisplayFormat.date(fromUnix: arc["pubdate"]),
+                        author: (arc["author"] as? [String: Any])?["name"] as? String ?? "")
+                })
+        }
+        return VideoSeason(
+            id: id, title: s["title"] as? String ?? "合集",
+            cover: secureURL(s["cover"] as? String ?? ""),
+            views: ((s["stat"] as? [String: Any])?["view"] as? NSNumber)?.intValue,
+            sections: sections.filter { !$0.episodes.isEmpty })
     }
     public func playback(
         bvid: String, cid: Int64, quality: Int = 80, episodeID: Int64? = nil,

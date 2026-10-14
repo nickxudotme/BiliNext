@@ -51,10 +51,12 @@ public struct VideoPage: Identifiable, Sendable {
     public let cid: Int64
     public let number: Int
     public let title: String
-    public init(cid: Int64, number: Int, title: String) {
+    public var duration: Double = 0
+    public init(cid: Int64, number: Int, title: String, duration: Double = 0) {
         self.cid = cid
         self.number = number
         self.title = title
+        self.duration = duration
     }
 }
 public struct VideoDetail: Sendable {
@@ -62,6 +64,8 @@ public struct VideoDetail: Sendable {
     public let pages: [VideoPage]
     public let description: String
     public var stats: VideoStats
+    /// What the official video page shows around the player; empty when only `/view` loaded.
+    public var extras = VideoExtras()
     public init(
         video: Video, pages: [VideoPage], description: String, stats: VideoStats = VideoStats()
     ) {
@@ -69,6 +73,59 @@ public struct VideoDetail: Sendable {
         self.pages = pages
         self.description = description
         self.stats = stats
+    }
+}
+
+public struct VideoExtras: Sendable {
+    public var uploaderFollowers: Int?
+    public var uploaderVideos: Int?
+    public var uploaderSign = ""
+    public var tags: [String] = []
+    /// Badges such as 全站排行榜最高第29名 or 热门收录.
+    public var honors: [String] = []
+    public var partition = ""
+    /// 1 is the uploader's own work; reposts show their source.
+    public var original = true
+    public var noReprint = false
+    public var season: VideoSeason?
+    public var related: [Video] = []
+    public init() {}
+}
+
+/// A UGC 合集: named sections of episodes, each its own video.
+public struct VideoSeason: Identifiable, Sendable {
+    public let id: Int64
+    public let title: String
+    public let cover: URL?
+    public let views: Int?
+    public let sections: [Section]
+    public var episodeCount: Int { sections.reduce(0) { $0 + $1.episodes.count } }
+
+    public struct Section: Identifiable, Sendable {
+        public let id: Int64
+        public let title: String
+        public let episodes: [Episode]
+    }
+
+    public struct Episode: Identifiable, Sendable {
+        public var id: String { bvid }
+        public let bvid: String
+        public let aid: Int64?
+        public let cid: Int64?
+        public let title: String
+        public let cover: URL?
+        public let duration: Double
+        public let views: Int?
+        public let pubdate: Date?
+        public let author: String
+    }
+
+    public init(id: Int64, title: String, cover: URL?, views: Int?, sections: [Section]) {
+        self.id = id
+        self.title = title
+        self.cover = cover
+        self.views = views
+        self.sections = sections
     }
 }
 
