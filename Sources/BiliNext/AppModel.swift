@@ -84,9 +84,6 @@ final class AppModel: ObservableObject {
     @Published var tabs: [SessionTab] = []
     @Published var selected: String?
     @Published var closed: [SessionTab] = []
-    /// Videos a tab moved through in place (合集, related, auto-next), keyed by its current
-    /// video, so 后退 and 前进 step through them like a browser tab.
-    @Published var tabTrails: [String: TabTrail] = [:]
     /// Tabs opened in the background and not yet visited, marked in the sidebar.
     @Published var unseenTabs = Set<String>()
     @Published var sidebarPinned = true

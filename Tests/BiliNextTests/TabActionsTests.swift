@@ -152,29 +152,51 @@ import Testing
 @Test func replacingInPlaceRemembersTheVideoForBack() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
-    let model = AppModel(
-        sessionStore: SessionStore(directory: directory), api: BilibiliAPI(restoreSession: false))
+    let store = SessionStore(directory: directory)
+    let model = AppModel(sessionStore: store, api: BilibiliAPI(restoreSession: false))
     model.tabs = [
         SessionTab(video: Video(bvid: "BV1111111111", title: "第一集"), cid: 1, position: 30)
     ]
     model.replace("BV1111111111", with: Video(bvid: "BV2222222222", title: "第二集"))
     model.replace("BV2222222222", with: Video(bvid: "BV3333333333", title: "第三集"))
-    var trail = try #require(model.tabTrails["BV3333333333"])
-    #expect(trail.back.map(\.id) == ["BV1111111111", "BV2222222222"])
+    var trail = model.tabs[0].trail
+    #expect(model.tabs.map(\.id) == ["BV3333333333"])
+    #expect(trail.back.map(\.video.bvid) == ["BV1111111111", "BV2222222222"])
     #expect(trail.back.first?.position == 30 && trail.back.first?.cid == 1)
-    #expect(model.tabTrails["BV1111111111"] == nil && model.tabTrails["BV2222222222"] == nil)
-    // No tab is selected, so 后退 has no trail to step and leaves the trail alone.
+    // No tab is selected, so 后退 has no trail to step.
     #expect(!model.stepTabTrail(-1))
+
+    // The history is part of the saved session, like a browser tab's.
+    let restored = try store.read()
+    #expect(restored[0].trail == trail)
 
     let current = model.tabs[0]
     let back = trail.step(-1, from: current)
-    let previous = try #require(back)
-    #expect(previous.id == "BV2222222222" && trail.forward.map(\.id) == ["BV3333333333"])
+    #expect(back?.video.bvid == "BV2222222222")
+    #expect(trail.forward.map(\.video.bvid) == ["BV3333333333"])
+    let previous = SessionTab(try #require(back), trail: trail)
     let forward = trail.step(1, from: previous)
-    let next = try #require(forward)
-    #expect(next.id == "BV3333333333" && trail.back.map(\.id) == ["BV1111111111", "BV2222222222"])
-    let past = trail.step(1, from: next)
+    #expect(forward?.video.bvid == "BV3333333333")
+    #expect(trail.back.map(\.video.bvid) == ["BV1111111111", "BV2222222222"])
+    let past = trail.step(1, from: previous)
     #expect(past == nil)
-    model.clearTabs()
-    #expect(model.tabTrails.isEmpty)
+
+    // Closing keeps the history with the tab, so ⇧⌘T brings it back.
+    model.close("BV3333333333")
+    model.undoClose()
+    #expect(model.tabs.first?.trail.back.count == 2)
+}
+
+@Test func tabHistoryIsBoundedAndOldSessionsStillLoad() throws {
+    var trail = TabTrail()
+    for number in 0..<(TabTrail.limit + 5) {
+        trail.leave(SessionTab(video: Video(bvid: "BV\(number)", title: "")))
+    }
+    #expect(trail.back.count == TabTrail.limit && trail.back.first?.video.bvid == "BV5")
+
+    let legacy = Data(
+        #"[{"video":{"bvid":"BV1111111111","title":"旧会话","author":"UP"},"cid":3,"position":12}]"#
+            .utf8)
+    let tabs = try JSONDecoder().decode([SessionTab].self, from: legacy)
+    #expect(tabs[0].cid == 3 && tabs[0].position == 12 && tabs[0].trail == TabTrail())
 }

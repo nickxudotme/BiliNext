@@ -48,7 +48,9 @@ extension AppModel {
 
     var canBack: Bool { selected != nil || historyIndex > 0 }
     var canForward: Bool {
-        if let selected, tabTrails[selected]?.forward.isEmpty == false { return true }
+        if let selected, tabs.first(where: { $0.id == selected })?.trail.forward.isEmpty == false {
+            return true
+        }
         return historyIndex < history.count - 1
     }
     func navigate(_ destination: BrowseDestination) {
