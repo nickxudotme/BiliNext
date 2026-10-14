@@ -22,7 +22,7 @@
 
 | # | 项目 | 来源 | 工作量 | 备注 |
 | --- | --- | --- | --- | --- |
-| 1 | 自动连播：分 P → 合集 → 相关推荐，播放顺序模式（列表／单集循环／播完暂停） | PiliPlus | S–M | 追番、看合集的基本流程 |
+| 1 | ~~自动连播与播完后模式~~（已完成） | PiliPlus | S–M | |
 | 2 | ~~看点章节~~（已完成 `35c3408`） | 三者 | S | |
 | 3 | 进度条缩略图：`/x/player/videoshot` 雪碧图，拖动或悬停预览画面 | bilibili-api | S–M | 公开接口 |
 | 4 | Cookie 刷新：`cookie/info` → correspond → `cookie/refresh` → `confirm/refresh`，并保存扫码返回的 `refresh_token` | bilibili-api | M | Release 钥匙串登录可能静默过期 |

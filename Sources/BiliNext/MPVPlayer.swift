@@ -25,6 +25,8 @@ final class MPVPlayer {
     var time: Double { number("time-pos") }
     var duration: Double { number("duration") }
     var playing: Bool { loaded && failure == nil && !flag("pause") && !flag("eof-reached") }
+    /// Playback reached the end; keep-open holds the last frame.
+    var ended: Bool { loaded && failure == nil && flag("eof-reached") }
     var volume: Double {
         get { number("volume") / 100 }
         set { set("volume", String(max(0, min(1, newValue)) * 100)) }

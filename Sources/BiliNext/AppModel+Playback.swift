@@ -132,8 +132,11 @@ extension AppModel {
                         ?? loaded.pages.first
                 else { throw APIError(code: -1, message: "视频没有可播放的分 P") }
                 pageID = page.cid
+                // A part watched to within 5 s of its end starts again, as in the official player.
+                let resume = saved?.position ?? 0
+                let position = page.duration > 0 && resume > page.duration - 5 ? 0 : resume
                 await loadMedia(
-                    id: id, cid: page.cid, position: saved?.position ?? 0, generation: generation,
+                    id: id, cid: page.cid, position: position, generation: generation,
                     autoplay: autoplay)
             } catch {
                 guard !Task.isCancelled, generation == videoGeneration else { return }
@@ -143,7 +146,7 @@ extension AppModel {
             }
         }
     }
-    func selectPage(_ cid: Int64) {
+    func selectPage(_ cid: Int64, autoplay: Bool = false) {
         guard let id = selected, cid != pageID else { return }
         watchHistoryReporter.flush()
         cancelPlaybackRecovery()
@@ -172,7 +175,10 @@ extension AppModel {
             tabs[i].cid = cid
             tabs[i].position = 0
         }
-        videoTask = Task { await loadMedia(id: id, cid: cid, position: 0, generation: generation) }
+        videoTask = Task {
+            await loadMedia(
+                id: id, cid: cid, position: 0, generation: generation, autoplay: autoplay)
+        }
     }
     private func loadMedia(
         id: String, cid: Int64, position: Double, generation: UUID, autoplay: Bool = false
@@ -280,6 +286,15 @@ extension AppModel {
                 self.playbackRecovery?.loaded()
                 self.startup?.mark("mpv loaded")
                 if self.startup?.autoplay == false { self.startup?.finish("ready") }
+            }
+            if core.ended {
+                // Only a video that was playing moves on; a paused restore at the end stays put.
+                if !self.endHandled && self.playbackTabActive && self.playbackIntent {
+                    self.endHandled = true
+                    self.playbackEnded()
+                }
+            } else {
+                self.endHandled = false
             }
             if let startup = self.startup, core.loaded, playing, time > startup.position + 0.05 {
                 startup.finish(buffering ? "playing (buffering)" : "playing")

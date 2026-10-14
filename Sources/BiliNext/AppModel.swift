@@ -56,6 +56,8 @@ final class AppModel: ObservableObject {
     let player = AVPlayer()
     @Published var mpv: MPVPlayer?
     var awaitingMPVLoad = false
+    /// Set once the end of the current media has been acted on, until it plays again.
+    var endHandled = false
     /// Timing of the current video's startup, until its first frame plays.
     var startup: PlaybackStartup?
     var playbackRecovery: PlaybackRecovery?

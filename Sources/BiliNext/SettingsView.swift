@@ -8,6 +8,12 @@ enum Preferences {
     static let cdnMirror = "playback.cdnMirror"
     static let preferredCodec = "playback.preferredCodec"
     static let prefersLossless = "playback.losslessAudio"
+    static let endActionKey = "playback.endAction"
+
+    static var endAction: PlaybackEndAction {
+        PlaybackEndAction(rawValue: UserDefaults.standard.string(forKey: endActionKey) ?? "")
+            ?? .next
+    }
 
     static var codecOrder: [VideoCodec] {
         VideoCodec.order(
@@ -33,6 +39,7 @@ struct SettingsView: View {
     @AppStorage(Preferences.cdnMirror) private var cdnMirror = "ali"
     @AppStorage(Preferences.preferredCodec) private var preferredCodec = "av1"
     @AppStorage(Preferences.prefersLossless) private var losslessAudio = true
+    @AppStorage(Preferences.endActionKey) private var endAction = PlaybackEndAction.next.rawValue
 
     var body: some View {
         TabView {
@@ -46,6 +53,14 @@ struct SettingsView: View {
     private var general: some View {
         Form {
             Section("播放") {
+                Picker(selection: $endAction) {
+                    ForEach(PlaybackEndAction.allCases, id: \.self) {
+                        Text($0.title).tag($0.rawValue)
+                    }
+                } label: {
+                    Text("播完后")
+                    Text("连播时先播下一个分 P，再播合集中的下一集。")
+                }
                 Picker(selection: $cdnMirror) {
                     Text("按 B 站分配").tag("auto")
                     ForEach(CDNPreference.mirrors, id: \.id) { Text($0.title).tag($0.id) }
