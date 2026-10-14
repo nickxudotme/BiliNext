@@ -9,6 +9,7 @@ struct SidebarTabList: View {
     @ObservedObject var model: AppModel
     /// The pointer is over the sidebar, which reveals the clear action.
     let sidebarHovered: Bool
+    let preview: TabHoverPreview
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -37,7 +38,8 @@ struct SidebarTabList: View {
                         SidebarTabRow(
                             tab: tab, selected: model.selected == tab.id,
                             playing: model.isPlaying(tab.id),
-                            unseen: model.unseenTabs.contains(tab.id), model: model
+                            unseen: model.unseenTabs.contains(tab.id), model: model,
+                            preview: preview
                         )
                         .transition(.move(edge: .top).combined(with: .opacity))
                     }
@@ -76,6 +78,7 @@ private struct SidebarTabRow: View {
     let playing: Bool
     let unseen: Bool
     @ObservedObject var model: AppModel
+    let preview: TabHoverPreview
     @State private var hovered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -87,6 +90,7 @@ private struct SidebarTabRow: View {
 
     var body: some View {
         Button {
+            preview.dismiss()
             model.activate(tab.id, autoplay: true)
         } label: {
             HStack(spacing: 9) {
@@ -124,6 +128,7 @@ private struct SidebarTabRow: View {
         .overlay(alignment: .trailing) {
             if hovered {
                 Button {
+                    preview.dismiss()
                     model.close(tab.id)
                 } label: {
                     Image(systemName: "xmark").font(GlassTheme.smallIconFont)
@@ -134,7 +139,11 @@ private struct SidebarTabRow: View {
                 .padding(.trailing, 5)
             }
         }
-        .onHover { hovered = $0 }
+        .onHover { inside in
+            hovered = inside
+            preview.hover(tab.id, inside: inside)
+        }
+        .anchorPreference(key: TabRowAnchorKey.self, value: .bounds) { [tab.id: $0] }
         .animation(Motion.quick(reduceMotion), value: hovered)
         .accessibilityLabel(tab.video.title)
         .accessibilityAddTraits(selected ? [.isSelected] : [])

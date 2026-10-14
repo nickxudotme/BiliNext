@@ -20,6 +20,7 @@ struct ShellView: View {
     @State private var hideTask: Task<Void, Never>?
     @State private var revealTask: Task<Void, Never>?
     @State private var pointerZone = -1
+    @StateObject private var tabPreview = TabHoverPreview()
 
     var body: some View {
         ZStack {
@@ -114,6 +115,26 @@ struct ShellView: View {
                     .opacity(pinned || revealed ? 1 : 0)
                     .allowsHitTesting(pinned || revealed)
                     .accessibilityHidden(!pinned && !revealed)
+            }
+            .overlayPreferenceValue(TabRowAnchorKey.self) { anchors in
+                GeometryReader { proxy in
+                    if let id = tabPreview.tabID, id != model.selected, !model.miniPlayer,
+                        pinned || revealed, let anchor = anchors[id],
+                        let tab = model.tabs.first(where: { $0.id == id })
+                    {
+                        let row = proxy[anchor]
+                        let height = TabPreviewCard.width * 9 / 16 + 86
+                        TabPreviewCard(tab: tab)
+                            .position(
+                                x: row.maxX + 14 + TabPreviewCard.width / 2,
+                                y: min(
+                                    max(row.midY, height / 2 + 12),
+                                    proxy.size.height - height / 2 - 12)
+                            )
+                            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    }
+                }
+                .animation(Motion.quick(reduceMotion), value: tabPreview.tabID)
             }
             .animation(Motion.panel(reduceMotion), value: pinned)
             .animation(Motion.panel(reduceMotion), value: revealed)
@@ -257,7 +278,7 @@ struct ShellView: View {
             .fixedSize(horizontal: false, vertical: true)
             .onAppear { expandedMenus.insert(model.menu) }
             .onChange(of: model.menu) { _, destination in expandedMenus = [destination] }
-            SidebarTabList(model: model, sidebarHovered: hovering)
+            SidebarTabList(model: model, sidebarHovered: hovering, preview: tabPreview)
         }
         .safeAreaInset(edge: .bottom) {
             HStack {
