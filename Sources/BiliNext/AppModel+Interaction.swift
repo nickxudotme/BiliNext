@@ -70,6 +70,34 @@ extension AppModel {
         favoritePresented = true
     }
 
+    /// G: follows the uploader, as in the official player. Never unfollows from a key.
+    func followUploader() {
+        guard let video = writableVideo(allowEpisodes: false), let mid = video.ownerID else {
+            return
+        }
+        guard !relation.following else {
+            toast = "已关注 \(video.author)"
+            return
+        }
+        write(video) {
+            try await self.api.setFollowing(mid: mid, true)
+            return {
+                self.relation.following = true
+                self.toast = "已关注 \(video.author)"
+            }
+        }
+    }
+
+    /// T: adds the playing video to 稍后再看.
+    func addPlayingToWatchLater() {
+        guard let video = detail?.video, video.episodeID == nil else { return }
+        guard profile != nil else {
+            loginPresented = true
+            return
+        }
+        changeWatchLater(video)
+    }
+
     func triple() {
         guard let video = writableVideo(allowEpisodes: false), let aid = video.aid else { return }
         let before = relation

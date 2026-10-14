@@ -168,17 +168,23 @@ public struct VideoRelation: Equatable, Sendable {
     public var liked: Bool
     public var coins: Int
     public var favorited: Bool
-    public init(liked: Bool = false, coins: Int = 0, favorited: Bool = false) {
+    /// Whether the account follows the uploader.
+    public var following: Bool
+    public init(
+        liked: Bool = false, coins: Int = 0, favorited: Bool = false, following: Bool = false
+    ) {
         self.liked = liked
         self.coins = coins
         self.favorited = favorited
+        self.following = following
     }
 
     public init(_ data: [String: Any]) {
         self.init(
             liked: data["like"] as? Bool ?? false,
             coins: (data["coin"] as? NSNumber)?.intValue ?? 0,
-            favorited: data["favorite"] as? Bool ?? false)
+            favorited: data["favorite"] as? Bool ?? false,
+            following: data["attention"] as? Bool ?? false)
     }
 }
 public struct SubtitleTrack: Identifiable, Sendable {

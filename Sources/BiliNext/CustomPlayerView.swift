@@ -71,6 +71,9 @@ struct CustomPlayerView: View {
     @State private var volumeHover = false
     @State private var volumeBeforeMute = 1.0
     @State private var boostedFrom: Double?
+    /// When Q went down; holding it past a second is 一键三连 instead of a like.
+    @State private var likeKeyDown: Date?
+    @State private var likeKeyTripled = false
     @State private var arrowDown: Date?
     @State private var theaterBeforeFullscreen: Bool?
     @AppStorage("player.highEnergy") private var highEnergyEnabled = true
@@ -226,8 +229,36 @@ struct CustomPlayerView: View {
             setVolume(model.playerVolume - 0.1)
             return .handled
         }
-        .onKeyPress("q") {
-            model.toggleLike()
+        .onKeyPress("q", phases: [.down, .repeat, .up]) { press in
+            // Tap Q likes; hold it for a second for 一键三连, as in the official player.
+            switch press.phase {
+            case .down:
+                likeKeyDown = Date()
+                likeKeyTripled = false
+            case .repeat:
+                if !likeKeyTripled, let start = likeKeyDown, Date().timeIntervalSince(start) > 1 {
+                    likeKeyTripled = true
+                    model.triple()
+                }
+            default:
+                if !likeKeyTripled { model.toggleLike() }
+                likeKeyDown = nil
+            }
+            return .handled
+        }
+        .onKeyPress(characters: CharacterSet(charactersIn: "!@")) { press in
+            // Shift-1 and Shift-2: back to 1×, or straight to 2×.
+            let rate = press.characters == "!" ? 1.0 : 2.0
+            model.setRate(rate)
+            model.toast = String(format: "%.1fx 播放", rate)
+            return .handled
+        }
+        .onKeyPress("g") {
+            model.followUploader()
+            return .handled
+        }
+        .onKeyPress("t") {
+            model.addPlayingToWatchLater()
             return .handled
         }
         .onKeyPress("w") {

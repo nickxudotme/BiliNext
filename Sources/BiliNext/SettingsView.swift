@@ -20,6 +20,15 @@ struct SettingsView: View {
     @AppStorage(Preferences.cdnMirror) private var cdnMirror = "ali"
 
     var body: some View {
+        TabView {
+            Tab("通用", systemImage: "gearshape") { general }
+            Tab("快捷键", systemImage: "keyboard") { ShortcutList() }
+        }
+        .navigationTitle("设置")
+        .frame(width: 520)
+    }
+
+    private var general: some View {
         Form {
             Section("播放") {
                 Picker(selection: $cdnMirror) {
@@ -42,8 +51,55 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .navigationTitle("设置")
-        .frame(width: 460)
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Every keyboard shortcut, so the official-style single keys can be discovered.
+private struct ShortcutList: View {
+    private static let player: [(String, String)] = [
+        ("空格", "播放 / 暂停"),
+        ("← →", "后退 / 前进 5 秒，按住 → 两倍速"),
+        ("↑ ↓", "音量"),
+        ("⇧1  ⇧2", "1 倍速 / 2 倍速"),
+        ("[  ]", "上一个 / 下一个分 P"),
+        ("F", "全屏"),
+        ("D", "弹幕开关"),
+        ("M", "静音"),
+        ("Q", "点赞，按住一秒一键三连"),
+        ("W", "投币"),
+        ("E", "收藏"),
+        ("G", "关注 UP 主"),
+        ("T", "稍后再看"),
+    ]
+    private static let window: [(String, String)] = [
+        ("⌘L", "搜索"),
+        ("⌘1 … ⌘9", "切换到第几个标签"),
+        ("⌃⇥  ⌃⇧⇥", "下一个 / 上一个标签"),
+        ("⌘W", "关闭视频标签"),
+        ("⇧⌘T", "恢复关闭的标签"),
+        ("⌃⌘S", "固定 / 隐藏侧栏"),
+        ("⌥⌘P", "窗口置顶"),
+        ("⌥⌘M", "小窗播放"),
+        ("⌘J", "下载管理"),
+        ("⌘,", "设置"),
+    ]
+
+    var body: some View {
+        Form {
+            Section("播放时") { rows(Self.player) }
+            Section("窗口与标签") { rows(Self.window) }
+        }
+        .formStyle(.grouped)
+        .frame(height: 560)
+    }
+
+    private func rows(_ items: [(String, String)]) -> some View {
+        ForEach(items, id: \.0) { key, action in
+            LabeledContent(action) {
+                Text(key).font(.system(.body, design: .rounded).weight(.medium))
+                    .foregroundStyle(.secondary).monospacedDigit()
+            }
+        }
     }
 }

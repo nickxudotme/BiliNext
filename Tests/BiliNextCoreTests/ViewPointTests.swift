@@ -24,3 +24,9 @@ import Testing
     #expect(ViewPoint.containing(86, in: info.viewPoints)?.title == "章节")
     #expect(ViewPoint.containing(300, in: info.viewPoints) == nil)
 }
+
+@Test func relationReadsWhetherTheUploaderIsFollowed() {
+    let relation = VideoRelation(["like": true, "coin": 1, "favorite": false, "attention": true])
+    #expect(relation.liked && relation.coins == 1 && !relation.favorited && relation.following)
+    #expect(!VideoRelation([:]).following)
+}
