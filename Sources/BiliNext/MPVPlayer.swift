@@ -269,9 +269,9 @@ struct MPVSurface: NSViewRepresentable {
         }
         func releaseRenderer() {
             player.captureVideoFrame = nil
-            video.releaseRenderer()
+            video.releaseRenderer(keepingAlive: player)
         }
         // The layer can outlive this view; its render context must not outlive the player.
-        deinit { video.releaseRenderer() }
+        deinit { video.releaseRenderer(keepingAlive: player) }
     }
 }

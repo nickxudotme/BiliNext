@@ -4,9 +4,10 @@ import OpenGL.GL3
 import QuartzCore
 
 /// Draws mpv frames on its own serial queue, so a busy main thread never holds video back.
-/// mpv's update callback schedules `display()` on `renderQueue`; Core Animation still draws
-/// on the main thread when the layer resizes, so every use of the GL context is serialised by
-/// `drawLock` and the context lock.
+/// Every draw happens on `renderQueue`: when Core Animation asks the layer to display on the
+/// main thread (after a resize), the request is forwarded there instead of drawing in place.
+/// The main thread therefore never waits for the render queue, which itself must take Core
+/// Animation's transaction lock to flush; waiting in either direction deadlocks the app.
 final class MPVVideoLayer: CAOpenGLLayer, @unchecked Sendable {
     let renderQueue = DispatchQueue(label: "dev.bilinext.mpv-render", qos: .userInteractive)
     private let pixelFormat: CGLPixelFormatObj
@@ -15,6 +16,7 @@ final class MPVVideoLayer: CAOpenGLLayer, @unchecked Sendable {
     private let drawLock = NSLock()
     private let scheduleLock = NSLock()
     private var scheduled = false
+    private var forced = false
 
     init?(handle: OpaquePointer) {
         let attributes: [CGLPixelFormatAttribute] = [
@@ -83,29 +85,41 @@ final class MPVVideoLayer: CAOpenGLLayer, @unchecked Sendable {
             }, Unmanaged.passUnretained(self).toOpaque())
     }
 
-    /// Called from mpv's threads. Coalesces bursts into one pending render.
-    private func scheduleFrame() {
+    /// Called from mpv's threads, and from the main thread to redraw after a resize.
+    /// Coalesces bursts into one pending render; `force` redraws even without a new frame.
+    private func scheduleFrame(force: Bool = false) {
         scheduleLock.lock()
         let pending = scheduled
         scheduled = true
+        if force { forced = true }
         scheduleLock.unlock()
         guard !pending else { return }
         renderQueue.async { [self] in
             scheduleLock.lock()
             scheduled = false
+            let force = forced
+            forced = false
             scheduleLock.unlock()
             guard let renderer else { return }
             let flags = mpv_render_context_update(renderer)
-            if flags & UInt64(MPV_RENDER_UPDATE_FRAME.rawValue) != 0 { display() }
+            if force || flags & UInt64(MPV_RENDER_UPDATE_FRAME.rawValue) != 0 { render() }
         }
     }
 
-    override func display() {
+    /// Runs only on the render queue.
+    private func render() {
         drawLock.lock()
-        defer { drawLock.unlock() }
         super.display()
-        // Off the main thread there is no run loop to commit the implicit transaction.
+        drawLock.unlock()
+        // Off the main thread there is no run loop to commit the implicit transaction. Flush
+        // without holding the draw lock, since flushing waits for Core Animation's lock.
         CATransaction.flush()
+    }
+
+    /// Core Animation calls this on the main thread when the layer needs redrawing; the draw
+    /// itself is moved to the render queue.
+    override func display() {
+        scheduleFrame(force: true)
     }
 
     override func copyCGLPixelFormat(forDisplayMask mask: UInt32) -> CGLPixelFormatObj {
@@ -166,18 +180,22 @@ final class MPVVideoLayer: CAOpenGLLayer, @unchecked Sendable {
         }
     }
 
-    /// Frees the mpv render context before its player's core is destroyed.
-    func releaseRenderer() {
-        renderQueue.sync {
+    /// Frees the mpv render context on the render queue, after any pending draw, without
+    /// making the caller wait. `owner` is kept alive until then and released on the main
+    /// thread, so the player's mpv core always outlives its render context.
+    func releaseRenderer(keepingAlive owner: AnyObject? = nil) {
+        renderQueue.async { [self] in
             drawLock.lock()
-            defer { drawLock.unlock() }
-            guard let renderer else { return }
-            CGLLockContext(context)
-            CGLSetCurrentContext(context)
-            mpv_render_context_set_update_callback(renderer, nil, nil)
-            mpv_render_context_free(renderer)
-            self.renderer = nil
-            CGLUnlockContext(context)
+            if let renderer {
+                CGLLockContext(context)
+                CGLSetCurrentContext(context)
+                mpv_render_context_set_update_callback(renderer, nil, nil)
+                mpv_render_context_free(renderer)
+                self.renderer = nil
+                CGLUnlockContext(context)
+            }
+            drawLock.unlock()
+            if let owner { DispatchQueue.main.async { withExtendedLifetime(owner) {} } }
         }
     }
 
