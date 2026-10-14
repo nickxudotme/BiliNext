@@ -166,10 +166,14 @@ private struct UploaderCard: View {
 struct IntroDetails: View {
     let detail: VideoDetail
     @State private var expanded: Bool
+    @AppStorage(Preferences.autoExpandIntro) private var autoExpand = false
 
-    init(detail: VideoDetail, expanded: Bool = false) {
+    /// Starts expanded when 设置 asks for it, unless `expanded` is given.
+    init(detail: VideoDetail, expanded: Bool? = nil) {
         self.detail = detail
-        self._expanded = State(initialValue: expanded)
+        self._expanded = State(
+            initialValue: expanded
+                ?? UserDefaults.standard.bool(forKey: Preferences.autoExpandIntro))
     }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -213,7 +217,10 @@ struct IntroDetails: View {
             }
             if expanded { more.transition(.opacity.combined(with: .move(edge: .top))) }
         }
-        .onChange(of: video.bvid) { _, _ in expanded = false }
+        .onChange(of: video.bvid) { _, _ in expanded = autoExpand }
+        .onChange(of: autoExpand) { _, value in
+            withAnimation(Motion.standard(reduceMotion)) { expanded = value }
+        }
     }
 
     private var stats: some View {

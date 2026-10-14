@@ -63,5 +63,8 @@ struct BiliNextApp: App {
                 .keyboardShortcut("s", modifiers: [.control, .command])
             }
         }
+        Settings {
+            SettingsView().tint(GlassTheme.accent)
+        }
     }
 }
