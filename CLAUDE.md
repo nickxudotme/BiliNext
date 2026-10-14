@@ -28,7 +28,7 @@ Network and hardware tests are gated by env vars and skipped by default. Example
 - `BILINEXT_LIVE_TEST=1` public network / followed-live smoke; `BILINEXT_AUTH_TEST=1` authenticated read-only (Debug reuses the dev session file, no Keychain).
 - `BILINEXT_MPV_TEST=1` real libmpv playback (`--filter mpvDirectDASHPlaysSeeksSwitchesAndRetainsTabs`, `playbackTabSwitchRetainsLoadedMedia`); add `BILINEXT_MPV_4K_TEST=1` for 4K AV1. With IINA's runtime set `DYLD_LIBRARY_PATH=/Applications/IINA.app/Contents/Frameworks`.
 - `BILINEXT_RENDER_PREVIEW=1 swift test --filter VisualPreview` renders shared states, the scrubber and the action bar to PNGs (`BILINEXT_RENDER_DIR`, default /tmp). Glass and AppKit-backed views (ScrollView, HSplitView, video surfaces) render blank offscreen.
-- Debug builds launched with `BILINEXT_DEBUG_OPEN_FIRST_TAB=1` open the first restored tab paused (no watch-history report), for screenshots without clicking.
+- Debug builds launched with `BILINEXT_DEBUG_OPEN_FIRST_TAB=1` open the first restored tab paused (no watch-history report), for screenshots without clicking; add `BILINEXT_DEBUG_PANEL=评论` (any playback panel name) to open that panel first.
 - Others: `BILINEXT_DASH_TEST`, `BILINEXT_LIVE_DANMAKU_TEST`, `BILINEXT_SUBTITLE_TEST`, `BILINEXT_HISTORY_TEST`, `BILINEXT_EXIT_HISTORY_TEST` — grep `Tests/` for `BILINEXT_` to find the gate and parameters.
 
 ## Architecture
