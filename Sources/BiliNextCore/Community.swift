@@ -12,7 +12,7 @@ public struct Comment: Identifiable, Sendable {
     public var level: Int = 0
     /// Bilibili's name colour for 大会员, when the author has one.
     public var nameColor: String? = nil
-    public let text: String
+    public var text: String
     public let likes: Int
     public let replyCount: Int
     public let date: Date
@@ -287,5 +287,71 @@ extension BilibiliAPI {
                 "fresh_idx_1h": String(page), "feed_version": "V8", "homepage_ver": "1",
             ], signed: true)
         return (data["item"] as? [[String: Any]] ?? []).compactMap(video)
+    }
+}
+
+/// One reply placed in a 评论详情 tree.
+public struct CommentThreadRow: Identifiable, Sendable {
+    public var id: Int64 { comment.id }
+    /// The reply, with Bilibili's 「回复 @某人 :」 dropped when the tree already shows it.
+    public let comment: Comment
+    /// 1 for replies to the root comment.
+    public let depth: Int
+    /// Outer replies first, nearest last.
+    public let ancestors: [Int64]
+    /// Per ancestor: whether its branch line continues below this row, because the reply on
+    /// this path is not that ancestor's last. The nearest one says whether this row has
+    /// later siblings.
+    public let rails: [Bool]
+    /// Replies beneath this one, at any depth.
+    public let descendants: Int
+    public let collapsed: Bool
+}
+
+/// Builds Reddit-style trees from Bilibili's flat 楼中楼 replies using their parent IDs.
+public enum CommentThread {
+    /// Replies in depth-first order, built on `CommentBranch.forest`. A reply whose parent is
+    /// not loaded starts a branch of its own and keeps its 回复 prefix; so do replies nested
+    /// past `maxDepth`, which stop indenting there.
+    public static func rows(
+        root: Int64, replies: [Comment], collapsed: Set<Int64> = [], maxDepth: Int = 6
+    ) -> [CommentThreadRow] {
+        var rows: [CommentThreadRow] = []
+        func visit(_ branch: CommentBranch, depth: Int, ancestors: [Int64], rails: [Bool]) {
+            var shown = branch.comment
+            if depth > 1 && depth <= maxDepth { shown.text = stripReplyPrefix(shown.text) }
+            let folded = collapsed.contains(branch.id)
+            rows.append(
+                CommentThreadRow(
+                    comment: shown, depth: min(depth, maxDepth), ancestors: ancestors,
+                    rails: rails, descendants: branch.descendantCount, collapsed: folded))
+            guard !folded else { return }
+            for (index, child) in branch.children.enumerated() {
+                let more = index < branch.children.count - 1
+                if depth < maxDepth {
+                    visit(
+                        child, depth: depth + 1, ancestors: ancestors + [branch.id],
+                        rails: rails + [more])
+                } else {
+                    // At the limit children line up with their parent under the same line.
+                    visit(
+                        child, depth: depth + 1, ancestors: ancestors,
+                        rails: rails.dropLast() + [more || (rails.last ?? false)])
+                }
+            }
+        }
+        for branch in CommentBranch.forest(replies, rootID: root) {
+            visit(branch, depth: 1, ancestors: [], rails: [])
+        }
+        return rows
+    }
+
+    /// Drops the leading 「回复 @某人 :」 Bilibili adds to replies within a thread.
+    public static func stripReplyPrefix(_ text: String) -> String {
+        guard
+            let range = text.range(
+                of: #"^回复\s*@[^:：\s]+\s*[:：]\s*"#, options: .regularExpression)
+        else { return text }
+        return String(text[range.upperBound...])
     }
 }

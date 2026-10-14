@@ -154,14 +154,14 @@ private struct CommentListPage: View {
             }
             .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 8)
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 0) {
                     ForEach(comments) { comment in
                         CommentRow(comment: comment, uploaderID: uploaderID) {
                             push(.thread(comment, uploaderID: uploaderID))
                         }
-                        .onAppear { if comment.id == comments.last?.id { load(more: true) } }
                         Divider().opacity(0.5).padding(.leading, 58)
                     }
+                    PageSentinel { load(more: true) }
                     CommentListFooter(
                         loading: loading, error: error, isEmpty: comments.isEmpty,
                         more: more, emptyTitle: "还没有评论",
@@ -223,32 +223,51 @@ private struct CommentThreadPage: View {
     @State private var more = true
     @State private var loading = false
     @State private var error: String?
+    @State private var collapsed = Set<Int64>()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var rows: [CommentThreadRow] {
+        CommentThread.rows(root: root.id, replies: replies, collapsed: collapsed)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             CommentPageHeader(title: "评论详情", back: pop)
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 0) {
                     CommentRow(comment: root, uploaderID: uploaderID, showsReplies: false)
                     Rectangle().fill(.primary.opacity(0.05)).frame(height: 8)
                     Text(count > 0 ? "相关回复共 \(count) 条" : "相关回复")
                         .font(GlassTheme.metadataFont.weight(.semibold)).foregroundStyle(.secondary)
                         .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 4)
-                    ForEach(replies) { reply in
-                        CommentRow(
-                            comment: reply, uploaderID: uploaderID, compact: true,
-                            showsReplies: false,
-                            openDialog: reply.dialogID != 0 && reply.dialogID != reply.id
+                    // Replies nest under the reply they answer, Reddit style; a guide line per
+                    // level shows who answered whom, and clicking a line folds that branch.
+                    ForEach(rows) { row in
+                        ThreadReplyRow(
+                            row: row, uploaderID: uploaderID,
+                            // The tree shows the conversation; the dialog page remains for
+                            // replies whose parent is not loaded.
+                            openDialog: row.depth == 1 && row.comment.parentID != root.id
+                                && row.comment.dialogID != 0
                                 ? {
                                     push(
                                         .dialog(
-                                            root: root, dialogID: reply.dialogID,
+                                            root: root, dialogID: row.comment.dialogID,
                                             uploaderID: uploaderID))
                                 }
-                                : nil
+                                : nil,
+                            toggle: { id in
+                                withAnimation(Motion.standard(reduceMotion)) {
+                                    if collapsed.contains(id) {
+                                        collapsed.remove(id)
+                                    } else {
+                                        collapsed.insert(id)
+                                    }
+                                }
+                            }
                         )
-                        .onAppear { if reply.id == replies.last?.id { load() } }
                     }
+                    PageSentinel(load: load)
                     CommentListFooter(
                         loading: loading, error: error, isEmpty: replies.isEmpty, more: more,
                         emptyTitle: "暂无回复", retry: load, loadMore: load)
@@ -278,6 +297,173 @@ private struct CommentThreadPage: View {
     }
 }
 
+/// One reply in the 评论详情 tree. A line leaves each reply's avatar and runs down past its
+/// replies, bending into each of their avatars, so who answered whom reads at a glance; it
+/// stops after the last reply. The knob under an avatar, or the line itself, folds the branch.
+struct ThreadReplyRow: View {
+    let row: CommentThreadRow
+    let uploaderID: Int64
+    let openDialog: (() -> Void)?
+    let toggle: (Int64) -> Void
+
+    static let indent: CGFloat = 24
+    /// `CommentRow`'s leading and top padding and compact avatar.
+    static let inset: CGFloat = 16
+    static let top: CGFloat = 12
+    static let avatar: CGFloat = 28
+
+    private var offset: CGFloat { CGFloat(row.depth - 1) * Self.indent }
+    /// The centre x of the avatar at `level` (0 is a reply to the root comment).
+    private static func centre(_ level: Int) -> CGFloat {
+        inset + CGFloat(level) * indent + avatar / 2
+    }
+
+    var body: some View {
+        Group {
+            if row.collapsed {
+                folded
+            } else {
+                CommentRow(
+                    comment: row.comment, uploaderID: uploaderID, compact: true,
+                    showsReplies: false, openDialog: openDialog)
+            }
+        }
+        .padding(.leading, offset)
+        .background(alignment: .topLeading) { lines }
+        .overlay(alignment: .topLeading) {
+            if row.descendants > 0 && !row.collapsed {
+                FoldKnob(expanded: true) { toggle(row.id) }
+                    .offset(
+                        x: Self.centre(row.depth - 1) - FoldKnob.size / 2,
+                        y: Self.top + Self.avatar + 6
+                    )
+                    .help("收起 \(row.descendants) 条回复")
+            }
+        }
+    }
+
+    /// Ancestors' lines passing through, the bend into this avatar, and this reply's own line.
+    private var lines: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .topLeading) {
+                ForEach(Array(row.ancestors.enumerated()), id: \.element) { level, ancestor in
+                    let nearest = level == row.ancestors.count - 1
+                    let continues = row.rails.indices.contains(level) && row.rails[level]
+                    if nearest || continues {
+                        BranchLine(
+                            x: Self.centre(level),
+                            bend: nearest ? Self.centre(level + 1) - Self.avatar / 2 - 3 : nil,
+                            from: 0, continues: continues, height: proxy.size.height
+                        ) { toggle(ancestor) }
+                    }
+                }
+                if row.descendants > 0 && !row.collapsed {
+                    BranchLine(
+                        x: Self.centre(row.depth - 1), bend: nil,
+                        from: Self.top + Self.avatar + 4, continues: true,
+                        height: proxy.size.height
+                    ) { toggle(row.id) }
+                }
+            }
+        }
+    }
+
+    private var folded: some View {
+        Button {
+            toggle(row.id)
+        } label: {
+            HStack(spacing: 10) {
+                AvatarView(url: row.comment.avatar).frame(width: Self.avatar, height: Self.avatar)
+                    .opacity(0.7)
+                    .overlay(alignment: .bottomTrailing) {
+                        FoldKnob(expanded: false) {}.allowsHitTesting(false).offset(x: 4, y: 4)
+                    }
+                Text(row.comment.author).font(GlassTheme.metadataFont.weight(.medium))
+                    .foregroundStyle(.secondary).lineLimit(1)
+                Text("已收起 \(row.descendants) 条回复").font(GlassTheme.captionFont)
+                    .foregroundStyle(.tertiary)
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, Self.inset).padding(.trailing, 16)
+            .padding(.top, Self.top).padding(.bottom, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("展开 \(row.comment.author) 下的 \(row.descendants) 条回复")
+    }
+}
+
+/// A small −/+ disc on a branch line.
+private struct FoldKnob: View {
+    static let size: CGFloat = 16
+    let expanded: Bool
+    let action: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: expanded ? "minus" : "plus")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(.secondary)
+                .frame(width: Self.size, height: Self.size)
+                .background(Circle().fill(Color(white: hovered ? 0.24 : 0.17)))
+                .overlay { Circle().strokeBorder(.primary.opacity(0.18), lineWidth: 1) }
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovered = $0 }
+        .accessibilityLabel(expanded ? "收起回复" : "展开回复")
+    }
+}
+
+/// A branch line at `x` from `from` downwards: with `bend`, it curves right into an avatar at
+/// the avatar's centre height and carries on only if `continues`. Hover brightens it; a click
+/// folds the branch it belongs to.
+private struct BranchLine: View {
+    let x: CGFloat
+    let bend: CGFloat?
+    let from: CGFloat
+    let continues: Bool
+    let height: CGFloat
+    let action: () -> Void
+    @State private var hovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private static let radius: CGFloat = 8
+    private static let bendY = ThreadReplyRow.top + ThreadReplyRow.avatar / 2
+
+    var body: some View {
+        let path = Path { path in
+            if let bend {
+                let y = Self.bendY
+                path.move(to: CGPoint(x: x, y: from))
+                path.addLine(to: CGPoint(x: x, y: y - Self.radius))
+                path.addQuadCurve(
+                    to: CGPoint(x: x + Self.radius, y: y), control: CGPoint(x: x, y: y))
+                path.addLine(to: CGPoint(x: max(x + Self.radius, bend), y: y))
+                if continues {
+                    path.move(to: CGPoint(x: x, y: y - Self.radius))
+                    path.addLine(to: CGPoint(x: x, y: height))
+                }
+            } else {
+                path.move(to: CGPoint(x: x, y: from))
+                path.addLine(to: CGPoint(x: x, y: height))
+            }
+        }
+        path.stroke(
+            .primary.opacity(hovered ? 0.4 : 0.17),
+            style: StrokeStyle(lineWidth: hovered ? 2 : 1.5, lineCap: .round, lineJoin: .round)
+        )
+        .contentShape(
+            Path(CGRect(x: x - 6, y: from, width: 12, height: max(0, height - from)))
+        )
+        .onTapGesture(perform: action)
+        .onHover { hovered = $0 }
+        .animation(Motion.quick(reduceMotion), value: hovered)
+        .accessibilityHidden(true)
+    }
+}
+
 private struct CommentDialogPage: View {
     @ObservedObject var model: AppModel
     let root: Comment
@@ -292,7 +478,7 @@ private struct CommentDialogPage: View {
         VStack(alignment: .leading, spacing: 0) {
             CommentPageHeader(title: "查看对话", back: pop)
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 0) {
                     ForEach(replies) { reply in
                         CommentRow(
                             comment: reply, uploaderID: uploaderID, compact: true,
@@ -337,6 +523,21 @@ private struct CommentPageHeader: View {
         }
         .padding(.horizontal, 8).padding(.vertical, 8)
         .overlay(alignment: .bottom) { Divider().opacity(0.5) }
+    }
+}
+
+/// Loads the next page when the end of a comment list scrolls into view.
+///
+/// The lists are plain `VStack`s: in a `LazyVStack`, rows that change height (展开, folding a
+/// branch, a page arriving) make SwiftUI keep re-adjusting the scroll offset and re-placing
+/// rows forever, freezing the window (2026-10-15). A plain stack also creates every row at
+/// once, so paging cannot hang off each row's `onAppear`.
+private struct PageSentinel: View {
+    let load: () -> Void
+
+    var body: some View {
+        Color.clear.frame(height: 1)
+            .onScrollVisibilityChange(threshold: 0.01) { visible in if visible { load() } }
     }
 }
 
@@ -411,7 +612,7 @@ struct CommentRow: View {
                 CollapsibleCommentText(comment: comment)
                 if !comment.pictures.isEmpty { CommentPictures(pictures: comment.pictures) }
                 footer
-                if showsReplies, comment.replyCount > 0 || !comment.replies.isEmpty {
+                if showsReplies, !comment.replies.isEmpty || comment.replyCount > 0 {
                     replyPreview
                 }
             }
@@ -446,16 +647,23 @@ struct CommentRow: View {
                     .foregroundStyle(GlassTheme.accent)
             }
             Spacer(minLength: 0)
-            Menu {
-                menuItems
-            } label: {
-                Image(systemName: "ellipsis").font(GlassTheme.labelFont.weight(.semibold))
-                    .frame(width: 24, height: 20)
+            // Each Menu is an AppKit pop-up rebuilt on every update, so only the hovered row
+            // has one; the frame keeps the footer's layout the same either way.
+            Group {
+                if hovered {
+                    Menu {
+                        menuItems
+                    } label: {
+                        Image(systemName: "ellipsis").font(GlassTheme.labelFont.weight(.semibold))
+                            .frame(width: 24, height: 20)
+                    }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .transition(.opacity)
+                    .accessibilityLabel("评论选项")
+                }
             }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-            .opacity(hovered ? 1 : 0)
+            .frame(width: 24, height: 20)
             .animation(Motion.quick(reduceMotion), value: hovered)
-            .accessibilityLabel("评论选项")
         }
         .font(GlassTheme.captionFont).foregroundStyle(.secondary)
     }
@@ -476,7 +684,8 @@ struct CommentRow: View {
                     .font(GlassTheme.labelFont).lineSpacing(3).lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            if let openThread {
+            // Only offer the thread when the preview leaves replies out, as the official app.
+            if let openThread, comment.replyCount > min(3, comment.replies.count) {
                 Button(action: openThread) {
                     HStack(spacing: 2) {
                         Text(comment.replyCount > 0 ? "共 \(comment.replyCount) 条回复" : "查看回复")

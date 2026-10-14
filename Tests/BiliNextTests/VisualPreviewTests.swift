@@ -127,3 +127,34 @@ private func renderPreview(_ view: some View, name: String) throws {
         .frame(width: 380).background(GlassTheme.canvas).environment(\.colorScheme, .dark)
     try renderPreview(view, name: "bilinext-intro-expanded")
 }
+
+@MainActor
+@Test func visualPreviewCommentThread() throws {
+    guard ProcessInfo.processInfo.environment["BILINEXT_RENDER_PREVIEW"] == "1" else { return }
+    func reply(_ id: Int64, parent: Int64, _ author: String, _ text: String) -> BiliNextCore.Comment
+    {
+        BiliNextCore.Comment.parse(
+            [
+                "rpid": id, "root": 1, "parent": parent, "like": Int(id) * 3,
+                "ctime": 1_760_400_000,
+                "member": ["uname": author, "level_info": ["current_level": 5]],
+                "content": ["message": text],
+            ])!
+    }
+    let replies = [
+        reply(2, parent: 1, "Cap_加西亚", "不问自取是为偷，何况他还知道人家牧民没走远。"),
+        reply(3, parent: 2, "种猫猫", "回复 @Cap_加西亚 :等人家回来和人家说说，而且又不是没带钱"),
+        reply(4, parent: 3, "Cap_加西亚", "回复 @种猫猫 :他这不是没说嘛"),
+        reply(5, parent: 2, "静谧の扉守", "回复 @Cap_加西亚 :做的有点不地道。"),
+        reply(6, parent: 1, "猫電", "因为以前是素材，这期是心肝。"),
+        reply(7, parent: 6, "路人", "回复 @猫電 :哈哈"),
+    ]
+    let rows = CommentThread.rows(root: 1, replies: replies, collapsed: [6])
+    let view = VStack(spacing: 0) {
+        ForEach(rows) { row in
+            ThreadReplyRow(row: row, uploaderID: 0, openDialog: nil, toggle: { _ in })
+        }
+    }
+    .frame(width: 380).background(Color(white: 0.12)).environment(\.colorScheme, .dark)
+    try renderPreview(view, name: "bilinext-comment-thread")
+}
