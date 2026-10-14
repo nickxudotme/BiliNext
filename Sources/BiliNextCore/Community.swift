@@ -4,18 +4,39 @@ public struct Comment: Identifiable, Sendable {
     public let id: Int64
     public let parentID: Int64
     public let rootID: Int64
+    /// The first comment of the conversation this reply belongs to; 0 or `id` when none.
+    public var dialogID: Int64 = 0
+    public var authorID: Int64 = 0
     public let author: String
     public let avatar: URL?
+    public var level: Int = 0
+    /// Bilibili's name colour for 大会员, when the author has one.
+    public var nameColor: String? = nil
     public let text: String
     public let likes: Int
     public let replyCount: Int
     public let date: Date
     public let replies: [Comment]
+    public var pinned = false
+    public var likedByUploader = false
+    public var location: String? = nil
+    /// Lines shown before 展开; Bilibili sends 6 for long comments.
+    public var maxLines = 0
+    public var pictures: [CommentPicture] = []
+    /// Inline emote images keyed by their text, such as `[doge]`.
+    public var emotes: [String: URL] = [:]
+    /// Keywords Bilibili links to a search or page, keyed by the exact text.
+    public var links: [String: CommentLink] = [:]
+    /// Names after @ that refer to accounts.
+    public var mentions: [String] = []
+
     public static func parse(_ value: [String: Any]) -> Comment? {
         guard let id = (value["rpid"] as? NSNumber)?.int64Value else { return nil }
         let member = value["member"] as? [String: Any] ?? [:]
         let content = value["content"] as? [String: Any] ?? [:]
-        return Comment(
+        let control = value["reply_control"] as? [String: Any] ?? [:]
+        let vip = member["vip"] as? [String: Any] ?? [:]
+        var comment = Comment(
             id: id, parentID: (value["parent"] as? NSNumber)?.int64Value ?? 0,
             rootID: (value["root"] as? NSNumber)?.int64Value ?? 0,
             author: member["uname"] as? String ?? "用户",
@@ -25,6 +46,113 @@ public struct Comment: Identifiable, Sendable {
             replyCount: (value["rcount"] as? NSNumber)?.intValue ?? 0,
             date: Date(timeIntervalSince1970: (value["ctime"] as? NSNumber)?.doubleValue ?? 0),
             replies: (value["replies"] as? [[String: Any]] ?? []).compactMap(parse))
+        comment.dialogID = (value["dialog"] as? NSNumber)?.int64Value ?? 0
+        comment.authorID =
+            (value["mid"] as? NSNumber)?.int64Value
+            ?? Int64(member["mid"] as? String ?? "") ?? 0
+        comment.level =
+            ((member["level_info"] as? [String: Any])?["current_level"] as? NSNumber)?
+            .intValue ?? 0
+        if (vip["vipStatus"] as? NSNumber)?.intValue == 1,
+            let color = vip["nickname_color"] as? String, !color.isEmpty
+        {
+            comment.nameColor = color
+        }
+        comment.likedByUploader = (value["up_action"] as? [String: Any])?["like"] as? Bool ?? false
+        comment.location = (control["location"] as? String).map {
+            $0.replacingOccurrences(of: "IP属地：", with: "")
+        }
+        comment.maxLines = (control["max_line"] as? NSNumber)?.intValue ?? 0
+        comment.pictures = (content["pictures"] as? [[String: Any]] ?? []).compactMap {
+            guard let url = secureURL($0["img_src"] as? String ?? "") else { return nil }
+            return CommentPicture(
+                url: url, width: ($0["img_width"] as? NSNumber)?.doubleValue ?? 0,
+                height: ($0["img_height"] as? NSNumber)?.doubleValue ?? 0)
+        }
+        for (key, emote) in content["emote"] as? [String: [String: Any]] ?? [:] {
+            if let url = secureURL(emote["url"] as? String ?? "") { comment.emotes[key] = url }
+        }
+        for (key, link) in content["jump_url"] as? [String: [String: Any]] ?? [:] {
+            let page = (link["pc_url"] as? String).flatMap { $0.isEmpty ? nil : URL(string: $0) }
+            comment.links[key] = page.map { .page($0) } ?? .search(link["title"] as? String ?? key)
+        }
+        comment.mentions = (content["members"] as? [[String: Any]] ?? []).compactMap {
+            $0["uname"] as? String
+        }
+        return comment
+    }
+}
+
+public struct CommentPicture: Hashable, Sendable {
+    public let url: URL
+    public let width: Double
+    public let height: Double
+}
+
+public enum CommentLink: Hashable, Sendable {
+    case search(String)
+    case page(URL)
+}
+
+/// Pieces of a comment's text: plain runs, emotes, links, @mentions, video IDs and
+/// timestamps such as 03:21, which the player can seek to.
+public enum CommentSegment: Equatable, Sendable {
+    case text(String)
+    case emote(String, URL)
+    case link(String, CommentLink)
+    case mention(String)
+    case video(String)
+    case time(String, seconds: Double)
+
+    public static func split(_ comment: Comment) -> [CommentSegment] {
+        let text = comment.text
+        var marks: [(Range<String.Index>, CommentSegment)] = []
+        func add(_ needle: String, _ segment: CommentSegment) {
+            var start = text.startIndex
+            while let range = text.range(of: needle, range: start..<text.endIndex) {
+                marks.append((range, segment))
+                start = range.upperBound
+            }
+        }
+        for (key, url) in comment.emotes { add(key, .emote(key, url)) }
+        for (key, link) in comment.links { add(key, .link(key, link)) }
+        for name in comment.mentions { add("@" + name, .mention(name)) }
+        let patterns: [(String, (String) -> CommentSegment?)] = [
+            (#"BV[0-9A-Za-z]{10}"#, { .video($0) }),
+            (
+                #"(?<![0-9])(?<![0-9]:)(?:\d{1,2}:)?\d{1,2}:\d{2}(?![0-9]|:[0-9])"#,
+                { token in
+                    let parts = token.split(separator: ":").compactMap { Double($0) }
+                    guard parts.count >= 2, parts.last! < 60 else { return nil }
+                    return .time(token, seconds: parts.reduce(0) { $0 * 60 + $1 })
+                }
+            ),
+        ]
+        for (pattern, make) in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+                if let range = Range(match.range, in: text), let segment = make(String(text[range]))
+                {
+                    marks.append((range, segment))
+                }
+            }
+        }
+        // Earlier and longer marks win; overlapping ones are dropped.
+        marks.sort {
+            $0.0.lowerBound != $1.0.lowerBound
+                ? $0.0.lowerBound < $1.0.lowerBound : $0.0.upperBound > $1.0.upperBound
+        }
+        var segments: [CommentSegment] = []
+        var cursor = text.startIndex
+        for (range, segment) in marks where range.lowerBound >= cursor {
+            if cursor < range.lowerBound {
+                segments.append(.text(String(text[cursor..<range.lowerBound])))
+            }
+            segments.append(segment)
+            cursor = range.upperBound
+        }
+        if cursor < text.endIndex { segments.append(.text(String(text[cursor...]))) }
+        return segments
     }
 }
 
@@ -66,6 +194,8 @@ public struct CommentPage: Sendable {
     public let comments: [Comment]
     public let count: Int
     public let hasMore: Bool
+    /// The uploader's account, so their comments can carry an UP badge.
+    public var uploaderID: Int64 = 0
 }
 
 extension BilibiliAPI {
@@ -111,15 +241,29 @@ extension BilibiliAPI {
         let info = data["page"] as? [String: Any] ?? [:]
         let count = (info["count"] as? NSNumber)?.intValue ?? 0
         var items = (data["replies"] as? [[String: Any]] ?? []).compactMap(Comment.parse)
-        if page == 1, root == nil, let upper = data["upper"] as? [String: Any],
-            let top = upper["top"] as? [String: Any], let comment = Comment.parse(top)
+        let upper = data["upper"] as? [String: Any] ?? [:]
+        if page == 1, root == nil, let top = upper["top"] as? [String: Any],
+            var comment = Comment.parse(top)
         {
+            comment.pinned = true
             items.insert(comment, at: 0)
         }
         var seen = Set<Int64>()
         items = items.filter { seen.insert($0.id).inserted }
-        return CommentPage(
+        var result = CommentPage(
             comments: items, count: count, hasMore: !items.isEmpty && page * 20 < count)
+        result.uploaderID = (upper["mid"] as? NSNumber)?.int64Value ?? 0
+        return result
+    }
+    /// One conversation inside a reply thread, in the order it was written.
+    public func dialog(aid: Int64, root: Int64, dialog: Int64) async throws -> [Comment] {
+        let data = try await request(
+            "/x/v2/reply/dialog/cursor",
+            params: [
+                "oid": String(aid), "type": "1", "root": String(root), "dialog": String(dialog),
+                "size": "20",
+            ])
+        return (data["replies"] as? [[String: Any]] ?? []).compactMap(Comment.parse)
     }
     public func ranking() async throws -> [Video] {
         let data = try await request(
