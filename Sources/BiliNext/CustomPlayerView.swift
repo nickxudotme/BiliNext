@@ -463,7 +463,8 @@ struct CustomPlayerView: View {
         // Controls over video always use light glyphs on dark feedback, in both appearances.
         .environment(\.colorScheme, .dark)
         .onHover { inside in
-            hoveringBar = inside
+            // The 高能 curve makes the whole glass bar taller; animate the bar with it.
+            withAnimation(Motion.standard(reduceMotion)) { hoveringBar = inside }
             if inside { revealControls() }
         }
         .onTapGesture {
