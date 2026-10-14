@@ -24,12 +24,19 @@ import Testing
     // Playback starts on the first frames; `mpvTripleSpeedMaintainsForwardBuffer` checks that
     // 3x still keeps ahead without the initial pause.
     #expect(!core.flag("options/cache-pause-initial"))
+    // Read-ahead starts at 20 s and grows to 40 s and 70 s with playing time.
+    #expect(core.number("options/cache-secs") == 20)
     core.speed = 3
-    #expect(core.number("options/cache-secs") == 180)
+    #expect(core.number("options/cache-secs") == 60)
+    #expect(core.number("options/demuxer-readahead-secs") == 60)
     #expect(core.number("options/cache-pause-wait") == 9)
     #expect(core.number("options/demuxer-max-bytes") == 256 * 1024 * 1024)
+    core.updateBufferStage(playing: 6)
+    #expect(core.number("options/cache-secs") == 120)
+    core.updateBufferStage(playing: 25)
+    #expect(core.number("options/cache-secs") == 210)
     core.speed = 0.5
-    #expect(core.number("options/cache-secs") == 60)
+    #expect(core.number("options/cache-secs") == 70)
     #expect(core.number("options/cache-pause-wait") == 3)
     #expect(core.number("options/demuxer-max-bytes") == 128 * 1024 * 1024)
 }

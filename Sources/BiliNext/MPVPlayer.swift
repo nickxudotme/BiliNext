@@ -46,8 +46,8 @@ final class MPVPlayer {
             "config": "no", "terminal": "no", "vo": videoOutput, "hwdec": "videotoolbox",
             "idle": "yes", "keep-open": "yes", "pause": "yes", "osc": "no",
             "input-default-bindings": "no", "load-scripts": "no", "sub-auto": "no",
-            "cache": "yes", "cache-secs": "60", "demuxer-max-bytes": "134217728",
-            "demuxer-readahead-secs": "60", "demuxer-max-back-bytes": "16777216",
+            "cache": "yes", "cache-secs": "20", "demuxer-max-bytes": "134217728",
+            "demuxer-readahead-secs": "20", "demuxer-max-back-bytes": "16777216",
             // Start as soon as the first frames arrive; waiting to buffer 3 s first made the
             // start of playback take seconds on a slow mirror. Mid-play underruns still pause.
             "cache-pause": "yes", "cache-pause-initial": "no", "cache-pause-wait": "3",
@@ -64,11 +64,26 @@ final class MPVPlayer {
             Task { @MainActor in self?.update() }
         }
     }
+    /// Read-ahead grows with playing time, as in the official player: a short target at the
+    /// start keeps deep read-ahead from competing with the first video and audio requests.
+    static let readAheadStages: [Double] = [20, 40, 70]
+    private(set) var bufferStage = 0
+    private var playingSince: Date?
+
+    /// Moves to the read-ahead stage for `seconds` of playing time (5 s and 20 s steps).
+    func updateBufferStage(playing seconds: TimeInterval) {
+        let stage = seconds >= 20 ? 2 : seconds >= 5 ? 1 : 0
+        guard stage != bufferStage else { return }
+        bufferStage = stage
+        applyBufferPolicy()
+    }
+
     private func applyBufferPolicy() {
         // mpv measures media seconds, so preserve a useful wall-clock margin at higher rates.
         let multiplier = max(1, min(3, speed.isFinite ? speed : 1))
-        set("cache-secs", String(60 * multiplier))
-        set("demuxer-readahead-secs", String(60 * multiplier))
+        let seconds = Self.readAheadStages[bufferStage]
+        set("cache-secs", String(seconds * multiplier))
+        set("demuxer-readahead-secs", String(seconds * multiplier))
         set("cache-pause-wait", String(3 * multiplier))
         set("demuxer-max-bytes", String(Int(min(256, 128 * multiplier)) * 1024 * 1024))
     }
@@ -110,6 +125,9 @@ final class MPVPlayer {
         reported = false
         wasCachePaused = false
         loaded = false
+        playingSince = nil
+        bufferStage = 0
+        applyBufferPolicy()
         playbackActivity.setActive(false)
         set("pause", autoplay ? "no" : "yes")
         let options = "start=\(max(0, position)),speed=\(speed)"
@@ -221,6 +239,10 @@ final class MPVPlayer {
             wasCachePaused = cachePaused
         }
         playbackActivity.setActive(playing && failure == nil)
+        if playing, failure == nil {
+            if playingSince == nil { playingSince = Date() }
+            updateBufferStage(playing: Date().timeIntervalSince(playingSince!))
+        }
         onUpdate?(time, duration, playing, cachePaused || (!loaded && failure == nil))
     }
 
