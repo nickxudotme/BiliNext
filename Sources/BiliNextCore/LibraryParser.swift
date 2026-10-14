@@ -64,7 +64,8 @@ enum LibraryParser {
             cover: secureURL(row["pic"] as? String ?? row["cover"] as? String ?? ""),
             avatar: secureURL(owner["face"] as? String ?? ""),
             aid: (row[aidKey] as? NSNumber)?.int64Value,
-            duration: (row["duration"] as? NSNumber)?.doubleValue)
+            duration: (row["duration"] as? NSNumber)?.doubleValue,
+            pubdate: DisplayFormat.date(fromUnix: row["pubtime"] ?? row["pubdate"]))
     }
 }
 

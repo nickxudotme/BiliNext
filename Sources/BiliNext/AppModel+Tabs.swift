@@ -18,7 +18,8 @@ extension AppModel {
                     video: video, cid: video.historyCID, position: max(0, video.progress ?? 0)))
         }
         if background {
-            toast = "已加入侧栏"
+            if selected != video.id { unseenTabs.insert(video.id) }
+            if !sidebarPinned { toast = "已在后台打开「\(video.title)」" }
             saveSession()
         } else {
             activate(video.id, autoplay: true)
@@ -27,6 +28,7 @@ extension AppModel {
     func close(_ id: String) {
         saveSession()
         closed = tabs.filter { $0.id == id }
+        unseenTabs.remove(id)
         let index = tabs.firstIndex(where: { $0.id == id }) ?? 0
         tabs.removeAll { $0.id == id }
         releasePlaybackTab(id)
@@ -58,6 +60,103 @@ extension AppModel {
             loadBrowseIfNeeded()
         }
     }
+    /// Closes every tab except one, or every tab after it; both stay undoable.
+    func closeOtherTabs(keeping id: String, onlyBelow: Bool = false) {
+        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        saveSession()
+        let closing = tabs.enumerated().filter { offset, _ in
+            onlyBelow ? offset > index : offset != index
+        }.map(\.element)
+        guard !closing.isEmpty else { return }
+        closed = closing
+        for tab in closing {
+            releasePlaybackTab(tab.id)
+            unseenTabs.remove(tab.id)
+        }
+        tabs.removeAll { tab in closing.contains { $0.id == tab.id } }
+        if let selected, !tabs.contains(where: { $0.id == selected }) { activate(id) }
+        saveSession()
+    }
+
+    func toggleWindowPin() {
+        if let tabOwner {
+            tabOwner.toggleWindowPin()
+            return
+        }
+        windowPinned.toggle()
+    }
+
+    /// Enters or leaves 小窗, restoring the sidebar and pinning. Detail panels are hidden by
+    /// the mini layout itself, so switching tabs inside 小窗 changes no tab's theater state.
+    func toggleMiniPlayer() {
+        if let tabOwner {
+            tabOwner.toggleMiniPlayer()
+            return
+        }
+        if miniPlayer {
+            let previous = stateBeforeMiniPlayer
+            miniPlayer = false
+            sidebarPinned = previous?.sidebarPinned ?? true
+            windowPinned = previous?.windowPinned ?? false
+            stateBeforeMiniPlayer = nil
+        } else {
+            guard selected != nil else { return }
+            stateBeforeMiniPlayer = (sidebarPinned, windowPinned)
+            sidebarPinned = false
+            windowPinned = true
+            miniPlayer = true
+        }
+    }
+
+    /// Plays another video in place of a tab, as when moving through a 合集. A video that is
+    /// already open elsewhere is selected instead of duplicated.
+    func replace(_ id: String, with video: Video) {
+        if let tabOwner {
+            tabOwner.replace(id, with: video)
+            return
+        }
+        guard video.id != id else { return }
+        if tabs.contains(where: { $0.id == video.id }) {
+            activate(video.id, autoplay: true)
+            return
+        }
+        guard let index = tabs.firstIndex(where: { $0.id == id }) else {
+            open(video)
+            return
+        }
+        saveSession()
+        let wasSelected = selected == id
+        tabs[index] = SessionTab(video: video, cid: video.historyCID)
+        releasePlaybackTab(id)
+        unseenTabs.remove(id)
+        if wasSelected {
+            selected = nil
+            activate(video.id, autoplay: true)
+        }
+        saveSession()
+    }
+
+    /// ⌘1–8 pick a tab by position and ⌘9 the last one, as in browsers.
+    func activateTab(number: Int) {
+        guard !tabs.isEmpty else { return }
+        let index = number == 9 ? tabs.count - 1 : number - 1
+        guard tabs.indices.contains(index) else { return }
+        activate(tabs[index].id, autoplay: true)
+    }
+
+    /// ⌃Tab and ⌃⇧Tab step through tabs, wrapping, starting from browsing when none is open.
+    func cycleTab(_ delta: Int) {
+        guard !tabs.isEmpty else { return }
+        let current = selected.flatMap { id in tabs.firstIndex { $0.id == id } }
+        let next = Self.tabIndex(after: current, count: tabs.count, delta: delta)
+        activate(tabs[next].id, autoplay: true)
+    }
+
+    nonisolated static func tabIndex(after current: Int?, count: Int, delta: Int) -> Int {
+        guard let current else { return delta > 0 ? 0 : count - 1 }
+        return ((current + delta) % count + count) % count
+    }
+
     func undoClose() {
         for tab in closed where !tabs.contains(where: { $0.id == tab.id }) { tabs.append(tab) }
         closed = []
@@ -152,11 +251,11 @@ extension AppModel {
         tabSubscriptions[key] = subscriptions
     }
 
-    func browsePageID(for destination: String) -> String {
+    func browsePageID(for destination: BrowseDestination) -> String {
         switch destination {
-        case "首页": return "首页:\(homeSection)"
-        case "动态": return "动态:\(dynamicMode)"
-        case "收藏":
+        case .home: return "首页:\(homeSection)"
+        case .dynamic: return "动态:\(dynamicMode)"
+        case .favorites:
             let key = "收藏:\(folderID)"
             if browseInstances[key] != nil { return key }
             // The default folder's original key remains stable after its real ID arrives.
@@ -167,21 +266,21 @@ extension AppModel {
             }
             if folderID != 0,
                 let loaded = browseInstances.sorted(by: { $0.key < $1.key }).first(where: {
-                    $0.value.menu == "收藏" && $0.value.folderID == folderID
+                    $0.value.menu == .favorites && $0.value.folderID == folderID
                 })
             {
                 return loaded.key
             }
             return key
-        default: return destination
+        case .search, .history, .watchLater: return destination.rawValue
         }
     }
 
-    func loadedBrowseInstance(for destination: String) -> AppModel? {
+    func loadedBrowseInstance(for destination: BrowseDestination) -> AppModel? {
         browseInstances[browsePageID(for: destination)]
     }
 
-    func browseInstance(for destination: String) -> AppModel {
+    func browseInstance(for destination: BrowseDestination) -> AppModel {
         let key = browsePageID(for: destination)
         if let existing = browseInstances[key] { return existing }
         let instance = AppModel(
@@ -193,11 +292,13 @@ extension AppModel {
         instance.dynamicMode = dynamicMode
         instance.folderID = folderID
         instance.playbackTabActive = false
-        if destination == "收藏" {
+        if destination == .favorites {
             instance.folders =
                 folders.isEmpty
-                ? browseInstances.values.first(where: { $0.menu == "收藏" && !$0.folders.isEmpty })?
-                    .folders ?? []
+                ? browseInstances.values.first(where: {
+                    $0.menu == .favorites && !$0.folders.isEmpty
+                })?
+                .folders ?? []
                 : folders
         }
         connectPage(instance, key: "browse:" + key)
@@ -222,6 +323,7 @@ extension AppModel {
         hoverPreview.stop()
         saveSession()
         suspendPlaybackTabs(except: id)
+        unseenTabs.remove(id)
         let instance = playbackInstance(for: tab)
         instance.menu = menu
         selected = id

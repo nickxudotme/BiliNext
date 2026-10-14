@@ -5,20 +5,22 @@ struct ShellView: View {
     @ObservedObject var model: AppModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let drawerWidth: CGFloat = 220
-    @State private var expandedMenus: Set<String> = []
-    @State private var pinned = true
+    /// Fullscreen and 小窗 drop the inset so video reaches the window edges.
+    private var edgeToEdge: Bool { fullScreen || model.miniPlayer }
+    private var cardGap: CGFloat { edgeToEdge ? 0 : GlassTheme.cardGap }
+    @State private var expandedMenus: Set<BrowseDestination> = []
+    private var pinned: Bool {
+        get { model.sidebarPinned }
+        nonmutating set { model.sidebarPinned = newValue }
+    }
     @State private var fullScreen = false
     @State private var pinnedBeforePlaybackFullscreen: Bool?
     @State private var revealed = false
     @State private var hovering = false
-    @State private var hoveredTab: String?
     @State private var hideTask: Task<Void, Never>?
     @State private var revealTask: Task<Void, Never>?
     @State private var pointerZone = -1
-    private let menus = [
-        ("首页", "house"), ("搜索", "magnifyingglass"), ("动态", "rectangle.stack"), ("收藏", "star"),
-        ("历史", "clock.arrow.circlepath"), ("稍后再看", "clock"),
-    ]
+    @StateObject private var tabPreview = TabHoverPreview()
 
     var body: some View {
         ZStack {
@@ -26,15 +28,16 @@ struct ShellView: View {
                 if let instance = model.browseInstances[pageID] {
                     let active =
                         model.selected == nil && pageID == model.browsePageID(for: model.menu)
-                    BrowseView(
-                        model: instance,
-                        isActive: active
-                    )
-                    .id(ObjectIdentifier(instance))
-                    .opacity(active ? 1 : 0)
-                    .allowsHitTesting(active)
-                    .accessibilityHidden(!active)
+                    BrowseView(model: instance, isActive: active, topInset: BrowseToolbar.height)
+                        .id(ObjectIdentifier(instance))
+                        .opacity(active ? 1 : 0)
+                        .allowsHitTesting(active)
+                        .accessibilityHidden(!active)
                 }
+            }
+            if model.selected == nil {
+                BrowseToolbar(model: model)
+                    .frame(maxHeight: .infinity, alignment: .top)
             }
             ForEach(model.tabs) { tab in
                 if let instance = model.playbackInstances[tab.id] {
@@ -46,6 +49,7 @@ struct ShellView: View {
                     } else {
                         PlaybackView(
                             model: instance, navigationOverlayVisible: !pinned && revealed,
+                            miniPlayer: model.miniPlayer, windowPinned: model.windowPinned,
                             isActive: model.selected == tab.id
                         )
                         .opacity(model.selected == tab.id ? 1 : 0)
@@ -55,9 +59,20 @@ struct ShellView: View {
                 }
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.leading, pinned ? drawerWidth : 0)
+            // Content is an inset card on the wallpaper-tinted backdrop, as in Arc.
+            // Fullscreen drops the inset so video and pages reach the screen edges.
             .background(GlassTheme.canvas)
-            .background(WindowChrome { fullScreen = $0 })
+            .clipShape(RoundedRectangle(cornerRadius: edgeToEdge ? 0 : GlassTheme.cardRadius))
+            .shadow(color: .black.opacity(edgeToEdge ? 0 : 0.18), radius: 1.5)
+            .padding(.leading, pinned ? drawerWidth : cardGap)
+            .padding([.top, .bottom, .trailing], cardGap)
+            .background { WindowBackdrop().ignoresSafeArea() }
+            .background(
+                WindowChrome(
+                    pinned: model.windowPinned, miniPlayer: model.miniPlayer,
+                    showsButtons: pinned || revealed
+                ) { fullScreen = $0 }
+            )
             .onChange(of: fullScreen) { _, entered in
                 if entered && model.selected != nil {
                     pinnedBeforePlaybackFullscreen = pinned
@@ -98,10 +113,45 @@ struct ShellView: View {
                     .allowsHitTesting(pinned || revealed)
                     .accessibilityHidden(!pinned && !revealed)
             }
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: pinned)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: revealed)
+            .overlayPreferenceValue(TabRowAnchorKey.self) { anchors in
+                GeometryReader { proxy in
+                    if let id = tabPreview.tabID, id != model.selected, !model.miniPlayer,
+                        pinned || revealed, let anchor = anchors[id],
+                        let tab = model.tabs.first(where: { $0.id == id })
+                    {
+                        let row = proxy[anchor]
+                        let height = TabPreviewCard.width * 9 / 16 + 86
+                        TabPreviewCard(tab: tab)
+                            .position(
+                                x: row.maxX + 14 + TabPreviewCard.width / 2,
+                                y: min(
+                                    max(row.midY, height / 2 + 12),
+                                    proxy.size.height - height / 2 - 12)
+                            )
+                            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    }
+                }
+                .animation(Motion.quick(reduceMotion), value: tabPreview.tabID)
+            }
+            .animation(Motion.panel(reduceMotion), value: pinned)
+            .animation(Motion.panel(reduceMotion), value: revealed)
             .ignoresSafeArea(.container, edges: .top)
+            .onChange(of: model.selected) { _, selected in
+                // 小窗 only shows a video; closing the last one returns to the full window.
+                if selected == nil && model.miniPlayer { model.toggleMiniPlayer() }
+            }
+            .onChange(of: model.sidebarPinned) { _, _ in
+                // The menu shortcut toggles pinning without passing through the header button.
+                revealTask?.cancel()
+                hideTask?.cancel()
+                revealed = false
+                pointerZone = -1
+            }
             .onExitCommand {
+                if model.miniPlayer {
+                    model.toggleMiniPlayer()
+                    return
+                }
                 revealTask?.cancel()
                 hideTask?.cancel()
                 if !pinned { revealed = false }
@@ -112,13 +162,17 @@ struct ShellView: View {
             }
             .overlay(alignment: .bottom) {
                 if let toast = model.toast {
-                    Text(toast).font(.callout).padding(12).chromeSurface(in: Capsule()).padding(20)
+                    Text(toast).font(GlassTheme.labelFont)
+                        .padding(.horizontal, 18).padding(.vertical, 10)
+                        .chromeSurface(in: Capsule()).padding(28)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                         .task(id: toast) {
                             try? await Task.sleep(for: .seconds(2))
                             if !Task.isCancelled { model.toast = nil }
                         }
                 }
             }
+            .animation(Motion.standard(reduceMotion), value: model.toast)
             .sheet(isPresented: $model.downloadsPresented) {
                 DownloadsView(manager: model.downloads, model: model)
             }
@@ -127,65 +181,53 @@ struct ShellView: View {
 
     private var sidebar: some View {
         VStack(spacing: 0) {
-            GlassEffectContainer(spacing: 6) {
-                HStack(spacing: 4) {
-                    if !fullScreen {
-                        TrafficLights().frame(width: 56, height: 24)
-                    }
-                    Button {
-                        revealTask?.cancel()
-                        hideTask?.cancel()
-                        pinned.toggle()
-                        revealed = false
-                        pointerZone = -1
-                    } label: {
-                        Image(systemName: "sidebar.left").frame(width: 28, height: 32)
-                    }
-                    .chromeSurface(in: Circle(), interactive: true)
-                    .help(pinned ? "隐藏侧栏" : "固定侧栏")
-                    .accessibilityLabel(pinned ? "隐藏侧栏" : "固定侧栏")
-                    Spacer(minLength: 0)
-                    HStack(spacing: 2) {
-                        Button {
-                            model.moveHistory(-1)
-                        } label: {
-                            Image(systemName: "arrow.left").frame(width: 26, height: 32)
-                        }
-                        .disabled(!model.canBack).accessibilityLabel("后退")
-                        Button {
-                            model.moveHistory(1)
-                        } label: {
-                            Image(systemName: "arrow.right").frame(width: 26, height: 32)
-                        }
-                        .disabled(!model.canForward).accessibilityLabel("前进")
-                        Button {
-                            model.refresh()
-                        } label: {
-                            Image(systemName: "arrow.clockwise").frame(width: 26, height: 32)
-                        }
-                        .accessibilityLabel("刷新")
-                    }.padding(.horizontal, 3)
-                        .chromeSurface(in: Capsule(), interactive: true)
+            // Arc's header: window buttons, the sidebar toggle right after them, then back,
+            // forward and reload at the trailing edge, all centred on the window buttons.
+            HStack(spacing: 6) {
+                if !fullScreen {
+                    // The row's own spacing completes the gap after the window buttons.
+                    Color.clear.frame(width: WindowButtons.trailingEdge - headerOrigin.x)
                 }
-                .font(.system(size: 15)).buttonStyle(InteractionButtonStyle())
-                .frame(height: 44).padding(.horizontal, 10)
+                headerButton("sidebar.left", size: 17, label: pinned ? "隐藏侧栏" : "固定侧栏") {
+                    revealTask?.cancel()
+                    hideTask?.cancel()
+                    pinned.toggle()
+                    revealed = false
+                    pointerZone = -1
+                }
+                .foregroundStyle(.primary.opacity(0.75))
+                Spacer(minLength: 0)
+                headerButton("arrow.left", label: "后退") { model.moveHistory(-1) }
+                    .disabled(!model.canBack)
+                headerButton("arrow.right", label: "前进") { model.moveHistory(1) }
+                    .disabled(!model.canForward)
+                headerButton("arrow.clockwise", label: "刷新") { model.refresh() }
+                    .foregroundStyle(.primary.opacity(0.75))
             }
+            .foregroundStyle(.primary.opacity(0.6))
+            .frame(height: Self.headerButtonSize)
+            .padding(
+                .top,
+                fullScreen ? 10 : WindowButtons.centerY - headerOrigin.y - Self.headerButtonSize / 2
+            )
+            .padding(.leading, fullScreen ? 10 : 0).padding(.trailing, 7).padding(.bottom, 12)
             ScrollView {
                 VStack(spacing: 2) {
-                    ForEach(menus, id: \.0) { item in
-                        let hasChildren = ["首页", "动态", "收藏"].contains(item.0)
-                        let active = model.menu == item.0 && model.selected == nil
+                    ForEach(BrowseDestination.sidebarItems, id: \.self) { item in
+                        let hasChildren = item.hasSidebarChildren
+                        let active = model.menu == item && model.selected == nil
                         HStack(spacing: 0) {
                             Button {
-                                model.navigate(item.0)
-                                if hasChildren { expandedMenus = [item.0] }
+                                model.navigate(item)
+                                if hasChildren { expandedMenus = [item] }
                             } label: {
                                 HStack(spacing: 8) {
-                                    Image(systemName: item.1).font(.system(size: 17)).frame(
-                                        width: 20
-                                    )
-                                    .foregroundStyle(active ? GlassTheme.accent : .secondary)
-                                    Text(item.0)
+                                    Image(systemName: item.systemImage).font(.system(size: 17))
+                                        .frame(
+                                            width: 20
+                                        )
+                                        .foregroundStyle(active ? GlassTheme.accent : .secondary)
+                                    Text(item.title)
                                     Spacer(minLength: 0)
                                 }.padding(.leading, 10).frame(
                                     height: GlassTheme.navigationRowHeight
@@ -195,39 +237,40 @@ struct ShellView: View {
                             if hasChildren {
                                 Button {
                                     withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) {
-                                        if expandedMenus.contains(item.0) {
-                                            expandedMenus.remove(item.0)
+                                        if expandedMenus.contains(item) {
+                                            expandedMenus.remove(item)
                                         } else {
-                                            expandedMenus.insert(item.0)
+                                            expandedMenus.insert(item)
                                         }
                                     }
                                 } label: {
                                     Image(systemName: "chevron.right")
                                         .font(.system(size: 11, weight: .semibold))
                                         .rotationEffect(
-                                            .degrees(expandedMenus.contains(item.0) ? 90 : 0)
+                                            .degrees(expandedMenus.contains(item) ? 90 : 0)
                                         )
                                         .foregroundStyle(.secondary).frame(
                                             width: 28, height: GlassTheme.navigationRowHeight)
                                 }.buttonStyle(InteractionButtonStyle(kind: .row))
                                     .accessibilityLabel(
-                                        (expandedMenus.contains(item.0) ? "折叠" : "展开") + item.0)
+                                        (expandedMenus.contains(item) ? "折叠" : "展开") + item.title)
                             }
                         }
                         .background {
-                            NavigationSelection(selected: active && !expandedMenus.contains(item.0))
+                            NavigationSelection(
+                                selected: active && !(hasChildren && expandedMenus.contains(item)))
                         }
                         .fontWeight(active ? .semibold : .regular)
-                        if hasChildren && expandedMenus.contains(item.0) {
-                            if let page = model.loadedBrowseInstance(for: item.0) {
-                                SidebarBrowseChildren(page: page, owner: model, destination: item.0)
+                        if hasChildren && expandedMenus.contains(item) {
+                            if let page = model.loadedBrowseInstance(for: item) {
+                                SidebarBrowseChildren(page: page, owner: model, destination: item)
                             } else {
-                                SidebarBrowsePlaceholder(destination: item.0) { title in
-                                    if item.0 == "收藏" {
-                                        model.navigate(item.0)
+                                SidebarBrowsePlaceholder(destination: item) { title in
+                                    if item == .favorites {
+                                        model.navigate(item)
                                     } else {
                                         model.selectBrowseSection(
-                                            destination: item.0, section: title)
+                                            destination: item, section: title)
                                     }
                                 }
                             }
@@ -240,85 +283,7 @@ struct ShellView: View {
             .fixedSize(horizontal: false, vertical: true)
             .onAppear { expandedMenus.insert(model.menu) }
             .onChange(of: model.menu) { _, destination in expandedMenus = [destination] }
-            HStack(spacing: 8) {
-                Rectangle().fill(.primary.opacity(0.10)).frame(height: 1)
-                if hovering && !model.tabs.isEmpty {
-                    Button("clear") { model.clearTabs() }
-                        .buttonStyle(InteractionButtonStyle()).font(GlassTheme.captionFont)
-                        .foregroundStyle(.secondary)
-                        .help(model.selected == nil ? "清空打开的标签，可撤销" : "清空其他标签，保留当前视频，可撤销")
-                }
-            }.frame(height: 24).padding(.horizontal, 14)
-            ScrollView {
-                VStack(spacing: 2) {
-                    ForEach(Array(model.tabs.enumerated()), id: \.element.id) { index, tab in
-                        HStack(spacing: 6) {
-                            AvatarView(url: tab.video.avatar).frame(width: 20, height: 20)
-                            Text(tab.video.title).lineLimit(1).truncationMode(.tail)
-                            Spacer(minLength: 0)
-                            if model.isPlaying(tab.id) {
-                                Button {
-                                    model.togglePlayback()
-                                } label: {
-                                    Image(systemName: "speaker.wave.2.fill").font(.system(size: 12))
-                                        .iconControlFrame(size: 24)
-                                }.buttonStyle(InteractionButtonStyle()).help("暂停")
-                            }
-                            if hoveredTab == tab.id {
-                                Button {
-                                    model.close(tab.id)
-                                } label: {
-                                    Image(systemName: "xmark").font(.system(size: 11))
-                                        .iconControlFrame(size: 24)
-                                }
-                                .buttonStyle(InteractionButtonStyle(destructive: true)).help("关闭标签")
-                                .accessibilityLabel(
-                                    "关闭 \(tab.video.title)")
-                            }
-                        }.font(GlassTheme.labelFont).padding(.horizontal, 10).frame(
-                            height: GlassTheme.tabRowHeight
-                        )
-                        .background {
-                            NavigationSelection(selected: model.selected == tab.id)
-                                .background(
-                                    .primary.opacity(hoveredTab == tab.id ? 0.04 : 0),
-                                    in: RoundedRectangle(cornerRadius: GlassTheme.rowRadius))
-                        }
-                        .animation(
-                            reduceMotion ? nil : .easeOut(duration: 0.16),
-                            value: hoveredTab == tab.id
-                        )
-                        .contentShape(Rectangle()).onTapGesture {
-                            model.activate(tab.id, autoplay: true)
-                        }
-                        .onHover { inside in hoveredTab = inside ? tab.id : nil }
-                        .accessibilityElement(children: .contain)
-                        .accessibilityLabel(tab.video.title)
-                        .accessibilityAddTraits(.isButton)
-                        .accessibilityAction { model.activate(tab.id, autoplay: true) }
-                        .help(tab.video.title)
-                        .contextMenu {
-                            Button("关闭标签") { model.close(tab.id) }
-                            Button("复制链接") {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(
-                                    LiveSession.roomID(tab.id).map {
-                                        "https://live.bilibili.com/\($0)"
-                                    }
-                                        ?? "https://www.bilibili.com/video/\(tab.id)",
-                                    forType: .string
-                                )
-                            }
-                        }
-                    }
-                }.padding(.horizontal, 8)
-            }
-            if !model.closed.isEmpty {
-                Button("撤销关闭") { model.undoClose() }
-                    .buttonStyle(InteractionButtonStyle(kind: .row)).foregroundStyle(.secondary)
-                    .padding(12)
-                    .keyboardShortcut("z", modifiers: .command)
-            }
+            SidebarTabList(model: model, sidebarHovered: hovering, preview: tabPreview)
         }
         .safeAreaInset(edge: .bottom) {
             HStack {
@@ -352,8 +317,26 @@ struct ShellView: View {
         .font(GlassTheme.bodyFont)
     }
 
+    private static let headerButtonSize: CGFloat = 28
+
+    /// Where the sidebar's top-left corner sits in the window: flush when pinned, inset when it
+    /// floats, so the header stays aligned with the window buttons either way.
+    private var headerOrigin: CGPoint { pinned ? .zero : CGPoint(x: 4, y: 4) }
+
+    private func headerButton(
+        _ symbol: String, size: CGFloat = 16, label: String, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: size, weight: .regular))
+                .iconControlFrame(size: Self.headerButtonSize)
+        }
+        .buttonStyle(InteractionButtonStyle())
+        .help(label).accessibilityLabel(label)
+    }
+
     private func updatePointer(_ point: NSPoint?) {
-        let zone = DrawerActivation.zone(x: point?.x, width: drawerWidth, pinned: pinned)
+        let zone = DrawerActivation.zone(
+            x: point?.x, top: point?.y, width: drawerWidth, pinned: pinned)
         hovering = zone == 2 && (pinned || revealed)
         guard pointerZone != zone else { return }
         pointerZone = zone

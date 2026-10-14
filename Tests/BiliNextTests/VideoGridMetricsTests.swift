@@ -16,7 +16,10 @@ import Testing
             size.width * CGFloat(columns) + CGFloat(columns - 1) * 20 > available - CGFloat(columns)
         )
         #expect(columns == 1 || size.width >= 260)
-        #expect(size.height >= size.width * 9 / 16 + 94)
+        // Cover, then title, author row and the card's spacing and bottom padding.
+        let content =
+            10 + VideoGridMetrics.titleHeight + 8 + VideoGridMetrics.authorAvatarSize + 6
+        #expect(size.height >= size.width * 9 / 16 + content)
     }
 }
 

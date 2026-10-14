@@ -30,10 +30,12 @@ struct SeasonBrowser: View {
                 }.frame(width: 160)
             }.controlSize(.large).font(GlassTheme.labelFont).padding(.horizontal, 28)
             if let error {
-                HStack {
-                    Text(error)
-                    Button("重试") { load() }.controlSize(.large).font(GlassTheme.labelFont)
-                }.font(GlassTheme.metadataFont).padding(.horizontal, 28)
+                ErrorBanner(message: error) { load() }.padding(.horizontal, GlassTheme.contentInset)
+            }
+            if seasons.isEmpty && !loading && error == nil {
+                ContentUnavailableView(
+                    "这里暂时没有内容", systemImage: "film.stack",
+                    description: Text("换个分类或排序试试。"))
             }
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 20)], spacing: 24) {
@@ -42,14 +44,14 @@ struct SeasonBrowser: View {
                             selected = season
                         } label: {
                             VStack(alignment: .leading, spacing: 8) {
-                                Color.gray.opacity(0.1).aspectRatio(0.72, contentMode: .fit).overlay
-                                {
-                                    AsyncImage(url: season.cover) {
-                                        $0.resizable().scaledToFill()
-                                    } placeholder: {
-                                        Color.clear
-                                    }
-                                }.clipped().clipShape(RoundedRectangle(cornerRadius: 10))
+                                Color.primary.opacity(0.045).aspectRatio(0.72, contentMode: .fit)
+                                    .overlay {
+                                        ThumbnailView(url: season.cover, pixels: 480) {
+                                            Color.clear
+                                        }
+                                    }.clipped()
+                                    .clipShape(
+                                        RoundedRectangle(cornerRadius: GlassTheme.artworkRadius))
                                 Text(season.title).font(GlassTheme.bodyFont).lineLimit(1)
                                 Text(
                                     [season.update, season.badge].filter { !$0.isEmpty }.joined(
@@ -57,9 +59,9 @@ struct SeasonBrowser: View {
                                 ).font(GlassTheme.metadataFont).foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
-                        }.buttonStyle(.plain)
+                        }.buttonStyle(InteractionButtonStyle(kind: .card))
                     }
-                }.padding(.horizontal, 28)
+                }.padding(.horizontal, GlassTheme.contentInset)
                 if loading {
                     ProgressView().padding()
                 } else if more {
@@ -113,12 +115,7 @@ private struct SeasonDetailView: View {
     @State private var loading = true
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text(season.title).font(.title2.bold())
-                Spacer()
-                Button("完成") { dismiss() }.controlSize(.large).font(GlassTheme.labelFont)
-                    .keyboardShortcut(.cancelAction)
-            }
+            SheetHeader(title: season.title)
             if loading { ProgressView() }
             if let error {
                 Text(error).font(GlassTheme.metadataFont).foregroundStyle(.secondary)

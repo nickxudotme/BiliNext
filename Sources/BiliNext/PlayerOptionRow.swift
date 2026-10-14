@@ -16,11 +16,11 @@ struct PlayerOptionRow: View {
                     .opacity(selected ? 1 : 0)
                     .accessibilityHidden(true)
             }
-            .foregroundStyle(.primary)
+            .foregroundStyle(selected ? GlassTheme.accent : .primary)
+            .fontWeight(selected ? .semibold : .regular)
             .padding(.horizontal, 10)
-            .frame(height: 36)
+            .frame(height: 34)
             .contentShape(Rectangle())
-            .background { NavigationSelection(selected: selected) }
         }
         .buttonStyle(InteractionButtonStyle(kind: .row))
         .accessibilityAddTraits(selected ? [.isSelected] : [])

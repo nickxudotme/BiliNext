@@ -48,7 +48,7 @@ private func persistentPage(_ request: BrowsePageRequest) -> BrowsePageResult {
         videos: [
             Video(
                 bvid:
-                    "\(request.destination)-\(request.homeSection)-\(request.folderID)-\(request.page)",
+                    "\(request.destination.rawValue)-\(request.homeSection)-\(request.folderID)-\(request.page)",
                 title: "\(request.homeSection)第\(request.page)页")
         ], next: request.usesCursor ? "cursor-\(request.page)" : String(request.page + 1))
 }
@@ -60,10 +60,10 @@ private func persistentPage(_ request: BrowsePageRequest) -> BrowsePageResult {
         calls += 1
         return persistentPage(request)
     }
-    #expect(workspace.browsePageID(for: "首页") == "首页:推荐")
-    #expect(workspace.browsePageID(for: "动态") == "动态:视频")
-    #expect(workspace.browsePageID(for: "收藏") == "收藏:0")
-    #expect(workspace.loadedBrowseInstance(for: "首页") == nil)
+    #expect(workspace.browsePageID(for: .home) == "首页:推荐")
+    #expect(workspace.browsePageID(for: .dynamic) == "动态:视频")
+    #expect(workspace.browsePageID(for: .favorites) == "收藏:0")
+    #expect(workspace.loadedBrowseInstance(for: .home) == nil)
     #expect(workspace.browseInstances.isEmpty && calls == 0)
 }
 
@@ -74,16 +74,16 @@ private func persistentPage(_ request: BrowsePageRequest) -> BrowsePageResult {
         requests.append("\(request.homeSection):\(request.page)")
         return persistentPage(request)
     }
-    workspace.selectBrowseSection(destination: "首页", section: "推荐")
-    let recommended = try #require(workspace.loadedBrowseInstance(for: "首页"))
+    workspace.selectBrowseSection(destination: .home, section: "推荐")
+    let recommended = try #require(workspace.loadedBrowseInstance(for: .home))
     await recommended.browseTask?.value
     let originalVideos = recommended.videos.map(\.id)
     let originalOffset = recommended.offset
-    workspace.selectBrowseSection(destination: "首页", section: "热门")
-    let popular = try #require(workspace.loadedBrowseInstance(for: "首页"))
+    workspace.selectBrowseSection(destination: .home, section: "热门")
+    let popular = try #require(workspace.loadedBrowseInstance(for: .home))
     await popular.browseTask?.value
-    workspace.selectBrowseSection(destination: "首页", section: "推荐")
-    #expect(workspace.loadedBrowseInstance(for: "首页") === recommended)
+    workspace.selectBrowseSection(destination: .home, section: "推荐")
+    #expect(workspace.loadedBrowseInstance(for: .home) === recommended)
     #expect(recommended !== popular && workspace.browseInstances.count == 2)
     #expect(recommended.videos.map(\.id) == originalVideos && recommended.page == 3)
     #expect(recommended.offset == originalOffset && recommended.hasMore)
@@ -91,7 +91,7 @@ private func persistentPage(_ request: BrowsePageRequest) -> BrowsePageResult {
     #expect(!recommended.playbackTabActive && !popular.playbackTabActive)
     #expect(requests == ["推荐:1", "推荐:2", "推荐:3", "热门:1", "热门:2", "热门:3"])
     let count = workspace.history.count
-    workspace.selectBrowseSection(destination: "首页", section: "推荐")
+    workspace.selectBrowseSection(destination: .home, section: "推荐")
     #expect(workspace.history.count == count && requests.count == 6)
 }
 
@@ -102,8 +102,8 @@ private func persistentPage(_ request: BrowsePageRequest) -> BrowsePageResult {
         sections.append(request.homeSection)
         return persistentPage(request)
     }
-    workspace.selectBrowseSection(destination: "首页", section: "热门")
-    let page = try #require(workspace.loadedBrowseInstance(for: "首页"))
+    workspace.selectBrowseSection(destination: .home, section: "热门")
+    let page = try #require(workspace.loadedBrowseInstance(for: .home))
     await page.browseTask?.value
     #expect(sections == ["热门", "热门", "热门"])
     #expect(workspace.browseInstances["首页:推荐"] == nil)
@@ -118,14 +118,14 @@ private func persistentPage(_ request: BrowsePageRequest) -> BrowsePageResult {
         return persistentPage(request)
     }
     workspace.profile = UserProfile(id: 8, name: "离线测试")
-    workspace.selectBrowseSection(destination: "动态", section: "视频")
-    let video = try #require(workspace.loadedBrowseInstance(for: "动态"))
+    workspace.selectBrowseSection(destination: .dynamic, section: "视频")
+    let video = try #require(workspace.loadedBrowseInstance(for: .dynamic))
     await video.browseTask?.value
-    workspace.selectBrowseSection(destination: "动态", section: "全部")
-    let all = try #require(workspace.loadedBrowseInstance(for: "动态"))
+    workspace.selectBrowseSection(destination: .dynamic, section: "全部")
+    let all = try #require(workspace.loadedBrowseInstance(for: .dynamic))
     #expect(video !== all && all.dynamicMode == "全部" && all.timelineRefresh == 1)
-    workspace.selectBrowseSection(destination: "动态", section: "视频")
-    workspace.selectBrowseSection(destination: "动态", section: "全部")
+    workspace.selectBrowseSection(destination: .dynamic, section: "视频")
+    workspace.selectBrowseSection(destination: .dynamic, section: "全部")
     #expect(calls == 3 && video.browseRevision == 1 && all.timelineRefresh == 1)
     #expect(workspace.browseInstances.count == 2)
 }
@@ -147,25 +147,25 @@ private func persistentPage(_ request: BrowsePageRequest) -> BrowsePageResult {
             folderID: request.folderID == 0 ? 42 : request.folderID)
     }
     workspace.profile = UserProfile(id: 8, name: "离线测试")
-    workspace.navigate("收藏")
-    let original = try #require(workspace.loadedBrowseInstance(for: "收藏"))
+    workspace.navigate(.favorites)
+    let original = try #require(workspace.loadedBrowseInstance(for: .favorites))
     await original.browseTask?.value
     #expect(original.folderID == 42 && original.page == 3 && requests == [0, 42, 42])
     workspace.selectFavoriteFolder(42)
-    #expect(workspace.loadedBrowseInstance(for: "收藏") === original)
-    #expect(workspace.browsePageID(for: "收藏") == "收藏:0")
+    #expect(workspace.loadedBrowseInstance(for: .favorites) === original)
+    #expect(workspace.browsePageID(for: .favorites) == "收藏:0")
     #expect(workspace.browseInstances.values.filter { $0 === original }.count == 1)
     workspace.selectFavoriteFolder(43)
-    let other = try #require(workspace.loadedBrowseInstance(for: "收藏"))
+    let other = try #require(workspace.loadedBrowseInstance(for: .favorites))
     #expect(other.folders.map(\.id) == [42, 43])  // Sidebar metadata is immediately available.
     await other.browseTask?.value
     workspace.selectFavoriteFolder(42)
-    #expect(workspace.loadedBrowseInstance(for: "收藏") === original && other !== original)
+    #expect(workspace.loadedBrowseInstance(for: .favorites) === original && other !== original)
     #expect(requests == [0, 42, 42, 43, 43, 43] && workspace.browseInstances.count == 2)
     #expect(original.browseRevision == 1 && other.browseRevision == 1)
     workspace.moveHistory(-1)
     workspace.moveHistory(-1)
-    #expect(workspace.folderID == 0 && workspace.loadedBrowseInstance(for: "收藏") === original)
+    #expect(workspace.folderID == 0 && workspace.loadedBrowseInstance(for: .favorites) === original)
     #expect(requests.count == 6)
 }
 
@@ -178,25 +178,25 @@ private func persistentPage(_ request: BrowsePageRequest) -> BrowsePageResult {
         requests += 1
         return persistentPage(request)
     }
-    workspace.selectBrowseSection(destination: "首页", section: "推荐")
-    let recommended = try #require(workspace.loadedBrowseInstance(for: "首页"))
+    workspace.selectBrowseSection(destination: .home, section: "推荐")
+    let recommended = try #require(workspace.loadedBrowseInstance(for: .home))
     await recommended.browseTask?.value
-    workspace.selectBrowseSection(destination: "首页", section: "热门")
-    let popular = try #require(workspace.loadedBrowseInstance(for: "首页"))
+    workspace.selectBrowseSection(destination: .home, section: "热门")
+    let popular = try #require(workspace.loadedBrowseInstance(for: .home))
     await popular.browseTask?.value
-    workspace.selectBrowseSection(destination: "首页", section: "推荐")
+    workspace.selectBrowseSection(destination: .home, section: "推荐")
     workspace.moveHistory(-1)
-    #expect(workspace.homeSection == "热门" && workspace.loadedBrowseInstance(for: "首页") === popular)
+    #expect(workspace.homeSection == "热门" && workspace.loadedBrowseInstance(for: .home) === popular)
     workspace.moveHistory(-1)
     #expect(
-        workspace.homeSection == "推荐" && workspace.loadedBrowseInstance(for: "首页") === recommended)
+        workspace.homeSection == "推荐" && workspace.loadedBrowseInstance(for: .home) === recommended)
     workspace.moveHistory(1)
     let index = workspace.historyIndex
     workspace.selected = "playing-video"
     #expect(workspace.canBack)
     workspace.moveHistory(-1)
     #expect(workspace.selected == nil && workspace.historyIndex == index)
-    #expect(workspace.loadedBrowseInstance(for: "首页") === popular)
+    #expect(workspace.loadedBrowseInstance(for: .home) === popular)
     workspace.moveHistory(-1)
     #expect(workspace.homeSection == "推荐" && workspace.historyIndex == index - 1)
     #expect(requests == 6 && recommended.browseRevision == 1 && popular.browseRevision == 1)
@@ -217,13 +217,13 @@ func persistentBrowseEmptyAndErrorPagesAreNotRetriedOnReturnButExplicitRefreshWo
         }
         return persistentPage(request)
     }
-    workspace.selectBrowseSection(destination: "首页", section: "推荐")
-    let original = try #require(workspace.loadedBrowseInstance(for: "首页"))
+    workspace.selectBrowseSection(destination: .home, section: "推荐")
+    let original = try #require(workspace.loadedBrowseInstance(for: .home))
     await original.browseTask?.value
     let revision = original.browseRevision
-    workspace.selectBrowseSection(destination: "首页", section: "热门")
-    await workspace.loadedBrowseInstance(for: "首页")?.browseTask?.value
-    workspace.selectBrowseSection(destination: "首页", section: "推荐")
+    workspace.selectBrowseSection(destination: .home, section: "热门")
+    await workspace.loadedBrowseInstance(for: .home)?.browseTask?.value
+    workspace.selectBrowseSection(destination: .home, section: "推荐")
     #expect(requests == ["推荐:1", "热门:1", "热门:2", "热门:3"])
     #expect(original.browseRevision == revision && original.browseLoadAttempted)
     #expect((original.browseError != nil) == failure)
@@ -243,13 +243,13 @@ func persistentBrowseEmptyAndErrorPagesAreNotRetriedOnReturnButExplicitRefreshWo
         if request.homeSection == "推荐" && request.page == 1 { await gate.suspend() }
         return persistentPage(request)
     }
-    workspace.selectBrowseSection(destination: "首页", section: "推荐")
-    let original = try #require(workspace.loadedBrowseInstance(for: "首页"))
+    workspace.selectBrowseSection(destination: .home, section: "推荐")
+    let original = try #require(workspace.loadedBrowseInstance(for: .home))
     await gate.waitForEntry()
     let generation = original.browseGeneration
-    workspace.selectBrowseSection(destination: "首页", section: "热门")
-    await workspace.loadedBrowseInstance(for: "首页")?.browseTask?.value
-    workspace.selectBrowseSection(destination: "首页", section: "推荐")
+    workspace.selectBrowseSection(destination: .home, section: "热门")
+    await workspace.loadedBrowseInstance(for: .home)?.browseTask?.value
+    workspace.selectBrowseSection(destination: .home, section: "推荐")
     #expect(original.loading && original.browseGeneration == generation)
     gate.release()
     await original.browseTask?.value
@@ -276,8 +276,8 @@ func persistentBrowseEmptyAndErrorPagesAreNotRetriedOnReturnButExplicitRefreshWo
         })
     let startup = Task { await workspace.start() }
     await gate.waitForEntry()
-    workspace.selectBrowseSection(destination: "首页", section: "推荐")
-    let original = try #require(workspace.loadedBrowseInstance(for: "首页"))
+    workspace.selectBrowseSection(destination: .home, section: "推荐")
+    let original = try #require(workspace.loadedBrowseInstance(for: .home))
     await original.browseTask?.value
     gate.release()
     await startup.value
@@ -302,8 +302,8 @@ func persistentBrowseEmptyAndErrorPagesAreNotRetriedOnReturnButExplicitRefreshWo
         })
     let startup = Task { await workspace.start() }
     await gate.waitForEntry()
-    workspace.selectBrowseSection(destination: "动态", section: "视频")
-    let page = try #require(workspace.loadedBrowseInstance(for: "动态"))
+    workspace.selectBrowseSection(destination: .dynamic, section: "视频")
+    let page = try #require(workspace.loadedBrowseInstance(for: .dynamic))
     #expect(calls == 0 && !page.browseLoadAttempted)
     gate.release()
     await startup.value
@@ -366,8 +366,8 @@ func persistentBrowseEmptyAndErrorPagesAreNotRetriedOnReturnButExplicitRefreshWo
         return BrowsePageResult(
             videos: [Video(bvid: old ? "old" : "new", title: "离线测试")], next: nil)
     }
-    workspace.selectBrowseSection(destination: "首页", section: "推荐")
-    let page = try #require(workspace.loadedBrowseInstance(for: "首页"))
+    workspace.selectBrowseSection(destination: .home, section: "推荐")
+    let page = try #require(workspace.loadedBrowseInstance(for: .home))
     await gate.waitForEntry()
     let old = try #require(page.browseTask)
     page.invalidateBrowseCache()
@@ -390,10 +390,10 @@ func persistentBrowseEmptyAndErrorPagesAreNotRetriedOnReturnButExplicitRefreshWo
         return persistentPage(request)
     }
     workspace.profile = UserProfile(id: 8, name: "离线测试")
-    workspace.navigate("历史")
-    let page = try #require(workspace.loadedBrowseInstance(for: "历史"))
+    workspace.navigate(.history)
+    let page = try #require(workspace.loadedBrowseInstance(for: .history))
     await page.browseTask?.value
-    workspace.navigate("历史")
+    workspace.navigate(.history)
     await page.browseTask?.value
     #expect(calls == 6 && page.browseRevision == 2)
     #expect(workspace.history == ["动态:视频", "历史"])

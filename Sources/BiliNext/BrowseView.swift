@@ -15,137 +15,89 @@ struct AvatarView: View {
 struct BrowseView: View {
     @ObservedObject var model: AppModel
     var isActive = true
-    @FocusState private var searching: Bool
-    private var pageTitle: String {
+    /// Height of the floating toolbar; content starts below it but scrolls beneath it.
+    var topInset: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var emptyState: (title: String, message: String, symbol: String) {
         switch model.menu {
-        case "首页": return model.homeSection == "番剧" ? "番剧影视" : model.homeSection
-        case "动态": return model.dynamicMode == "全部" ? "全部动态" : "视频动态"
-        case "收藏": return model.folders.first(where: { $0.id == model.folderID })?.title ?? "收藏"
-        default: return model.menu
+        case .search where model.query.isEmpty:
+            ("找一部想看的视频", "支持关键词、BV 号和视频链接。", "magnifyingglass")
+        case .search: ("没有找到相关视频", "换个关键词，或者换一种排序试试。", "magnifyingglass")
+        case .favorites: ("这个收藏夹还是空的", "在播放页点「收藏」，视频就会出现在这里。", "star")
+        case .history: ("还没有观看记录", "看过的视频会出现在这里，点击即可从上次进度继续。", "clock.arrow.circlepath")
+        case .watchLater: ("稍后再看是空的", "悬停视频卡片，点右上角的时钟就能加入。", "clock")
+        case .dynamic: ("关注的 UP 主暂时没有新视频", "可以稍后刷新再看看。", "rectangle.stack")
+        case .home: ("暂时没有视频", "可以稍后刷新再看看。", "play.rectangle")
         }
     }
+
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 20) {
-                Text(pageTitle).font(.system(size: 26, weight: .bold)).lineLimit(1)
-                Spacer()
-                if model.loading { ProgressView().controlSize(.small) }
-            }.padding(.horizontal, GlassTheme.contentInset).padding(.top, 28).padding(.bottom, 20)
-                .background(GlassTheme.canvas)
-                .overlay(alignment: .bottom) {
-                    Divider().opacity(0.35).padding(.horizontal, GlassTheme.contentInset)
-                }
-            if model.menu == "搜索" {
-                HStack {
-                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("搜索视频，或粘贴 BV 号 / 视频链接", text: $model.query)
-                        .textFieldStyle(.plain).focused($searching).onSubmit { model.refresh() }
-                    Picker("排序", selection: $model.searchOrder) {
-                        Text("综合").tag("totalrank")
-                        Text("最多播放").tag("click")
-                        Text("最新发布").tag("pubdate")
-                        Text("最多收藏").tag("stow")
-                    }.frame(width: 130).onChange(of: model.searchOrder) { _, _ in model.refresh() }
-                    Button("搜索") { model.refresh() }.buttonStyle(.glass)
-                }.font(GlassTheme.bodyFont).controlSize(.large)
-                    .frame(minHeight: GlassTheme.controlHeight).padding(12).chromeSurface(
-                        in: RoundedRectangle(cornerRadius: GlassTheme.panelRadius)
-                    )
-                    .padding(.horizontal, GlassTheme.contentInset).padding(.bottom, 20)
-            }
-            if model.menu == "动态", model.profile != nil {
-                FollowedLiveView(lives: model.followedLives, model: model)
-            }
-            if ["收藏", "历史"].contains(model.menu) {
-                HStack {
-                    TextField(model.menu == "收藏" ? "搜索当前收藏夹" : "搜索观看历史", text: $model.libraryQuery)
-                        .textFieldStyle(.roundedBorder).onSubmit { model.refresh() }
-                    if model.menu == "收藏" {
-                        Picker("排序", selection: $model.favoriteOrder) {
-                            Text("最近收藏").tag("mtime")
-                            Text("最近投稿").tag("pubtime")
-                            Text("最多播放").tag("view")
-                        }.frame(width: 150).onChange(of: model.favoriteOrder) { _, _ in
-                            model.refresh()
-                        }
-                    }
-                    Button("搜索") { model.refresh() }
-                    if !model.libraryQuery.isEmpty {
-                        Button("清除") {
-                            model.libraryQuery = ""
-                            model.refresh()
-                        }
-                    }
-                }.font(GlassTheme.bodyFont).controlSize(.large)
-                    .padding(.horizontal, GlassTheme.contentInset).padding(.bottom, 16)
-            }
-            if model.menu == "历史" {
-                Text("来自 B 站的观看历史 · 点击从上次进度继续").font(GlassTheme.metadataFont).foregroundStyle(
-                    .secondary
-                ).frame(
-                    maxWidth: .infinity, alignment: .leading
-                ).padding(.horizontal, GlassTheme.contentInset).padding(.bottom, 12)
-            }
-            if model.menu == "稍后再看", let removed = model.removedLater {
-                HStack {
-                    Text("已移除「\(removed.title)」").lineLimit(1)
-                    Spacer()
-                    Button("撤销") { model.changeWatchLater(removed) }.disabled(
-                        model.libraryBusy.contains(removed.id))
-                }
-                .font(GlassTheme.bodyFont).controlSize(.large).padding(
-                    .horizontal, GlassTheme.contentInset
-                ).padding(.bottom, 12)
-            }
-            if let error = model.browseError {
-                HStack {
-                    Image(systemName: "exclamationmark.triangle")
-                    Text(error)
-                    Spacer()
-                    Button("重试") { model.retryBrowse() }
-                }
-                .font(GlassTheme.bodyFont).controlSize(.large).padding().background(
-                    .orange.opacity(0.08)
-                ).padding(.horizontal, GlassTheme.contentInset)
-            }
-            if model.menu == "首页" && model.homeSection == "番剧" {
-                SeasonBrowser(model: model)
-            } else if ["动态", "收藏", "历史", "稍后再看"].contains(model.menu) && model.profile == nil {
+            if model.menu == .home && model.homeSection == "番剧" {
+                SeasonBrowser(model: model).padding(.top, topInset)
+            } else if model.menu.requiresLogin && model.profile == nil {
                 ContentUnavailableView {
                     Label(
-                        model.menu == "动态" ? "关注的更新，都在这里" : "登录后查看" + model.menu,
+                        model.menu == .dynamic ? "关注的更新，都在这里" : "登录后查看" + model.menu.title,
                         systemImage: "rectangle.stack")
                 } description: {
                     Text("扫码登录，读取你在 B 站的内容。")
                 } actions: {
                     Button("扫码登录") { model.loginPresented = true }.buttonStyle(.glassProminent)
                 }
+                .padding(.top, topInset)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            } else if model.menu == "动态" && model.dynamicMode == "全部" {
-                ActivityView(model: model)
+            } else if model.menu == .dynamic && model.dynamicMode == "全部" {
+                ActivityView(model: model, topInset: topInset)
+            } else if model.videos.isEmpty && model.loading && model.browseError == nil {
+                SkeletonVideoGrid(history: model.menu == .history)
+                    .padding(.top, topInset + 12)
+                    .transition(.opacity)
             } else if model.videos.isEmpty && !model.loading && model.browseError == nil {
                 ContentUnavailableView {
-                    Label(
-                        model.menu == "搜索" && model.query.isEmpty ? "找一部想看的视频" : "暂时没有视频",
-                        systemImage: "play.rectangle")
+                    Label(emptyState.title, systemImage: emptyState.symbol)
                 } description: {
-                    Text(
-                        model.hasMore
-                            ? "这一批暂时没有视频，可以继续加载。"
-                            : model.menu == "搜索" ? "支持关键词、BV 号和视频链接。" : "可以稍后刷新再看看。")
+                    Text(model.hasMore ? "这一批暂时没有视频，可以继续加载。" : emptyState.message)
                 } actions: {
                     if model.hasMore {
                         Button("继续加载视频") { model.refresh(more: true) }.buttonStyle(.glass)
                     }
                 }
+                .padding(.top, topInset)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                NativeVideoGrid(model: model, isActive: isActive)
+                NativeVideoGrid(model: model, isActive: isActive, topInset: topInset)
                     .id(model.menu)
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .onChange(of: isActive) { _, active in
-                if !active { searching = false }
+            .animation(Motion.standard(reduceMotion), value: model.videos.isEmpty)
+            // Notices float as glass just below the toolbar or above the bottom edge.
+            .overlay(alignment: .top) {
+                if let error = model.browseError {
+                    ErrorBanner(message: error) { model.retryBrowse() }
+                        .frame(maxWidth: 560)
+                        .floatingGlass(in: RoundedRectangle(cornerRadius: GlassTheme.panelRadius))
+                        .padding(.top, topInset + 4).padding(.horizontal, GlassTheme.contentInset)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
-            .onChange(of: model.menu) { _, menu in if menu == "搜索" { searching = true } }
+            .overlay(alignment: .bottom) {
+                if model.menu == .watchLater, let removed = model.removedLater {
+                    HStack(spacing: 12) {
+                        Text("已移除「\(removed.title)」").lineLimit(1).frame(maxWidth: 320)
+                        Button("撤销") { model.changeWatchLater(removed) }
+                            .buttonStyle(.glass)
+                            .disabled(model.libraryBusy.contains(removed.id))
+                    }
+                    .font(GlassTheme.labelFont)
+                    .padding(.leading, 18).padding(.trailing, 8).padding(.vertical, 6)
+                    .floatingGlass(in: Capsule())
+                    .padding(.bottom, 24)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(Motion.standard(reduceMotion), value: model.browseError)
+            .animation(Motion.standard(reduceMotion), value: model.removedLater?.id)
     }
 }

@@ -5,7 +5,7 @@ import SwiftUI
 import WebKit
 
 struct BrowsePageRequest: Sendable {
-    let destination: String
+    let destination: BrowseDestination
     let homeSection: String
     let keyword: String
     let libraryKeyword: String
@@ -18,20 +18,20 @@ struct BrowsePageRequest: Sendable {
     var reloadFolders: Bool
 
     var usesCursor: Bool {
-        destination == "动态" || (destination == "历史" && libraryKeyword.isEmpty)
+        destination == .dynamic || (destination == .history && libraryKeyword.isEmpty)
     }
 
     var usesFeedContinuation: Bool {
-        ["动态", "收藏", "历史", "稍后再看"].contains(destination)
+        [.dynamic, .favorites, .history, .watchLater].contains(destination)
     }
 
     var cacheKey: String {
         switch destination {
-        case "收藏": "收藏:\(folderID):\(libraryKeyword):\(favoriteOrder)"
-        case "搜索": "搜索:\(keyword):\(searchOrder)"
-        case "首页": "首页:\(homeSection)"
-        case "历史": "历史:\(libraryKeyword)"
-        default: destination
+        case .favorites: "收藏:\(folderID):\(libraryKeyword):\(favoriteOrder)"
+        case .search: "搜索:\(keyword):\(searchOrder)"
+        case .home: "首页:\(homeSection)"
+        case .history: "历史:\(libraryKeyword)"
+        case .dynamic, .watchLater: destination.rawValue
         }
     }
 }
@@ -48,13 +48,14 @@ extension AppModel {
 
     var canBack: Bool { selected != nil || historyIndex > 0 }
     var canForward: Bool { historyIndex < history.count - 1 }
-    func navigate(_ destination: String) {
+    func navigate(_ destination: BrowseDestination) {
         if let tabOwner {
             tabOwner.navigate(destination)
             return
         }
         hoverPreview.stop()
         suspendPlaybackTabs()
+        if miniPlayer { toggleMiniPlayer() }
         selected = nil
         menu = destination
         libraryQuery = ""
@@ -64,7 +65,7 @@ extension AppModel {
             history.append(route)
             historyIndex = history.count - 1
         }
-        if destination == "历史" { refresh() } else { loadBrowseIfNeeded() }
+        if destination == .history { refresh() } else { loadBrowseIfNeeded() }
     }
     func moveHistory(_ delta: Int) {
         if let tabOwner {
@@ -74,7 +75,7 @@ extension AppModel {
         suspendPlaybackTabs()
         if selected != nil && delta < 0 {
             selected = nil
-            if menu == "历史" { refresh() } else { loadBrowseIfNeeded() }
+            if menu == .history { refresh() } else { loadBrowseIfNeeded() }
             return
         }
         let next = historyIndex + delta
@@ -82,33 +83,46 @@ extension AppModel {
         historyIndex = next
         restoreBrowseRoute(history[next])
         selected = nil
-        if menu == "历史" { refresh() } else { loadBrowseIfNeeded() }
+        if menu == .history { refresh() } else { loadBrowseIfNeeded() }
     }
 
     private func restoreBrowseRoute(_ route: String) {
         let parts = route.split(separator: ":", maxSplits: 1).map(String.init)
-        guard let destination = parts.first else { return }
+        guard let destination = parts.first.flatMap(BrowseDestination.init(rawValue:)) else {
+            return
+        }
         menu = destination
         guard parts.count == 2 else { return }
         switch menu {
-        case "首页": homeSection = parts[1]
-        case "动态": dynamicMode = parts[1]
-        case "收藏": folderID = Int64(parts[1]) ?? 0
-        default: break
+        case .home: homeSection = parts[1]
+        case .dynamic: dynamicMode = parts[1]
+        case .favorites: folderID = Int64(parts[1]) ?? 0
+        case .search, .history, .watchLater: break
         }
     }
 
-    func selectBrowseSection(destination: String, section: String) {
+    func selectBrowseSection(destination: BrowseDestination, section: String) {
         if let tabOwner {
             tabOwner.selectBrowseSection(destination: destination, section: section)
             return
         }
         switch destination {
-        case "首页": homeSection = section
-        case "动态": dynamicMode = section
-        default: return
+        case .home: homeSection = section
+        case .dynamic: dynamicMode = section
+        case .search, .favorites, .history, .watchLater: return
         }
         navigate(destination)
+    }
+
+    /// Opens the search page with a keyword typed elsewhere, such as the browse toolbar.
+    func search(_ keyword: String) {
+        if let tabOwner {
+            tabOwner.search(keyword)
+            return
+        }
+        browseInstance(for: .search).query = keyword
+        navigate(.search)
+        browseInstance(for: .search).refresh()
     }
 
     func selectFavoriteFolder(_ id: Int64) {
@@ -117,7 +131,7 @@ extension AppModel {
             return
         }
         folderID = id
-        navigate("收藏")
+        navigate(.favorites)
     }
 
     func loadBrowseIfNeeded() {
@@ -130,7 +144,7 @@ extension AppModel {
             browseError == nil
         else { return }
         // An anonymous page is still unattempted: startup/login may make it available later.
-        guard !["动态", "收藏", "历史", "稍后再看"].contains(menu) || profile != nil else { return }
+        guard !menu.requiresLogin || profile != nil else { return }
         refresh()
     }
 
@@ -181,7 +195,7 @@ extension AppModel {
             request.offset = offset
         }
         if !more {
-            if menu == "动态", profile != nil { followedLives.refresh() }
+            if menu == .dynamic, profile != nil { followedLives.refresh() }
             page = 0
             offset = nil
             browseRequestedOffsets = []
@@ -191,33 +205,33 @@ extension AppModel {
         }
         browseError = nil
         browseRetryMore = more
-        if ["动态", "收藏", "历史", "稍后再看"].contains(request.destination) && profile == nil {
+        if request.destination.requiresLogin && profile == nil {
             videos = []
             browseLoadAttempted = false
             loading = false
             hasMore = false
             return
         }
-        if request.destination == "动态" && dynamicMode == "全部" {
+        if request.destination == .dynamic && dynamicMode == "全部" {
             browseLoadAttempted = true
             loading = false
             timelineRefresh += 1
             return
         }
-        if request.destination == "首页" && request.homeSection == "番剧" {
+        if request.destination == .home && request.homeSection == "番剧" {
             browseLoadAttempted = true
             loading = false
             catalogRefresh += 1
             return
         }
-        if request.destination == "搜索" && request.keyword.isEmpty {
+        if request.destination == .search && request.keyword.isEmpty {
             browseLoadAttempted = true
             videos = []
             loading = false
             hasMore = false
             return
         }
-        if request.destination == "搜索", let bvid = Video.extractBVID(request.keyword) {
+        if request.destination == .search, let bvid = Video.extractBVID(request.keyword) {
             browseLoadAttempted = true
             loading = false
             open(Video(bvid: bvid, title: bvid))
@@ -286,10 +300,10 @@ extension AppModel {
         -> BrowsePageResult
     {
         switch request.destination {
-        case "动态":
+        case .dynamic:
             let feed = try await api.feed(offset: request.offset)
             return BrowsePageResult(videos: feed.videos, next: feed.next)
-        case "收藏":
+        case .favorites:
             guard let mid = request.memberID else { throw APIError(code: -101, message: "请先登录") }
             let available = request.reloadFolders ? try await api.favoriteFolders(mid: mid) : nil
             try Task.checkCancellation()
@@ -309,21 +323,21 @@ extension AppModel {
                 order: request.favoriteOrder)
             return BrowsePageResult(
                 videos: feed.videos, next: feed.next, folders: available, folderID: actualFolder)
-        case "稍后再看":
+        case .watchLater:
             let feed = try await api.watchLater(page: request.page)
             return BrowsePageResult(videos: feed.videos, next: feed.next)
-        case "历史":
+        case .history:
             let feed =
                 try await request.libraryKeyword.isEmpty
                 ? api.watchHistory(cursor: request.offset)
                 : api.searchHistory(keyword: request.libraryKeyword, page: request.page)
             return BrowsePageResult(videos: feed.videos, next: feed.next)
-        case "搜索":
+        case .search:
             let videos = try await api.search(
                 request.keyword, page: request.page, order: request.searchOrder)
             return BrowsePageResult(
                 videos: videos, next: videos.isEmpty ? nil : String(request.page + 1))
-        default:
+        case .home:
             if request.homeSection == "排行榜" {
                 return BrowsePageResult(videos: try await api.ranking(), next: nil)
             }
@@ -371,8 +385,8 @@ extension AppModel {
                     if removedLater?.id == video.id { removedLater = nil }
                     toast = "已加入稍后再看"
                 }
-                cachedLists.removeValue(forKey: "稍后再看")
-                if menu == "稍后再看" && selected == nil { refresh() }
+                cachedLists.removeValue(forKey: BrowseDestination.watchLater.rawValue)
+                if menu == .watchLater && selected == nil { refresh() }
             } catch { toast = error.localizedDescription }
         }
     }

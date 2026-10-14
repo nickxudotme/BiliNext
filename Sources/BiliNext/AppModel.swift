@@ -32,9 +32,9 @@ final class AppModel: ObservableObject {
             },
             onSuccess: { [weak self] in
                 guard let self else { return }
-                for history in self.browseInstances.values where history.menu == "历史" {
+                for history in self.browseInstances.values where history.menu == .history {
                     history.cachedLists = [:]
-                    if self.selected == nil && self.menu == "历史" { history.refresh() }
+                    if self.selected == nil && self.menu == .history { history.refresh() }
                 }
             }, onError: { error in NSLog("Watch history outbox: %@", error.localizedDescription) })
         ownedHistoryOutbox = outbox
@@ -72,10 +72,18 @@ final class AppModel: ObservableObject {
     @Published var buffering = false
     @Published var playbackRate = 1.0
     @Published var theater = false
-    @Published var menu = "动态"
+    @Published var menu = BrowseDestination.dynamic
     @Published var tabs: [SessionTab] = []
     @Published var selected: String?
     @Published var closed: [SessionTab] = []
+    /// Tabs opened in the background and not yet visited, marked in the sidebar.
+    @Published var unseenTabs = Set<String>()
+    @Published var sidebarPinned = true
+    /// Window floats above other apps (置顶).
+    @Published var windowPinned = false
+    /// Window shrinks to a floating corner player (小窗) showing only the current video.
+    @Published var miniPlayer = false
+    var stateBeforeMiniPlayer: (sidebarPinned: Bool, windowPinned: Bool)?
     @Published var profile: UserProfile?
     var accountGeneration = UUID()
     @Published var query = ""
@@ -124,10 +132,21 @@ final class AppModel: ObservableObject {
     @Published var qualityID = 64
     var playbackCodec = ""
     @Published var qualities: [PlaybackQuality] = []
+    @Published var highEnergy: HighEnergyCurve?
+    @Published var relation = VideoRelation()
+    var relationLoaded = false
+    /// Which video `relation` describes, and the newest read or write that may set it.
+    var relationVideo: String?
+    var relationGeneration = UUID()
+    var relationReading = false
+    @Published var interactionBusy = false
+    @Published var coinDialogPresented = false
+    @Published var favoritePresented = false
+    /// Bumped after 一键三连 succeeds so the three action icons bounce together.
+    @Published var tripleCount = 0
     var qualityTask: Task<Void, Never>?
     var qualitySwitchState: (position: Double, resume: Bool)?
     var playbackIntent = false
-    var failedCodecItem: ObjectIdentifier?
     var browseTask: Task<Void, Never>?
     let browsePageLoader: (BrowsePageRequest) async throws -> BrowsePageResult
     let profileLoader: () async throws -> UserProfile
@@ -139,10 +158,6 @@ final class AppModel: ObservableObject {
     var subtitleTask: Task<Void, Never>?
     var mediaID: String?
     var observer: Any?
-    var mediaLoader: MediaResourceLoader?
-    var dashLoader: DASHResourceLoader?
-    var statusObserver: NSKeyValueObservation?
-    var durationObserver: NSKeyValueObservation?
     private var started = false
     var page = 1
     var offset: String?
@@ -243,6 +258,16 @@ final class AppModel: ObservableObject {
             instance.profile = profile
         }
         guard selected == nil else { return }
+        #if DEBUG
+            // Visual checks of the playback page without clicking: opens the first restored
+            // tab paused, which is not a viewing event and reports no watch history.
+            if ProcessInfo.processInfo.environment["BILINEXT_DEBUG_OPEN_FIRST_TAB"] == "1",
+                let first = tabs.first
+            {
+                activate(first.id)
+                return
+            }
+        #endif
         loadBrowseIfNeeded()
     }
 }

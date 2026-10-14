@@ -5,8 +5,8 @@ import SwiftUI
 enum VideoGridMetrics {
     static let minimumCardWidth: CGFloat = 260
     static let columnSpacing: CGFloat = 20
-    static let titleHeight: CGFloat = 48
-    static let authorAvatarSize: CGFloat = 22
+    static let titleHeight: CGFloat = 46
+    static let authorAvatarSize: CGFloat = 20
     static let historyMetadataHeight: CGFloat = 36
 
     static func itemSize(viewportWidth: CGFloat, history: Bool) -> NSSize {
@@ -25,6 +25,8 @@ enum VideoGridMetrics {
 struct NativeVideoGrid: NSViewRepresentable {
     @ObservedObject var model: AppModel
     let isActive: Bool
+    /// The floating toolbar's height: rows start below it and scroll underneath.
+    var topInset: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeCoordinator() -> Coordinator { Coordinator(model: model, active: isActive) }
@@ -32,6 +34,9 @@ struct NativeVideoGrid: NSViewRepresentable {
     func makeNSView(context: Context) -> VideoGridScrollView {
         let scroll = VideoGridScrollView()
         scroll.drawsBackground = false
+        scroll.automaticallyAdjustsContentInsets = false
+        scroll.contentInsets = NSEdgeInsets(top: topInset, left: 0, bottom: 0, right: 0)
+        scroll.scrollerInsets = NSEdgeInsets(top: topInset, left: 0, bottom: 0, right: 0)
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.verticalScrollElasticity = .allowed
@@ -142,7 +147,9 @@ struct NativeVideoGrid: NSViewRepresentable {
                         at: Set((old.count..<videos.count).map { IndexPath(item: $0, section: 0) }))
                 } else {
                     collection.reloadData()
-                    scroll?.contentView.scroll(to: .zero)
+                    if let scroll {
+                        scroll.contentView.scroll(to: NSPoint(x: 0, y: -scroll.contentInsets.top))
+                    }
                 }
             }
             if activityChanged {
@@ -449,6 +456,8 @@ final class VideoGridScrollView: NSScrollView {
     private var refreshing = false
     private let refreshIndicator = VideoGridRefreshIndicator()
     var isPullingToRefresh: Bool { pullRefresh.tracking || refreshing }
+    /// Scrolled to the first row, counting the floating toolbar's inset.
+    private var atTop: Bool { contentView.bounds.minY <= 1 - contentInsets.top }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -460,7 +469,8 @@ final class VideoGridScrollView: NSScrollView {
     override func layout() {
         super.layout()
         refreshIndicator.frame = NSRect(
-            x: bounds.midX - 70, y: isFlipped ? 12 : bounds.height - 44,
+            x: bounds.midX - 70,
+            y: isFlipped ? contentInsets.top + 12 : bounds.height - 44 - contentInsets.top,
             width: 140, height: 32)
     }
 
@@ -478,7 +488,7 @@ final class VideoGridScrollView: NSScrollView {
 
     func validatePullPosition() {
         guard pullRefresh.tracking else { return }
-        if contentView.bounds.minY > 1 || canRefresh?() != true {
+        if !atTop || canRefresh?() != true {
             pullRefresh.cancel()
         }
         updateRefreshIndicator()
@@ -494,7 +504,7 @@ final class VideoGridScrollView: NSScrollView {
         let preciseGesture = event.hasPreciseScrollingDeltas && event.momentumPhase.isEmpty
         if preciseGesture, event.phase.contains(.began) {
             pullRefresh.begin(
-                atTop: contentView.bounds.minY <= 1,
+                atTop: atTop,
                 available: canRefresh?() == true)
         }
         super.scrollWheel(with: event)
@@ -509,7 +519,7 @@ final class VideoGridScrollView: NSScrollView {
         } else if event.phase.contains(.began) || event.phase.contains(.changed) {
             // Track the user's pull directly; AppKit owns the rubber-band presentation.
             pullRefresh.drag(
-                by: event.scrollingDeltaY, atTop: contentView.bounds.minY <= 1,
+                by: event.scrollingDeltaY, atTop: atTop,
                 available: canRefresh?() == true)
         }
         updateRefreshIndicator()

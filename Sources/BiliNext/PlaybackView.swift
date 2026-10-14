@@ -6,15 +6,25 @@ import SwiftUI
 private enum PlaybackPanel: String, CaseIterable, Identifiable {
     case info = "简介"
     case comments = "评论"
-    case related = "推荐"
     case transcript = "字幕"
     case danmaku = "弹幕"
     var id: String { rawValue }
+
+    /// Debug builds can open another panel first for screenshots, e.g. BILINEXT_DEBUG_PANEL=评论.
+    static var initial: PlaybackPanel {
+        #if DEBUG
+            if let name = ProcessInfo.processInfo.environment["BILINEXT_DEBUG_PANEL"],
+                let panel = PlaybackPanel(rawValue: name)
+            {
+                return panel
+            }
+        #endif
+        return .info
+    }
     var symbol: String {
         switch self {
         case .info: "info.circle"
         case .comments: "bubble.left.and.bubble.right"
-        case .related: "play.rectangle.on.rectangle"
         case .transcript: "captions.bubble"
         case .danmaku: "text.bubble"
         }
@@ -24,17 +34,22 @@ private enum PlaybackPanel: String, CaseIterable, Identifiable {
 struct PlaybackView: View {
     @ObservedObject var model: AppModel
     var navigationOverlayVisible = false
+    var miniPlayer = false
+    var windowPinned = false
     var isActive = true
-    @State private var panel = PlaybackPanel.info
+    @State private var panel = PlaybackPanel.initial
     @State private var playerWidth: CGFloat = 0
     @State private var pointer: NSPoint?
     @State private var hoveringVideo = false
     @State private var hoveringDetails = false
     @State private var idle = false
     @State private var idleTask: Task<Void, Never>?
+    @AppStorage("playback.panelWidth") private var panelWidth = 372.0
+    @State private var dragStartWidth: Double?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HSplitView {
+        HStack(spacing: 0) {
             player
                 .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
                 .onGeometryChange(for: CGFloat.self) {
@@ -49,44 +64,33 @@ struct PlaybackView: View {
                         updateCursor()
                     } label: {
                         Image(systemName: model.theater ? "chevron.left" : "chevron.right")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(GlassTheme.iconFont.weight(.semibold))
                             .foregroundStyle(.white)
-                            .frame(width: 32, height: 64)
-                            .background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+                            .frame(width: 30, height: 60)
+                            .chromeSurface(in: Capsule())
                     }
                     .buttonStyle(InteractionButtonStyle())
                     .help(model.theater ? "展开视频详情" : "收起视频详情")
                     .accessibilityLabel(model.theater ? "展开视频详情" : "收起视频详情")
                     .padding(.trailing, 6)
-                    .opacity(hoveringDetails || (hoveringVideo && !idle) ? 1 : 0)
-                    .allowsHitTesting(hoveringDetails || (hoveringVideo && !idle))
-                    .accessibilityHidden(!(hoveringDetails || (hoveringVideo && !idle)))
+                    .opacity(detailsToggleVisible ? 1 : 0)
+                    .allowsHitTesting(detailsToggleVisible)
+                    .accessibilityHidden(!detailsToggleVisible)
                 }
-            if !model.theater {
-                VStack(spacing: 0) {
-                    GlassEffectContainer(spacing: 6) {
-                        HStack(spacing: 8) {
-                            PlaybackPanelSwitcher(selection: $panel)
-                            playbackOptions
-                        }
-                    }.padding(.horizontal, 12).padding(.vertical, 8)
-                    Divider().opacity(0.5)
-                    Group {
-                        switch panel {
-                        case .info: VideoInformationView(model: model)
-                        case .comments:
-                            VideoCommunityView(model: model, section: "评论").id(model.selected)
-                        case .related:
-                            VideoCommunityView(model: model, section: "相关推荐").id(model.selected)
-                        case .transcript: TranscriptView(model: model)
-                        case .danmaku: DanmakuListView(model: model)
-                        }
-                    }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                }.frame(minWidth: 310, idealWidth: 360, maxWidth: 420, maxHeight: .infinity)
-                    .background { DetailSurface() }
-                    .ignoresSafeArea(.container, edges: .top)
+            if !model.theater && !miniPlayer {
+                detailsPanel
+                    .frame(width: panelWidth)
+                    .frame(maxHeight: .infinity)
+                    .floatingGlassPanel()
+                    .overlay(alignment: .leading) { resizeHandle }
+                    .padding(8)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
+        // The playback page is a dark screening room lit by the video's own cover.
+        .background { PlaybackAmbience(cover: model.detail?.video.cover ?? currentCover) }
+        .environment(\.colorScheme, .dark)
+        .animation(Motion.emphasized(reduceMotion), value: model.theater)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DrawerPointerTracker(externalWidth: 0, onPosition: trackPointer))
         .onChange(of: isActive) { _, active in
@@ -110,6 +114,65 @@ struct PlaybackView: View {
             idleTask?.cancel()
             NSCursor.setHiddenUntilMouseMoves(false)
         }
+        // Coin and favorite live here so shortcuts work in theater mode too.
+        .confirmationDialog("向这部视频投币", isPresented: $model.coinDialogPresented) {
+            Button("投 1 枚硬币") { model.coin(1) }
+            if model.relation.coins == 0 { Button("投 2 枚硬币") { model.coin(2) } }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("B 站硬币投出后无法撤回，实际可投数量由视频规则决定。")
+        }
+        .sheet(
+            isPresented: $model.favoritePresented,
+            onDismiss: { if let id = model.detail?.video.bvid { model.loadRelation(for: id) } },
+            content: {
+                if let aid = model.detail?.video.aid { FavoritePickerView(model: model, aid: aid) }
+            })
+    }
+
+    private var currentCover: URL? {
+        model.tabs.first(where: { $0.id == model.selected })?.video.cover
+    }
+
+    private var detailsPanel: some View {
+        VStack(spacing: 0) {
+            GlassEffectContainer(spacing: 6) {
+                HStack(spacing: 8) {
+                    PlaybackPanelSwitcher(selection: $panel)
+                    playbackOptions
+                }
+            }.padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 4)
+            Group {
+                switch panel {
+                case .info: VideoIntroPanel(model: model)
+                case .comments: CommentsPanel(model: model).id(model.selected)
+                case .transcript: TranscriptView(model: model)
+                case .danmaku: DanmakuListView(model: model)
+                }
+            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+    }
+
+    /// Dragging the panel's leading edge resizes it, as the split view did.
+    private var resizeHandle: some View {
+        Color.clear.frame(width: 8).contentShape(Rectangle())
+            .onHover { inside in
+                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+            }
+            .gesture(
+                DragGesture(coordinateSpace: .global)
+                    .onChanged { value in
+                        if dragStartWidth == nil { dragStartWidth = panelWidth }
+                        panelWidth = min(
+                            460, max(320, (dragStartWidth ?? panelWidth) - value.translation.width))
+                    }
+                    .onEnded { _ in dragStartWidth = nil }
+            )
+            .offset(x: -4)
+    }
+
+    private var detailsToggleVisible: Bool {
+        !miniPlayer && (hoveringDetails || (hoveringVideo && !idle))
     }
 
     private var playbackOptions: some View {
@@ -180,7 +243,11 @@ struct PlaybackView: View {
                         ).allowsHitTesting(false)
                 }
             } else {
-                CustomPlayerView(model: model, danmaku: model.danmaku, isActive: isActive) {
+                CustomPlayerView(
+                    model: model, danmaku: model.danmaku, isActive: isActive,
+                    miniPlayer: miniPlayer,
+                    windowPinned: windowPinned
+                ) {
                     visible in
                     idle = !visible && hoveringVideo && model.playing
                     updateCursor()
@@ -199,19 +266,20 @@ private struct PlaybackPanelSwitcher: View {
         HStack(spacing: 0) {
             ForEach(PlaybackPanel.allCases) { tab in
                 Button {
-                    withAnimation(reduceMotion ? nil : .smooth(duration: 0.22)) {
+                    withAnimation(Motion.emphasized(reduceMotion)) {
                         selection = tab
                     }
                 } label: {
                     Text(tab.rawValue)
                         .font(GlassTheme.labelFont.weight(selection == tab ? .semibold : .medium))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(selection == tab ? .primary : .secondary)
                         .frame(maxWidth: .infinity)
                         .frame(height: GlassTheme.controlHeight)
                         .contentShape(Capsule())
                         .background {
                             if selection == tab {
-                                Capsule().fill(.primary.opacity(0.12))
+                                Capsule().fill(GlassTheme.raisedFill)
+                                    .shadow(color: .black.opacity(0.12), radius: 1.5, y: 0.5)
                                     .matchedGeometryEffect(id: "selection", in: highlight)
                             }
                         }
@@ -220,131 +288,10 @@ private struct PlaybackPanelSwitcher: View {
                 .accessibilityAddTraits(selection == tab ? [.isSelected] : [])
             }
         }
-        .padding(4)
-        .chromeSurface(in: Capsule())
+        .padding(3)
+        .background(.primary.opacity(0.06), in: Capsule())
         .accessibilityElement(children: .contain)
         .accessibilityLabel("视频详情栏目")
-    }
-}
-
-private struct VideoInformationView: View {
-    @ObservedObject var model: AppModel
-    @State private var memberPresented = false
-    @State private var favoritePresented = false
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                if let detail = model.detail {
-                    let video = detail.video
-                    Button {
-                        memberPresented = true
-                    } label: {
-                        HStack(spacing: 10) {
-                            AvatarView(url: video.avatar).frame(width: 40, height: 40)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(video.author).font(GlassTheme.bodyFont.weight(.semibold))
-                                Text("查看 UP 主主页").font(GlassTheme.metadataFont).foregroundStyle(
-                                    .secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(
-                                .tertiary)
-                        }.contentShape(Rectangle())
-                    }.buttonStyle(InteractionButtonStyle()).disabled(video.ownerID == nil)
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(video.title).font(.title3.weight(.semibold)).textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text("\(video.bvid) · \(timestamp(model.duration))").font(
-                            GlassTheme.metadataFont.monospacedDigit()
-                        ).foregroundStyle(.secondary)
-                    }
-                    HStack(spacing: 8) {
-                        if video.episodeID == nil {
-                            VideoActions(model: model, video: video).id(video.bvid)
-                        }
-                        Button {
-                            if model.profile == nil {
-                                model.loginPresented = true
-                            } else {
-                                favoritePresented = true
-                            }
-                        } label: {
-                            VideoActionLabel(title: "收藏", systemImage: "star")
-                        }.help("收藏到文件夹").accessibilityLabel("收藏到文件夹").disabled(video.aid == nil)
-                        Button {
-                            model.changeWatchLater(video)
-                        } label: {
-                            VideoActionLabel(title: "稍后", systemImage: "text.badge.plus")
-                        }.help("加入稍后再看").accessibilityLabel("加入稍后再看").disabled(
-                            model.libraryBusy.contains(video.id))
-                        Button {
-                            if let cid = model.pageID {
-                                model.downloads.start(
-                                    video: video, cid: cid, quality: model.qualityID, api: model.api
-                                )
-                                model.downloadsPresented = true
-                            }
-                        } label: {
-                            VideoActionLabel(title: "缓存", systemImage: "arrow.down.circle")
-                        }.help("缓存当前分 P").accessibilityLabel("缓存当前分 P").disabled(
-                            model.pageID == nil)
-                        Button {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(
-                                "https://www.bilibili.com/video/\(video.bvid)?t=\(Int(model.time))",
-                                forType: .string)
-                            model.toast = "已复制当前时间链接"
-                        } label: {
-                            VideoActionLabel(title: "复制", systemImage: "square.and.arrow.up")
-                        }.help("复制当前时间链接").accessibilityLabel("复制当前时间链接")
-                    }.buttonStyle(InteractionButtonStyle()).font(.system(size: 18)).frame(
-                        maxWidth: .infinity)
-                    Divider()
-                    if !detail.description.isEmpty {
-                        Text(detail.description).font(GlassTheme.bodyFont).lineSpacing(5)
-                            .textSelection(
-                                .enabled
-                            ).fixedSize(horizontal: false, vertical: true)
-                    }
-                    if detail.pages.count > 1 {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("选集 · \(detail.pages.count)").font(
-                                GlassTheme.bodyFont.weight(.semibold))
-                            ForEach(detail.pages) { page in
-                                Button {
-                                    model.selectPage(page.cid)
-                                } label: {
-                                    HStack(spacing: 8) {
-                                        Image(
-                                            systemName: model.pageID == page.cid
-                                                ? "waveform" : "play.circle")
-                                        Text("P\(page.number)  \(page.title)").lineLimit(2)
-                                        Spacer(minLength: 0)
-                                    }.font(GlassTheme.labelFont).padding(10).frame(minHeight: 40)
-                                        .contentShape(Rectangle())
-                                        .background(
-                                            model.pageID == page.cid
-                                                ? Color.accentColor.opacity(0.1)
-                                                : Color.primary.opacity(0.035),
-                                            in: RoundedRectangle(cornerRadius: 8))
-                                }.buttonStyle(InteractionButtonStyle()).foregroundStyle(
-                                    model.pageID == page.cid ? Color.accentColor : .primary)
-                            }
-                        }
-                    }
-                } else {
-                    ProgressView().frame(maxWidth: .infinity)
-                }
-            }.padding(20)
-        }
-        .sheet(isPresented: $memberPresented) {
-            if let video = model.detail?.video, let mid = video.ownerID {
-                MemberView(model: model, mid: mid, name: video.author)
-            }
-        }
-        .sheet(isPresented: $favoritePresented) {
-            if let aid = model.detail?.video.aid { FavoritePickerView(model: model, aid: aid) }
-        }
     }
 }
 
