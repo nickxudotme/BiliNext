@@ -861,15 +861,23 @@ private struct CollapsibleCommentText: View {
         return Int((height / line).rounded()) > comment.maxLines
     }
 
+    private var cut: Bool { !expanded && !alwaysExpand && comment.maxLines > 0 }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             CommentText(comment: comment)
                 .font(GlassTheme.bodyFont).lineSpacing(Self.lineSpacing)
-                .lineLimit(
-                    expanded || alwaysExpand || comment.maxLines <= 0 ? nil : comment.maxLines
-                )
-                .textSelection(.enabled)
+                .lineLimit(cut ? comment.maxLines : nil)
+                // Selectable text that is cut off shows its full text when clicked without
+                // growing the row, so a click on a cut comment expands it instead, and
+                // selection works once it is shown in full. Links inside still open.
+                .modifier(SelectableText(enabled: !cut))
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .simultaneousGesture(
+                    TapGesture().onEnded { if cut && truncates { expanded = true } },
+                    isEnabled: cut && truncates
+                )
                 .onGeometryChange(for: CGFloat.self) {
                     $0.size.width
                 } action: {
@@ -881,6 +889,16 @@ private struct CollapsibleCommentText: View {
                         GlassTheme.accent)
             }
         }
+    }
+}
+
+/// Text selection that can be switched off: cut-off selectable text spills its full text out
+/// when clicked without growing its frame, so callers enable it only when shown in full.
+struct SelectableText: ViewModifier {
+    let enabled: Bool
+
+    func body(content: Content) -> some View {
+        if enabled { content.textSelection(.enabled) } else { content.textSelection(.disabled) }
     }
 }
 

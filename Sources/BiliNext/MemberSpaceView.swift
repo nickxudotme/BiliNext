@@ -386,7 +386,7 @@ private struct SpaceHeader: View {
         if !text.isEmpty {
             Text(text).font(GlassTheme.labelFont).foregroundStyle(.secondary)
                 .lineSpacing(3).lineLimit(signatureExpanded ? nil : 2)
-                .textSelection(.enabled)
+                .modifier(SelectableText(enabled: signatureExpanded))
                 .frame(maxWidth: 720, alignment: .leading)
                 .onTapGesture {
                     withAnimation(Motion.standard(reduceMotion)) { signatureExpanded.toggle() }

@@ -187,9 +187,17 @@ struct IntroDetails: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
                 Text(video.title).font(.system(size: 20, weight: .semibold)).lineSpacing(3)
-                    .lineLimit(expanded ? nil : 2).textSelection(.enabled)
+                    .lineLimit(expanded ? nil : 2)
+                    // Cut-off selectable text spills out when clicked, so a click expands the
+                    // details first and the title becomes selectable then.
+                    .modifier(SelectableText(enabled: expanded))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(
+                        TapGesture().onEnded {
+                            withAnimation(Motion.standard(reduceMotion)) { expanded = true }
+                        }, isEnabled: !expanded)
                 Button {
                     withAnimation(Motion.standard(reduceMotion)) { expanded.toggle() }
                 } label: {
