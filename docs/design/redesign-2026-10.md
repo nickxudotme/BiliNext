@@ -1,5 +1,7 @@
 # 2026-10 体验重设计：Arc 外壳与 B 站式细节
 
+> 视觉风格以 [BiliNext 设计语言](language.md) 为准：信息结构随 B 站，外观随 macOS 液态玻璃。下文中借用官方视觉数值的部分正在按设计语言替换。
+
 分支 `design/glass-redesign`。目标是让 BiliNext 在细节上不输官方客户端，同时把 macOS 26 液态玻璃真正用起来。方向经用户确认：先做基础与外壳，窗口底层透出壁纸，卡片悬停用原生轻抬起；要做的官方功能为一键三连长按、窗口置顶／小窗、官方快捷键与高能进度条。
 
 ## 参考来源
@@ -21,7 +23,7 @@
 - 圆角：角标 4、行 8、封面 12、浮层 16、内容卡片 10（距窗口 8pt）。
 - 颜色：`accent` 浅色 #FF6699、深色 #ED5C8C；`canvas` 为 `textBackgroundColor`（浅色纯白）；`raisedFill` 浅色白、深色白 16%。
 - 反馈：悬停 7%、按下 14% 并缩放 0.95；卡片不画底板，改为抬起、封面阴影加深和图片 4% 放大。
-- 动效：`Motion.quick` 0.1s、`panel` 0.08s（Arc 侧栏曲线）、`standard` 0.2s、`emphasized` 0.3s easeInOutCubic，均尊重减弱动态效果。
+- 动效：`Motion.quick` 0.1s、`panel` 0.08s（Arc 侧栏曲线）、`standard` 为 snappy 弹簧 0.25s、`emphasized` 为 smooth 弹簧 0.4s，均尊重减弱动态效果。
 
 ## 外壳
 
