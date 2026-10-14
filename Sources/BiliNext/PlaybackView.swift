@@ -65,7 +65,7 @@ struct PlaybackView: View {
                     .allowsHitTesting(detailsToggleVisible)
                     .accessibilityHidden(!detailsToggleVisible)
                 }
-            if !model.theater {
+            if !model.theater && !miniPlayer {
                 VStack(spacing: 0) {
                     GlassEffectContainer(spacing: 6) {
                         HStack(spacing: 8) {

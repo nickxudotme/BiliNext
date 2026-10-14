@@ -86,25 +86,23 @@ extension AppModel {
         windowPinned.toggle()
     }
 
-    /// Enters or leaves 小窗 for the open video, restoring the sidebar, details and pinning.
+    /// Enters or leaves 小窗, restoring the sidebar and pinning. Detail panels are hidden by
+    /// the mini layout itself, so switching tabs inside 小窗 changes no tab's theater state.
     func toggleMiniPlayer() {
         if let tabOwner {
             tabOwner.toggleMiniPlayer()
             return
         }
-        let page = selected.flatMap { playbackInstances[$0] }
         if miniPlayer {
             let previous = stateBeforeMiniPlayer
             miniPlayer = false
             sidebarPinned = previous?.sidebarPinned ?? true
             windowPinned = previous?.windowPinned ?? false
-            page?.theater = previous?.theater ?? false
             stateBeforeMiniPlayer = nil
         } else {
-            guard let page else { return }
-            stateBeforeMiniPlayer = (sidebarPinned, page.theater, windowPinned)
+            guard selected != nil else { return }
+            stateBeforeMiniPlayer = (sidebarPinned, windowPinned)
             sidebarPinned = false
-            page.theater = true
             windowPinned = true
             miniPlayer = true
         }

@@ -83,7 +83,7 @@ final class AppModel: ObservableObject {
     @Published var windowPinned = false
     /// Window shrinks to a floating corner player (小窗) showing only the current video.
     @Published var miniPlayer = false
-    var stateBeforeMiniPlayer: (sidebarPinned: Bool, theater: Bool, windowPinned: Bool)?
+    var stateBeforeMiniPlayer: (sidebarPinned: Bool, windowPinned: Bool)?
     @Published var profile: UserProfile?
     var accountGeneration = UUID()
     @Published var query = ""
@@ -135,6 +135,10 @@ final class AppModel: ObservableObject {
     @Published var highEnergy: HighEnergyCurve?
     @Published var relation = VideoRelation()
     var relationLoaded = false
+    /// Which video `relation` describes, and the newest read or write that may set it.
+    var relationVideo: String?
+    var relationGeneration = UUID()
+    var relationReading = false
     @Published var interactionBusy = false
     @Published var coinDialogPresented = false
     @Published var favoritePresented = false

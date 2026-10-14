@@ -1,8 +1,8 @@
-import BiliNextCore
 import Foundation
 import Testing
 
 @testable import BiliNext
+@testable import BiliNextCore
 
 @MainActor
 @Test func clearingOtherTabsPreservesCurrentVideoAndUndo() throws {
@@ -74,22 +74,61 @@ import Testing
 }
 
 @MainActor
-@Test func miniPlayerRestoresSidebarDetailsAndPinning() {
+@Test func miniPlayerRestoresSidebarAndPinningWithoutTouchingTabDetails() {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }
     let model = AppModel(sessionStore: SessionStore(directory: directory))
-    model.tabs = [SessionTab(video: Video(bvid: "BV1111111111", title: "一"))]
-    let page = model.playbackInstance(for: model.tabs[0])
+    model.tabs = [
+        SessionTab(video: Video(bvid: "BV1111111111", title: "一")),
+        SessionTab(video: Video(bvid: "BV2222222222", title: "二")),
+    ]
+    let first = model.playbackInstance(for: model.tabs[0])
+    let second = model.playbackInstance(for: model.tabs[1])
+    second.theater = true
     model.selected = "BV1111111111"
 
-    page.toggleMiniPlayer()
-    #expect(model.miniPlayer && model.windowPinned && !model.sidebarPinned && page.theater)
-
+    first.toggleMiniPlayer()
+    #expect(model.miniPlayer && model.windowPinned && !model.sidebarPinned)
+    // Switching tabs inside 小窗, then leaving, keeps each tab's own detail state.
+    model.selected = "BV2222222222"
     model.toggleMiniPlayer()
-    #expect(!model.miniPlayer && !model.windowPinned && model.sidebarPinned && !page.theater)
+    #expect(!model.miniPlayer && !model.windowPinned && model.sidebarPinned)
+    #expect(!first.theater && second.theater)
 
     model.toggleWindowPin()
     model.toggleMiniPlayer()
     model.toggleMiniPlayer()
     #expect(model.windowPinned)
+}
+
+@MainActor
+@Test func episodesCanBeFavoritedButNotLikedOrCoined() {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let model = AppModel(sessionStore: SessionStore(directory: directory))
+    model.profile = UserProfile(id: 8, name: "离线测试")
+    model.detail = VideoDetail(
+        video: Video(bvid: "BV1111111111", title: "第 1 话", aid: 1, episodeID: 99), pages: [],
+        description: "")
+    model.requestFavorite()
+    #expect(model.favoritePresented)
+    model.requestCoin()
+    #expect(!model.coinDialogPresented && !model.interactionBusy)
+}
+
+@MainActor
+@Test func writesWaitForTheAccountStateBeforeToggling() {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let model = AppModel(sessionStore: SessionStore(directory: directory))
+    model.profile = UserProfile(id: 8, name: "离线测试")
+    model.detail = VideoDetail(
+        video: Video(bvid: "BV1111111111", title: "一", aid: 1), pages: [], description: "")
+    // A read is in flight for this video, so a like must not guess the current state.
+    model.relationVideo = "BV1111111111"
+    model.relationReading = true
+    model.toggleLike()
+    model.triple()
+    #expect(!model.interactionBusy)
+    #expect(model.toast == "正在读取互动状态，请稍候")
 }
