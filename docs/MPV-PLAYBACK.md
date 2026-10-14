@@ -4,7 +4,7 @@
 
 MPVPlayer 直接接收原始视频和音频 URL，通过 mpv EDL 多轨格式加载，使用原有 Referer / User-Agent。启用 VideoToolbox 硬件解码，最多约 64 MiB 的前向缓存，目标 30 秒预读，网络等待 15 秒。实际缓存和硬解是否启用以 mpv 返回值为准。失败显示原有重新加载入口。
 
-时间、时长、暂停与缓冲状态每 250ms 读取；弹幕调度直接读取 mpv 时间，保留原有 Core Animation 渲染。NSOpenGLView 使用 libmpv render API，视频更新触发重绘，关闭目标帧等待，避免主线程等待视频展示时刻。OpenGL 属于 macOS 已弃用但仍可用的接口；后续可单独评估 Metal 渲染，当前不同时改写弹幕。
+时间、时长、暂停与缓冲状态每 250ms 读取；弹幕调度直接读取 mpv 时间，保留原有 Core Animation 渲染。视频由 `MPVVideoLayer`（`CAOpenGLLayer`）在独立的串行渲染队列上用 libmpv render API 绘制：mpv 的更新回调合并成一次待渲染，先用 `mpv_render_context_update` 确认有新帧再画，不经过主线程，界面忙时视频不受影响；只有图层缩放时由 Core Animation 在主线程补画，两条路径用锁串行使用 GL 上下文。关闭目标帧等待。字幕识别的取帧也在渲染队列上异步完成。渲染上下文必须在 mpv 核心销毁前释放，`MPVSurface` 视图销毁时会先释放。（2026-10-14 前为 NSOpenGLView，每帧在主线程绘制。）OpenGL 属于 macOS 已弃用但仍可用的接口；后续可单独评估 Metal 渲染，当前不同时改写弹幕。
 
 ## 构建
 

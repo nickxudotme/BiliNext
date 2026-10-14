@@ -2,6 +2,13 @@
 
 更新日期：2026-10-14。每一项仅表示列出的验证范围；历史专题中的验收不能自动算作本轮复测。
 
+## 播放流畅度：视频渲染移出主线程（2026-10-14）
+
+- 用户反馈播放卡顿。对播放中的 Debug 进程 `sample` 3 秒：主线程约 1/4 时间阻塞在 SwiftUI `RBLayer display` 等待渲染服务同步，来源是侧栏标签与简介当前项上持续循环的音波 `symbolEffect`；而视频帧由 `NSOpenGLView` 在主线程绘制，主线程一忙即掉帧。mpv 内核与选项未改。
+- 修复：音波改为静止图标；视频改由 `MPVVideoLayer`（`CAOpenGLLayer`）在独立渲染队列绘制，字幕识别取帧同步迁移。另修复全局提示在播放页不消失（计时从视图 `.task` 移入模型，新增离线测试），播放时提示抬到控制条上方。
+- 默认 `swift test` 153 项、Release 构建与严格格式检查通过；`BILINEXT_MPV_TEST=1` 的 `playbackTabSwitchRetainsLoadedMedia`、`mpvDirectDASHPlaysSeeksSwitchesAndRetainsTabs` 与 `BILINEXT_SUBTITLE_TEST=1` 的 `rawMPVFramesDriveAutomaticSubtitleHidingAndRecovery` 通过。测试中发现并修复渲染上下文晚于 mpv 核心释放导致的 abort。
+- 未验证：真实窗口中改动后的播放流畅度与采样对比、窗口缩放与全屏切换时的画面、Retina 清晰度、小窗与直播画面、多标签切换时的黑帧。
+
 ## 浏览页悬浮玻璃工具栏（2026-10-14）
 
 - 浏览页工具栏改为悬浮玻璃胶囊，下方垫向下淡出的柔和材质，网格内容从工具栏下面滚过（`NSScrollView.contentInsets` 顶部留出工具栏高度，下拉刷新的「到顶」判断与提示位置同步扣除）。搜索框、收藏夹/历史筛选与排序、动态页「正在直播」都并入工具栏，内容上方不再另起一行；错误提示和稍后再看的「撤销」改为悬浮玻璃。侧栏去掉「搜索」，入口为工具栏搜索框与 ⌘L。

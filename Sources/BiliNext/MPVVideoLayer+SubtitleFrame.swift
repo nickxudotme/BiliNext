@@ -2,15 +2,21 @@ import CMPV
 import Foundation
 import OpenGL.GL3
 
-extension MPVSurface.Surface {
-    /// Render video alone into a small offscreen framebuffer. Unlike screenshot-raw,
-    /// this works with zero-copy VideoToolbox hardware frames and excludes SwiftUI overlays.
-    func captureSubtitleFrame() -> SubtitleFrame? {
-        openGLContext?.makeCurrentContext()
-        guard let renderer else { return nil }
-        let sourceWidth = player.number("video-params/w")
-        let sourceHeight = player.number("video-params/h")
+extension MPVVideoLayer {
+    /// Render video alone into a small offscreen framebuffer on the render queue. Unlike
+    /// screenshot-raw, this works with zero-copy VideoToolbox hardware frames and excludes
+    /// SwiftUI overlays.
+    func subtitleFrame(sourceWidth: Double, sourceHeight: Double) async -> SubtitleFrame? {
         guard sourceWidth > 0, sourceHeight > 0 else { return nil }
+        return await withContext { renderer in
+            Self.captureFrame(
+                renderer: renderer, sourceWidth: sourceWidth, sourceHeight: sourceHeight)
+        }
+    }
+
+    private static func captureFrame(
+        renderer: OpaquePointer, sourceWidth: Double, sourceHeight: Double
+    ) -> SubtitleFrame? {
         let scale = min(1, 1280 / sourceWidth, 720 / sourceHeight)
         let width = max(1, Int(sourceWidth * scale))
         let height = max(1, Int(sourceHeight * scale))

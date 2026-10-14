@@ -29,10 +29,9 @@ func playbackTabSwitchRetainsLoadedMedia() async throws {
             if let core = page.mpv, surfaces[page.selected ?? ""] == nil {
                 let surface = try #require(MPVSurface.Surface(player: core))
                 surface.setFrameSize(NSSize(width: 640, height: 360))
-                surface.prepareOpenGL()
                 surfaces[page.selected ?? ""] = surface
             }
-            surfaces[page.selected ?? ""]?.draw(.zero)
+            surfaces[page.selected ?? ""]?.video.display()
             if page.playerError != nil || (page.mpv?.time ?? 0) > 1 { break }
             try await Task.sleep(for: .milliseconds(200))
         }
