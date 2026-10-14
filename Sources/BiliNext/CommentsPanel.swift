@@ -18,9 +18,10 @@ struct CommentsPanel: View {
             ForEach(Array(routes.enumerated()), id: \.element) { index, route in
                 Group {
                     switch route {
-                    case .thread(let root, let uploader):
+                    case .thread(let root, let uploader, let focus):
                         CommentThreadPage(
-                            model: model, root: root, uploaderID: uploader, push: push, pop: pop)
+                            model: model, root: root, uploaderID: uploader, focus: focus,
+                            push: push, pop: pop)
                     case .dialog(let root, let dialog, let uploader):
                         CommentDialogPage(
                             model: model, root: root, dialogID: dialog, uploaderID: uploader,
@@ -94,14 +95,15 @@ struct CommentsPanel: View {
 }
 
 enum CommentRoute: Hashable {
-    case thread(Comment, uploaderID: Int64)
+    /// `focus` is a reply to scroll to and highlight, as when tapped in the preview.
+    case thread(Comment, uploaderID: Int64, focus: Comment? = nil)
     case dialog(root: Comment, dialogID: Int64, uploaderID: Int64)
 
     static func == (lhs: CommentRoute, rhs: CommentRoute) -> Bool { lhs.key == rhs.key }
     func hash(into hasher: inout Hasher) { hasher.combine(key) }
     private var key: String {
         switch self {
-        case .thread(let root, _): "thread:\(root.id)"
+        case .thread(let root, _, let focus): "thread:\(root.id):\(focus?.id ?? 0)"
         case .dialog(let root, let dialog, _): "dialog:\(root.id):\(dialog)"
         }
     }
@@ -156,7 +158,12 @@ private struct CommentListPage: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(comments) { comment in
-                        CommentRow(comment: comment, uploaderID: uploaderID) {
+                        CommentRow(
+                            comment: comment, uploaderID: uploaderID,
+                            openReply: { reply in
+                                push(.thread(comment, uploaderID: uploaderID, focus: reply))
+                            }
+                        ) {
                             push(.thread(comment, uploaderID: uploaderID))
                         }
                         Divider().opacity(0.5).padding(.leading, 58)
@@ -215,9 +222,13 @@ private struct CommentThreadPage: View {
     @ObservedObject var model: AppModel
     let root: Comment
     let uploaderID: Int64
+    var focus: Comment? = nil
     let push: (CommentRoute) -> Void
     let pop: () -> Void
     @State private var replies: [Comment] = []
+    /// The reply to scroll to once it is loaded; cleared after scrolling.
+    @State private var pendingFocus: Int64?
+    @State private var highlighted: Int64?
     @State private var page = 0
     @State private var count = 0
     @State private var more = true
@@ -233,49 +244,74 @@ private struct CommentThreadPage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             CommentPageHeader(title: "评论详情", back: pop)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    CommentRow(comment: root, uploaderID: uploaderID, showsReplies: false)
-                    Rectangle().fill(.primary.opacity(0.05)).frame(height: 8)
-                    Text(count > 0 ? "相关回复共 \(count) 条" : "相关回复")
-                        .font(GlassTheme.metadataFont.weight(.semibold)).foregroundStyle(.secondary)
-                        .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 4)
-                    // Replies nest under the reply they answer, Reddit style; a guide line per
-                    // level shows who answered whom, and clicking a line folds that branch.
-                    ForEach(rows) { row in
-                        ThreadReplyRow(
-                            row: row, uploaderID: uploaderID,
-                            // The tree shows the conversation; the dialog page remains for
-                            // replies whose parent is not loaded.
-                            openDialog: row.depth == 1 && row.comment.parentID != root.id
-                                && row.comment.dialogID != 0
-                                ? {
-                                    push(
-                                        .dialog(
-                                            root: root, dialogID: row.comment.dialogID,
-                                            uploaderID: uploaderID))
-                                }
-                                : nil,
-                            toggle: { id in
-                                withAnimation(Motion.standard(reduceMotion)) {
-                                    if collapsed.contains(id) {
-                                        collapsed.remove(id)
-                                    } else {
-                                        collapsed.insert(id)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        CommentRow(comment: root, uploaderID: uploaderID, showsReplies: false)
+                        Rectangle().fill(.primary.opacity(0.05)).frame(height: 8)
+                        Text(count > 0 ? "相关回复共 \(count) 条" : "相关回复")
+                            .font(GlassTheme.metadataFont.weight(.semibold)).foregroundStyle(
+                                .secondary
+                            )
+                            .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 4)
+                        // Replies nest under the reply they answer, Reddit style; a guide line per
+                        // level shows who answered whom, and clicking a line folds that branch.
+                        ForEach(rows) { row in
+                            ThreadReplyRow(
+                                row: row, uploaderID: uploaderID,
+                                highlighted: highlighted == row.id,
+                                // The tree shows the conversation; the dialog page remains for
+                                // replies whose parent is not loaded.
+                                openDialog: row.depth == 1 && row.comment.parentID != root.id
+                                    && row.comment.dialogID != 0
+                                    ? {
+                                        push(
+                                            .dialog(
+                                                root: root, dialogID: row.comment.dialogID,
+                                                uploaderID: uploaderID))
+                                    }
+                                    : nil,
+                                toggle: { id in
+                                    withAnimation(Motion.standard(reduceMotion)) {
+                                        if collapsed.contains(id) {
+                                            collapsed.remove(id)
+                                        } else {
+                                            collapsed.insert(id)
+                                        }
                                     }
                                 }
-                            }
-                        )
+                            )
+                        }
+                        PageSentinel(load: load)
+                        CommentListFooter(
+                            loading: loading, error: error, isEmpty: replies.isEmpty, more: more,
+                            emptyTitle: "暂无回复", retry: load, loadMore: load)
                     }
-                    PageSentinel(load: load)
-                    CommentListFooter(
-                        loading: loading, error: error, isEmpty: replies.isEmpty, more: more,
-                        emptyTitle: "暂无回复", retry: load, loadMore: load)
+                    .padding(.bottom, 12)
                 }
-                .padding(.bottom, 12)
+                .onChange(of: rows.map(\.id)) { _, ids in reveal(in: ids, proxy: proxy) }
             }
         }
-        .task { load() }
+        .task {
+            pendingFocus = focus?.id
+            load()
+        }
+    }
+
+    /// Scrolls to the focused reply when it appears, then highlights it briefly.
+    private func reveal(in ids: [Int64], proxy: ScrollViewProxy) {
+        guard let id = pendingFocus, ids.contains(id) else { return }
+        pendingFocus = nil
+        Task {
+            // Let the new rows lay out before scrolling to one of them.
+            try? await Task.sleep(for: .milliseconds(80))
+            withAnimation(Motion.emphasized(reduceMotion)) {
+                proxy.scrollTo(id, anchor: .center)
+            }
+            highlighted = id
+            try? await Task.sleep(for: .seconds(1.8))
+            withAnimation(.easeOut(duration: 0.6)) { if highlighted == id { highlighted = nil } }
+        }
     }
 
     private func load() {
@@ -293,6 +329,15 @@ private struct CommentThreadPage: View {
                 page = next
             } catch { self.error = error.localizedDescription }
             loading = false
+            // Keep paging towards a focused reply; past 10 pages, or at the end, show the
+            // previewed copy on its own so the tap still lands somewhere.
+            if let id = pendingFocus, !replies.contains(where: { $0.id == id }) {
+                if more && page < 10 && error == nil {
+                    load()
+                } else if let focus {
+                    replies.insert(focus, at: 0)
+                }
+            }
         }
     }
 }
@@ -303,6 +348,7 @@ private struct CommentThreadPage: View {
 struct ThreadReplyRow: View {
     let row: CommentThreadRow
     let uploaderID: Int64
+    var highlighted = false
     let openDialog: (() -> Void)?
     let toggle: (Int64) -> Void
 
@@ -329,7 +375,14 @@ struct ThreadReplyRow: View {
             }
         }
         .padding(.leading, offset)
+        .background {
+            // The reply opened from the preview glows briefly.
+            RoundedRectangle(cornerRadius: GlassTheme.rowRadius)
+                .fill(GlassTheme.accent.opacity(highlighted ? 0.14 : 0))
+                .padding(.leading, offset + 6).padding(.trailing, 6).padding(.vertical, 2)
+        }
         .background(alignment: .topLeading) { lines }
+        .id(row.id)
         .overlay(alignment: .topLeading) {
             if row.descendants > 0 && !row.collapsed {
                 FoldKnob(expanded: true) { toggle(row.id) }
@@ -581,13 +634,16 @@ struct CommentRow: View {
     var showsReplies = true
     var openThread: (() -> Void)? = nil
     var openDialog: (() -> Void)? = nil
+    /// Opens the thread at one of the previewed replies.
+    var openReply: ((Comment) -> Void)? = nil
     @State private var hovered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Environment(\.openMemberSpace) private var openMemberSpace
     init(
         comment: Comment, uploaderID: Int64, compact: Bool = false, showsReplies: Bool = true,
-        openDialog: (() -> Void)? = nil, openThread: (() -> Void)? = nil
+        openDialog: (() -> Void)? = nil, openReply: ((Comment) -> Void)? = nil,
+        openThread: (() -> Void)? = nil
     ) {
         self.comment = comment
         self.uploaderID = uploaderID
@@ -595,6 +651,7 @@ struct CommentRow: View {
         self.showsReplies = showsReplies
         self.openThread = openThread
         self.openDialog = openDialog
+        self.openReply = openReply
     }
 
     var body: some View {
@@ -681,9 +738,8 @@ struct CommentRow: View {
     private var replyPreview: some View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(comment.replies.prefix(3)) { reply in
-                CommentText(comment: reply, prefix: reply.author)
-                    .font(GlassTheme.labelFont).lineSpacing(3).lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                PreviewReplyLine(reply: reply) { openReply?(reply) }
+                    .disabled(openReply == nil)
             }
             // Only offer the thread when the preview leaves replies out, as the official app.
             if let openThread, comment.replyCount > min(3, comment.replies.count) {
@@ -703,6 +759,31 @@ struct CommentRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             .primary.opacity(0.06), in: RoundedRectangle(cornerRadius: GlassTheme.rowRadius))
+    }
+}
+
+/// A reply in a comment's preview block; clicking opens the thread at it.
+private struct PreviewReplyLine: View {
+    let reply: Comment
+    let action: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            CommentText(comment: reply, prefix: reply.author)
+                .font(GlassTheme.labelFont).lineSpacing(3).lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(
+                    .primary.opacity(hovered ? 0.06 : 0), in: RoundedRectangle(cornerRadius: 6)
+                )
+                .padding(.horizontal, -6)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovered = $0 }
+        .help("在评论详情中查看")
     }
 }
 
@@ -759,6 +840,7 @@ private struct CommentIdentity: View {
 private struct CollapsibleCommentText: View {
     let comment: Comment
     @State private var expanded = false
+    @AppStorage(Preferences.expandComments) private var alwaysExpand = false
     @State private var width: CGFloat = 0
 
     private static let font = NSFont.systemFont(ofSize: 15)
@@ -783,7 +865,9 @@ private struct CollapsibleCommentText: View {
         VStack(alignment: .leading, spacing: 4) {
             CommentText(comment: comment)
                 .font(GlassTheme.bodyFont).lineSpacing(Self.lineSpacing)
-                .lineLimit(expanded || comment.maxLines <= 0 ? nil : comment.maxLines)
+                .lineLimit(
+                    expanded || alwaysExpand || comment.maxLines <= 0 ? nil : comment.maxLines
+                )
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .onGeometryChange(for: CGFloat.self) {
@@ -791,7 +875,7 @@ private struct CollapsibleCommentText: View {
                 } action: {
                     width = $0
                 }
-            if truncates {
+            if truncates && !alwaysExpand {
                 Button(expanded ? "收起" : "展开") { expanded.toggle() }.buttonStyle(.plain)
                     .font(GlassTheme.metadataFont.weight(.medium)).foregroundStyle(
                         GlassTheme.accent)
