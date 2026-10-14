@@ -6,7 +6,6 @@ import SwiftUI
 private enum PlaybackPanel: String, CaseIterable, Identifiable {
     case info = "简介"
     case comments = "评论"
-    case related = "推荐"
     case transcript = "字幕"
     case danmaku = "弹幕"
     var id: String { rawValue }
@@ -26,7 +25,6 @@ private enum PlaybackPanel: String, CaseIterable, Identifiable {
         switch self {
         case .info: "info.circle"
         case .comments: "bubble.left.and.bubble.right"
-        case .related: "play.rectangle.on.rectangle"
         case .transcript: "captions.bubble"
         case .danmaku: "text.bubble"
         }
@@ -88,10 +86,8 @@ struct PlaybackView: View {
                     Divider().opacity(0.5)
                     Group {
                         switch panel {
-                        case .info: VideoInformationView(model: model)
+                        case .info: VideoIntroPanel(model: model)
                         case .comments: CommentsPanel(model: model).id(model.selected)
-                        case .related:
-                            VideoCommunityView(model: model, section: "相关推荐").id(model.selected)
                         case .transcript: TranscriptView(model: model)
                         case .danmaku: DanmakuListView(model: model)
                         }
@@ -261,97 +257,6 @@ private struct PlaybackPanelSwitcher: View {
         .background(.primary.opacity(0.06), in: Capsule())
         .accessibilityElement(children: .contain)
         .accessibilityLabel("视频详情栏目")
-    }
-}
-
-private struct VideoInformationView: View {
-    @ObservedObject var model: AppModel
-    @State private var memberPresented = false
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                if let detail = model.detail {
-                    let video = detail.video
-                    Button {
-                        memberPresented = true
-                    } label: {
-                        HStack(spacing: 10) {
-                            AvatarView(url: video.avatar).frame(width: 44, height: 44)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(video.author).font(GlassTheme.bodyFont.weight(.semibold))
-                                Text(
-                                    video.pubdate.map { "发布于 " + DisplayFormat.relativeDate($0) }
-                                        ?? "查看 UP 主主页"
-                                ).font(GlassTheme.metadataFont).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(
-                                .tertiary)
-                        }.contentShape(Rectangle())
-                    }.buttonStyle(InteractionButtonStyle()).disabled(video.ownerID == nil)
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(video.title).font(GlassTheme.sectionTitleFont).textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
-                        HStack(spacing: 12) {
-                            if let views = video.viewCount {
-                                Label(DisplayFormat.count(views), systemImage: "play")
-                            }
-                            if let danmaku = video.danmakuCount {
-                                Label(DisplayFormat.count(danmaku), systemImage: "text.bubble")
-                            }
-                            Text(video.bvid).textSelection(.enabled)
-                        }
-                        .font(GlassTheme.metadataFont.monospacedDigit()).foregroundStyle(.secondary)
-                        .labelStyle(.titleAndIcon)
-                    }
-                    VideoActionBar(model: model, video: video)
-                    Divider()
-                    if !detail.description.isEmpty {
-                        Text(detail.description).font(GlassTheme.bodyFont).lineSpacing(5)
-                            .textSelection(
-                                .enabled
-                            ).fixedSize(horizontal: false, vertical: true)
-                    }
-                    if detail.pages.count > 1 {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("选集 · \(detail.pages.count)").font(
-                                GlassTheme.bodyFont.weight(.semibold))
-                            ForEach(detail.pages) { page in
-                                Button {
-                                    model.selectPage(page.cid)
-                                } label: {
-                                    HStack(spacing: 8) {
-                                        Image(
-                                            systemName: model.pageID == page.cid
-                                                ? "waveform" : "play.circle")
-                                        Text("P\(page.number)  \(page.title)").lineLimit(2)
-                                        Spacer(minLength: 0)
-                                    }.font(GlassTheme.labelFont).padding(10).frame(minHeight: 40)
-                                        .contentShape(Rectangle())
-                                        .background(
-                                            model.pageID == page.cid
-                                                ? GlassTheme.accent.opacity(0.1)
-                                                : Color.primary.opacity(0.035),
-                                            in: RoundedRectangle(cornerRadius: 8))
-                                }.buttonStyle(InteractionButtonStyle()).foregroundStyle(
-                                    model.pageID == page.cid ? GlassTheme.accent : .primary)
-                            }
-                        }
-                    }
-                } else if let error = model.playerError, !model.videoLoading {
-                    ErrorBanner(message: error) {
-                        if let id = model.selected { model.activate(id, force: true) }
-                    }
-                } else {
-                    ProgressView().frame(maxWidth: .infinity)
-                }
-            }.padding(20)
-        }
-        .sheet(isPresented: $memberPresented) {
-            if let video = model.detail?.video, let mid = video.ownerID {
-                MemberView(model: model, mid: mid, name: video.author)
-            }
-        }
     }
 }
 

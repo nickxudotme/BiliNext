@@ -108,3 +108,22 @@ private func renderPreview(_ view: some View, name: String) throws {
     .frame(width: 380).background(GlassTheme.canvas).environment(\.colorScheme, .dark)
     try renderPreview(view, name: "bilinext-comments")
 }
+
+@MainActor
+@Test func visualPreviewExpandedIntro() throws {
+    guard ProcessInfo.processInfo.environment["BILINEXT_RENDER_PREVIEW"] == "1" else { return }
+    var detail = VideoDetail(
+        video: Video(
+            bvid: "BV1CUpy6oEiY", title: "【亚某爆料时间】王者十一周年限定盾山传说皮肤限时活动免费换", author: "王者荣耀",
+            viewCount: "483000", danmakuCount: "1665", pubdate: Date()),
+        pages: [],
+        description: "限定皮肤活动 10 月 14 日开启，01:20 起是特效展示，往期爆料见 BV1xx411c7mD。\n欢迎在评论区讨论～",
+        stats: VideoStats())
+    detail.extras.tags = ["王者荣耀", "盾山", "皮肤爆料", "一塔千年", "游戏"]
+    detail.extras.partition = "手机游戏"
+    detail.extras.noReprint = true
+    detail.extras.honors = ["热门收录"]
+    let view = IntroDetails(detail: detail, expanded: true).padding(20)
+        .frame(width: 380).background(GlassTheme.canvas).environment(\.colorScheme, .dark)
+    try renderPreview(view, name: "bilinext-intro-expanded")
+}

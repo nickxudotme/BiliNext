@@ -132,3 +132,18 @@ import Testing
     #expect(!model.interactionBusy)
     #expect(model.toast == "正在读取互动状态，请稍候")
 }
+
+@MainActor
+@Test func replacingATabKeepsItsPlaceInTheSidebar() {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let model = AppModel(sessionStore: SessionStore(directory: directory))
+    model.tabs = [
+        SessionTab(video: Video(bvid: "BV1111111111", title: "第一集")),
+        SessionTab(video: Video(bvid: "BV2222222222", title: "别的")),
+    ]
+    model.unseenTabs = ["BV1111111111"]
+    model.replace("BV1111111111", with: Video(bvid: "BV3333333333", title: "第二集"))
+    #expect(model.tabs.map(\.id) == ["BV3333333333", "BV2222222222"])
+    #expect(model.unseenTabs.isEmpty && model.selected == nil)
+}

@@ -577,9 +577,18 @@ private struct CollapsibleCommentText: View {
 
 /// Comment text with inline emotes and tappable links, mentions, BV IDs and timestamps.
 struct CommentText: View {
-    let comment: Comment
+    let segments: [CommentSegment]
     var prefix: String? = nil
     @ObservedObject private var emotes = EmoteCache.shared
+
+    init(comment: Comment, prefix: String? = nil) {
+        self.init(segments: CommentSegment.split(comment), prefix: prefix)
+    }
+
+    init(segments: [CommentSegment], prefix: String? = nil) {
+        self.segments = segments
+        self.prefix = prefix
+    }
 
     var body: some View {
         var text = Text("")
@@ -587,7 +596,7 @@ struct CommentText: View {
             text = Text(
                 "\(text)\(Text(prefix + "：").fontWeight(.semibold).foregroundStyle(.secondary))")
         }
-        for segment in CommentSegment.split(comment) {
+        for segment in segments {
             text = Text("\(text)\(piece(segment))")
         }
         return text

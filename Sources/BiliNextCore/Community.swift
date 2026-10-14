@@ -105,7 +105,16 @@ public enum CommentSegment: Equatable, Sendable {
     case time(String, seconds: Double)
 
     public static func split(_ comment: Comment) -> [CommentSegment] {
-        let text = comment.text
+        split(
+            text: comment.text, emotes: comment.emotes, links: comment.links,
+            mentions: comment.mentions)
+    }
+
+    /// Plain text such as a video description: BV IDs and timestamps only.
+    public static func split(
+        text: String, emotes: [String: URL] = [:], links: [String: CommentLink] = [:],
+        mentions: [String] = []
+    ) -> [CommentSegment] {
         var marks: [(Range<String.Index>, CommentSegment)] = []
         func add(_ needle: String, _ segment: CommentSegment) {
             var start = text.startIndex
@@ -114,9 +123,9 @@ public enum CommentSegment: Equatable, Sendable {
                 start = range.upperBound
             }
         }
-        for (key, url) in comment.emotes { add(key, .emote(key, url)) }
-        for (key, link) in comment.links { add(key, .link(key, link)) }
-        for name in comment.mentions { add("@" + name, .mention(name)) }
+        for (key, url) in emotes { add(key, .emote(key, url)) }
+        for (key, link) in links { add(key, .link(key, link)) }
+        for name in mentions { add("@" + name, .mention(name)) }
         let patterns: [(String, (String) -> CommentSegment?)] = [
             (#"BV[0-9A-Za-z]{10}"#, { .video($0) }),
             (

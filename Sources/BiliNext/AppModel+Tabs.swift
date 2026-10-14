@@ -108,6 +108,34 @@ extension AppModel {
         }
     }
 
+    /// Plays another video in place of a tab, as when moving through a 合集. A video that is
+    /// already open elsewhere is selected instead of duplicated.
+    func replace(_ id: String, with video: Video) {
+        if let tabOwner {
+            tabOwner.replace(id, with: video)
+            return
+        }
+        guard video.id != id else { return }
+        if tabs.contains(where: { $0.id == video.id }) {
+            activate(video.id, autoplay: true)
+            return
+        }
+        guard let index = tabs.firstIndex(where: { $0.id == id }) else {
+            open(video)
+            return
+        }
+        saveSession()
+        let wasSelected = selected == id
+        tabs[index] = SessionTab(video: video, cid: video.historyCID)
+        releasePlaybackTab(id)
+        unseenTabs.remove(id)
+        if wasSelected {
+            selected = nil
+            activate(video.id, autoplay: true)
+        }
+        saveSession()
+    }
+
     /// ⌘1–8 pick a tab by position and ⌘9 the last one, as in browsers.
     func activateTab(number: Int) {
         guard !tabs.isEmpty else { return }
