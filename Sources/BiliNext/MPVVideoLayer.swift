@@ -122,12 +122,15 @@ final class MPVVideoLayer: CAOpenGLLayer, @unchecked Sendable {
         scheduleFrame(force: true)
     }
 
+    // These are "copy" methods: Core Animation owns what they return and releases it later
+    // through `releaseCGLPixelFormat`/`releaseCGLContext`. Hand over a retained reference;
+    // returning our own unretained one lets Core Animation free a context we still draw with.
     override func copyCGLPixelFormat(forDisplayMask mask: UInt32) -> CGLPixelFormatObj {
-        pixelFormat
+        CGLRetainPixelFormat(pixelFormat)
     }
 
     override func copyCGLContext(forPixelFormat format: CGLPixelFormatObj) -> CGLContextObj {
-        context
+        CGLRetainContext(context)
     }
 
     override func canDraw(
