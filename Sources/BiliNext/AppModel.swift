@@ -104,7 +104,18 @@ final class AppModel: ObservableObject {
     @Published var libraryBusy = Set<String>()
     @Published var removedLater: Video?
     @Published var loginPresented = false
-    @Published var toast: String?
+    /// A transient notice. It clears itself after a few seconds, independent of any view.
+    @Published var toast: String? {
+        didSet {
+            toastExpiry?.cancel()
+            guard toast != nil else { return }
+            toastExpiry = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(2.5))
+                if !Task.isCancelled { self?.toast = nil }
+            }
+        }
+    }
+    private var toastExpiry: Task<Void, Never>?
     @Published var detail: VideoDetail?
     @Published var pageID: Int64?
     @Published var videoLoading = false
