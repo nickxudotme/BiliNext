@@ -3,7 +3,8 @@ import Foundation
 enum PlaybackParser {
     static func parse(
         _ data: [String: Any], preferredQuality: Int,
-        allowAV1: Bool = false, allowHEVC: Bool = true
+        allowAV1: Bool = false, allowHEVC: Bool = true,
+        codecs: [VideoCodec] = VideoCodec.defaultOrder, losslessAudio: Bool = false
     ) throws -> Playback {
         let ids = data["accept_quality"] as? [Int] ?? []
         let labels = data["accept_description"] as? [String] ?? []
@@ -35,12 +36,18 @@ enum PlaybackParser {
             let actual = available.contains(preferredQuality) ? preferredQuality : highest
             let candidates = videos.filter { $0.0 == actual }
             func rank(_ stream: PlaybackStream) -> Int {
-                if stream.codec.hasPrefix("av01.") { return 0 }
-                if stream.codec.hasPrefix("hev1") || stream.codec.hasPrefix("hvc1") { return 1 }
-                return 2
+                VideoCodec(codecString: stream.codec).flatMap { codecs.firstIndex(of: $0) }
+                    ?? codecs.count
             }
             let chosen = candidates.min { rank($0.1) < rank($1.1) }!
-            let audio = (dash["audio"] as? [[String: Any]] ?? []).compactMap(stream)
+            // Hi-Res (FLAC) and Dolby tracks are offered only to entitled accounts.
+            let flac = (dash["flac"] as? [String: Any])?["audio"] as? [String: Any]
+            let dolby = (dash["dolby"] as? [String: Any])?["audio"] as? [[String: Any]] ?? []
+            let lossless =
+                losslessAudio ? ([flac].compactMap { $0 } + dolby).compactMap(stream) : []
+            let audio =
+                lossless.first
+                ?? (dash["audio"] as? [[String: Any]] ?? []).compactMap(stream)
                 .filter { $0.codec.hasPrefix("mp4a") }
                 .max { $0.bandwidth < $1.bandwidth }
             // An explicitly empty audio list is valid for silent media. Reject unsupported audio.
@@ -95,5 +102,29 @@ enum PlaybackParser {
             start >= 0, end >= start, end - start < 32 * 1024 * 1024
         else { return nil }
         return start...end
+    }
+}
+
+/// Video codecs in the order playback prefers them.
+public enum VideoCodec: String, CaseIterable, Sendable {
+    case av1, hevc, avc
+
+    public static let defaultOrder: [VideoCodec] = [.av1, .hevc, .avc]
+
+    /// `preferred` first, the rest in their default order.
+    public static func order(preferring preferred: VideoCodec) -> [VideoCodec] {
+        [preferred] + defaultOrder.filter { $0 != preferred }
+    }
+
+    init?(codecString: String) {
+        if codecString.hasPrefix("av01.") {
+            self = .av1
+        } else if codecString.hasPrefix("hev1") || codecString.hasPrefix("hvc1") {
+            self = .hevc
+        } else if codecString.hasPrefix("avc1") {
+            self = .avc
+        } else {
+            return nil
+        }
     }
 }

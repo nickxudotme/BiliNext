@@ -417,7 +417,8 @@ public actor BilibiliAPI {
     }
     public func playback(
         bvid: String, cid: Int64, quality: Int = 80, episodeID: Int64? = nil,
-        preferDASH: Bool = true, allowAV1: Bool = true, allowHEVC: Bool = true
+        preferDASH: Bool = true, allowAV1: Bool = true, allowHEVC: Bool = true,
+        codecs: [VideoCodec] = VideoCodec.defaultOrder, losslessAudio: Bool = false
     )
         async throws -> Playback
     {
@@ -437,7 +438,8 @@ public actor BilibiliAPI {
         do {
             return try PlaybackParser.parse(
                 d, preferredQuality: quality,
-                allowAV1: allowAV1 && MediaCapabilities.hardwareAV1, allowHEVC: allowHEVC)
+                allowAV1: allowAV1 && MediaCapabilities.hardwareAV1, allowHEVC: allowHEVC,
+                codecs: codecs, losslessAudio: losslessAudio)
         } catch {
             try Task.checkCancellation()
             guard preferDASH else { throw error }
@@ -445,7 +447,8 @@ public actor BilibiliAPI {
             // API/permission errors above are surfaced directly, never retried here.
             return try await playback(
                 bvid: bvid, cid: cid, quality: quality, episodeID: episodeID, preferDASH: false,
-                allowAV1: allowAV1, allowHEVC: allowHEVC)
+                allowAV1: allowAV1, allowHEVC: allowHEVC, codecs: codecs,
+                losslessAudio: losslessAudio)
         }
     }
     public func subtitleTracks(bvid: String, cid: Int64) async throws -> [SubtitleTrack] {

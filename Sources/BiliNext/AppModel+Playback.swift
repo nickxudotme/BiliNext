@@ -99,7 +99,7 @@ extension AppModel {
         if let tab = tabs.first(where: { $0.id == id }), tab.video.episodeID == nil,
             let cid = tab.cid ?? tab.video.playableCID
         {
-            playbackPrefetch.warm(.init(bvid: id, cid: cid, quality: 80))
+            playbackPrefetch.warm(.current(bvid: id, cid: cid))
             startup?.mark("playurl early", "cid \(cid)")
         }
         videoTask = Task {
@@ -214,20 +214,24 @@ extension AppModel {
             }
         }
         do {
-            let key = PlaybackPrefetch.Key(bvid: id, cid: cid, quality: 80)
+            let key = PlaybackPrefetch.Key.current(bvid: id, cid: cid)
             let reused = playbackPrefetch.age(of: key).map {
                 String(format: "reused %.2fs old", $0)
             }
             let source =
                 if let episodeID = detail?.video.episodeID {
-                    try await api.playback(bvid: id, cid: cid, quality: 80, episodeID: episodeID)
-                        .preferringMirror(Preferences.mirrorHost)
+                    try await api.playback(
+                        bvid: id, cid: cid, quality: 80, episodeID: episodeID,
+                        codecs: Preferences.codecOrder, losslessAudio: Preferences.losslessAudio
+                    )
+                    .preferringMirror(Preferences.mirrorHost)
                 } else {
                     try await playbackPrefetch.playback(for: key)
                 }
             startup?.mark(
                 "playurl",
-                "\(source.quality) \(source.videoStream?.codec ?? "mp4") \(reused ?? "fresh")"
+                "\(source.quality) \(source.videoStream?.codec ?? "mp4")"
+                    + " \(source.audioStream?.codec ?? "") \(reused ?? "fresh")"
                     + " \(source.videoStream?.urls.first?.host ?? "")")
             guard !Task.isCancelled, generation == videoGeneration,
                 qualityRequest == qualityGeneration, !officialCore
@@ -317,7 +321,8 @@ extension AppModel {
                 return try await self.api.playback(
                     bvid: id, cid: cid, quality: requestedQuality,
                     episodeID: episodeID, preferDASH: options.preferDASH,
-                    allowAV1: options.allowAV1, allowHEVC: options.allowHEVC
+                    allowAV1: options.allowAV1, allowHEVC: options.allowHEVC,
+                    codecs: Preferences.codecOrder, losslessAudio: Preferences.losslessAudio
                 ).preferringMirror(Preferences.mirrorHost)
             },
             load: { [weak self, weak core] candidate, attempt, phase in

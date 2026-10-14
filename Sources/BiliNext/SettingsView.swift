@@ -6,6 +6,19 @@ enum Preferences {
     static let autoExpandIntro = "intro.autoExpand"
     static let hoverPrefetch = "playback.hoverPrefetch"
     static let cdnMirror = "playback.cdnMirror"
+    static let preferredCodec = "playback.preferredCodec"
+    static let prefersLossless = "playback.losslessAudio"
+
+    static var codecOrder: [VideoCodec] {
+        VideoCodec.order(
+            preferring: VideoCodec(
+                rawValue: UserDefaults.standard.string(forKey: preferredCodec) ?? "") ?? .av1)
+    }
+
+    /// On unless turned off: Hi-Res and Dolby tracks come only with the account's entitlement.
+    static var losslessAudio: Bool {
+        UserDefaults.standard.object(forKey: prefersLossless) as? Bool ?? true
+    }
 
     /// The mirror streams start on, or nil to keep Bilibili's assignment (official first).
     static var mirrorHost: String? {
@@ -18,6 +31,8 @@ struct SettingsView: View {
     @AppStorage(Preferences.autoExpandIntro) private var autoExpandIntro = false
     @AppStorage(Preferences.hoverPrefetch) private var hoverPrefetch = false
     @AppStorage(Preferences.cdnMirror) private var cdnMirror = "ali"
+    @AppStorage(Preferences.preferredCodec) private var preferredCodec = "av1"
+    @AppStorage(Preferences.prefersLossless) private var losslessAudio = true
 
     var body: some View {
         TabView {
@@ -37,6 +52,18 @@ struct SettingsView: View {
                 } label: {
                     Text("CDN 镜像")
                     Text("视频从固定的官方镜像开始加载，该镜像不可用时自动换回 B 站分配的地址。固定镜像的域名常驻缓存，开播不必等待 DNS。")
+                }
+                Picker(selection: $preferredCodec) {
+                    Text("AV1").tag("av1")
+                    Text("HEVC").tag("hevc")
+                    Text("AVC（H.264）").tag("avc")
+                } label: {
+                    Text("优先视频编码")
+                    Text("同一清晰度有多种编码时优先选用。AV1 体积最小；AVC 兼容性最好。解码失败时会自动换用其他编码。")
+                }
+                Toggle(isOn: $losslessAudio) {
+                    Text("优先无损与杜比音轨")
+                    Text("视频提供 Hi-Res 无损或杜比全景声时使用（通常需要大会员）。")
                 }
                 Toggle(isOn: $hoverPrefetch) {
                     Text("悬停时预取播放地址")

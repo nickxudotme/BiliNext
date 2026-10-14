@@ -9,6 +9,15 @@ final class PlaybackPrefetch {
         let bvid: String
         let cid: Int64
         let quality: Int
+        var codecs = VideoCodec.defaultOrder
+        var losslessAudio = false
+
+        /// A request shaped by the current playback settings.
+        static func current(bvid: String, cid: Int64, quality: Int = 80) -> Key {
+            Key(
+                bvid: bvid, cid: cid, quality: quality, codecs: Preferences.codecOrder,
+                losslessAudio: Preferences.losslessAudio)
+        }
     }
 
     private struct Entry {
@@ -28,8 +37,11 @@ final class PlaybackPrefetch {
 
     init(api: BilibiliAPI) {
         fetch = { key in
-            try await api.playback(bvid: key.bvid, cid: key.cid, quality: key.quality)
-                .preferringMirror(Preferences.mirrorHost)
+            try await api.playback(
+                bvid: key.bvid, cid: key.cid, quality: key.quality, codecs: key.codecs,
+                losslessAudio: key.losslessAudio
+            )
+            .preferringMirror(Preferences.mirrorHost)
         }
     }
 

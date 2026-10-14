@@ -26,7 +26,7 @@
 | 2 | ~~看点章节~~（已完成 `35c3408`） | 三者 | S | |
 | 3 | 进度条缩略图：`/x/player/videoshot` 雪碧图，拖动或悬停预览画面 | bilibili-api | S–M | 公开接口 |
 | 4 | Cookie 刷新：`cookie/info` → correspond → `cookie/refresh` → `confirm/refresh`，并保存扫码返回的 `refresh_token` | bilibili-api | M | Release 钥匙串登录可能静默过期 |
-| 5 | 编码偏好与音质：用户排序 AV1／HEVC／AVC，Hi-Res（flac）、杜比音轨，响度均衡 `voice_balance` | PiliPlus、bilibili-api | S | 当前写死 AV1 > HEVC > AVC |
+| 5 | ~~编码偏好与无损／杜比音轨~~（已完成）；响度均衡 `voice_balance` 未做 | PiliPlus、bilibili-api | S | |
 | 6 | ~~快捷键补全~~（已完成，设置中列出） | 官方、PiliPlus | S | |
 | 7 | 设置扩充：默认清晰度、倍速列表、长按倍速、快进步长、字幕偏好（跳过 AI 字幕）、暂停记录历史、自动连播 | PiliPlus | M | 设置窗口已有框架 |
 | 8 | 弹幕：合并重复、按权重屏蔽等级、正则／UID 屏蔽并与账号规则同步 | PiliPlus | M | |

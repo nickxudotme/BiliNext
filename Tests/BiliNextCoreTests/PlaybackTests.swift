@@ -87,3 +87,31 @@ private func streamRow(_ id: Int, codec: String = "avc1.640028", camel: Bool = t
             preferredQuality: 120, allowAV1: false)
     }
 }
+
+@Test func codecPreferenceAndLosslessAudioChooseStreams() throws {
+    let data: [String: Any] = [
+        "accept_quality": [80], "accept_description": ["1080P"],
+        "dash": [
+            "video": [
+                streamRow(80, codec: "avc1.640028"), streamRow(80, codec: "hev1.1.6.L120.90"),
+                streamRow(80, codec: "av01.0.08M.08"),
+            ],
+            "audio": [streamRow(30280, codec: "mp4a.40.2")],
+            "flac": ["audio": streamRow(30251, codec: "fLaC")],
+            "dolby": ["audio": [streamRow(30250, codec: "ec-3")]],
+        ],
+    ]
+    let defaults = try PlaybackParser.parse(data, preferredQuality: 80, allowAV1: true)
+    #expect(defaults.videoStream?.codec.hasPrefix("av01") == true)
+    #expect(defaults.audioStream?.codec == "mp4a.40.2")
+    let avc = try PlaybackParser.parse(
+        data, preferredQuality: 80, allowAV1: true, codecs: VideoCodec.order(preferring: .avc),
+        losslessAudio: true)
+    #expect(avc.videoStream?.codec.hasPrefix("avc1") == true)
+    #expect(avc.audioStream?.codec == "fLaC")
+    // A recovery that disables AV1 still honours the rest of the order.
+    let hevc = try PlaybackParser.parse(
+        data, preferredQuality: 80, allowAV1: false, codecs: VideoCodec.order(preferring: .av1))
+    #expect(hevc.videoStream?.codec.hasPrefix("hev1") == true)
+    #expect(VideoCodec.order(preferring: .hevc) == [.hevc, .av1, .avc])
+}

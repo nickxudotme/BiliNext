@@ -123,7 +123,7 @@ struct VideoCardView: View {
                 prefetchTask = Task {
                     try? await Task.sleep(for: .milliseconds(150))
                     guard !Task.isCancelled else { return }
-                    model.playbackPrefetch.speculate(.init(bvid: video.bvid, cid: cid, quality: 80))
+                    model.playbackPrefetch.speculate(.current(bvid: video.bvid, cid: cid))
                 }
             }
             if inside && isActive && previewEnabled && !scrolling {
