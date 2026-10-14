@@ -17,11 +17,15 @@ public struct Video: Identifiable, Codable, Equatable, Sendable {
     public let viewCount: String?
     public let danmakuCount: String?
     public let pubdate: Date?
+    /// The first part's cid when a list provides it, so playback can start without the
+    /// detail request.
+    public let cid: Int64?
     public init(
         bvid: String, title: String, author: String = "", cover: URL? = nil, avatar: URL? = nil,
         aid: Int64? = nil, duration: Double? = nil, progress: Double? = nil, viewedAt: Date? = nil,
         historyCID: Int64? = nil, ownerID: Int64? = nil, episodeID: Int64? = nil,
-        viewCount: String? = nil, danmakuCount: String? = nil, pubdate: Date? = nil
+        viewCount: String? = nil, danmakuCount: String? = nil, pubdate: Date? = nil,
+        cid: Int64? = nil
     ) {
         self.bvid = bvid
         self.title = title
@@ -38,7 +42,11 @@ public struct Video: Identifiable, Codable, Equatable, Sendable {
         self.viewCount = viewCount
         self.danmakuCount = danmakuCount
         self.pubdate = pubdate
+        self.cid = cid
     }
+    /// The part playback will most likely open: a known history part, else the listed first.
+    public var playableCID: Int64? { historyCID ?? cid }
+
     public static func extractBVID(_ text: String) -> String? {
         guard let range = text.range(of: #"BV[0-9A-Za-z]{10}"#, options: .regularExpression) else {
             return nil

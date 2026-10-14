@@ -95,6 +95,13 @@ extension AppModel {
         subtitleError = nil
         videoLoading = true
         subtitleLoading = false
+        // With the part already known, playurl runs alongside the detail request.
+        if let tab = tabs.first(where: { $0.id == id }), tab.video.episodeID == nil,
+            let cid = tab.cid ?? tab.video.playableCID
+        {
+            playbackPrefetch.warm(.init(bvid: id, cid: cid, quality: 80))
+            startup?.mark("playurl early", "cid \(cid)")
+        }
         videoTask = Task {
             do {
                 let source = tabs.first(where: { $0.id == id })?.video
@@ -204,10 +211,20 @@ extension AppModel {
             }
         }
         do {
-            let source = try await api.playback(
-                bvid: id, cid: cid, quality: 80, episodeID: detail?.video.episodeID)
+            let key = PlaybackPrefetch.Key(bvid: id, cid: cid, quality: 80)
+            let reused = playbackPrefetch.age(of: key).map {
+                String(format: "reused %.2fs old", $0)
+            }
+            let source =
+                if let episodeID = detail?.video.episodeID {
+                    try await api.playback(bvid: id, cid: cid, quality: 80, episodeID: episodeID)
+                } else {
+                    try await playbackPrefetch.playback(for: key)
+                }
             startup?.mark(
-                "playurl", "\(source.quality) \(source.videoStream?.codec ?? "mp4")")
+                "playurl",
+                "\(source.quality) \(source.videoStream?.codec ?? "mp4") \(reused ?? "fresh")"
+                    + " \(source.videoStream?.urls.first?.host ?? "")")
             guard !Task.isCancelled, generation == videoGeneration,
                 qualityRequest == qualityGeneration, !officialCore
             else { return }

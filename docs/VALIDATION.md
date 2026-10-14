@@ -2,6 +2,12 @@
 
 更新日期：2026-10-14。每一项仅表示列出的验证范围；历史专题中的验收不能自动算作本轮复测。
 
+## 视频图层内存破坏修复与开播并行（2026-10-15）
+
+- 修复：`MPVVideoLayer` 的 `copyCGLContext`／`copyCGLPixelFormat` 返回了未额外 retain 的对象，而 Core Animation 会在用完后释放它们；图层显示在窗口中时，正在使用的 OpenGL 上下文因此被提前释放，堆被破坏。现象是 `BILINEXT_MPV_TEST=1` 下 `pausedVideoRedrawsAcrossResizes` 与 `playbackTabSwitchRetainsLoadedMedia` 并行时稳定以 SIGTRAP（libmalloc「memory corruption of free block」）退出。对照实验：不建图层、图层不在窗口中、2026-10-14 前的 NSOpenGLView 版本均不崩；改为返回 retain 后连续 3 次通过，原四项组合测试两轮通过。真实 App 中视频图层始终在窗口内，可能表现为随机崩溃。
+- 开播：已知分 P 时 playurl 与详情并行；打开复用预取请求；媒体域名提前解析；mpv 预读起步 20 秒、随播放时长增至 40／70 秒；设置新增「悬停时预取播放地址」（默认关）。新增离线检查覆盖预取的合并、用后即弃、并发上限与清空，卡片 cid 选择，以及预读分段；3 倍速前向缓冲测试通过（缓冲 0 次）。
+- 未验证：真实 App 中并行与悬停预取对开播时间的实际收益（启动日志的 playurl 阶段会标注 `reused`／`fresh`，可据此对比）、预取请求量对风控的影响。
+
 ## 开播提速与启动埋点（2026-10-14）
 
 - 用户反馈点开视频后要等很久才播放。新增 `PlaybackStartup` 埋点后，用户在真实 App 中打开 3 个视频：总耗时 4.70／1.84／5.43 秒，其中详情与 playurl 合计不到 0.7 秒，mpv 从加载到可播放 0.75–4.05 秒。mpv 详细日志显示 3.07 秒耗在首个 PCDN 镜像（`xy….mcdn.bilivideo.cn`）的 DNS 解析；陌生的该类域名解析实测 30 秒后失败。

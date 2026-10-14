@@ -16,6 +16,8 @@ struct VideoCardView: View {
     @State private var previewing = false
     @Environment(\.cardGridScrolling) private var scrolling
     @AppStorage("cards.hoverPreview") private var previewEnabled = true
+    @AppStorage(Preferences.hoverPrefetch) private var prefetchEnabled = false
+    @State private var prefetchTask: Task<Void, Never>?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var inWatchLater: Bool { model.menu == BrowseDestination.watchLater }
 
@@ -113,6 +115,17 @@ struct VideoCardView: View {
         }
         .onHover { inside in
             hovered = inside
+            prefetchTask?.cancel()
+            // A short dwell keeps the pointer passing over a grid from requesting every card.
+            if inside, prefetchEnabled, isActive, video.episodeID == nil,
+                video.bvid.hasPrefix("BV"), let cid = video.playableCID
+            {
+                prefetchTask = Task {
+                    try? await Task.sleep(for: .milliseconds(150))
+                    guard !Task.isCancelled else { return }
+                    model.playbackPrefetch.speculate(.init(bvid: video.bvid, cid: cid, quality: 80))
+                }
+            }
             if inside && isActive && previewEnabled && !scrolling {
                 preview.request(video)
             } else {

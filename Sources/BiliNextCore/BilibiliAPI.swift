@@ -295,7 +295,8 @@ public actor BilibiliAPI {
             ownerID: (owner["mid"] as? NSNumber)?.int64Value ?? (d["mid"] as? NSNumber)?.int64Value,
             viewCount: count(stat["view"] ?? stat["play"] ?? d["play"] ?? d["view"]),
             danmakuCount: count(stat["danmaku"] ?? d["video_review"] ?? d["danmaku"]),
-            pubdate: DisplayFormat.date(fromUnix: d["pubdate"] ?? d["ctime"]))
+            pubdate: DisplayFormat.date(fromUnix: d["pubdate"] ?? d["ctime"]),
+            cid: (d["cid"] as? NSNumber)?.int64Value ?? (d["first_cid"] as? NSNumber)?.int64Value)
     }
     public func popular(page: Int = 1) async throws -> [Video] {
         let d = try await request(

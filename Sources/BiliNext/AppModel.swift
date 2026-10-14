@@ -90,7 +90,15 @@ final class AppModel: ObservableObject {
     /// Window shrinks to a floating corner player (小窗) showing only the current video.
     @Published var miniPlayer = false
     var stateBeforeMiniPlayer: (sidebarPinned: Bool, windowPinned: Bool)?
-    @Published var profile: UserProfile?
+    @Published var profile: UserProfile? {
+        // Prefetched URLs carry the qualities of the account that requested them. Only the
+        // workspace clears the shared cache; pages receive its profile when they connect.
+        didSet {
+            if managesPlaybackTabs && oldValue?.id != profile?.id { playbackPrefetch.removeAll() }
+        }
+    }
+    /// Shared by the workspace and every page it owns.
+    lazy var playbackPrefetch = PlaybackPrefetch(api: api)
     var accountGeneration = UUID()
     @Published var query = ""
     @Published var homeSection = "推荐"

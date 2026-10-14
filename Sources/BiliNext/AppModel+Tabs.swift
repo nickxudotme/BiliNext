@@ -232,6 +232,7 @@ extension AppModel {
 
     private func connectPage(_ instance: AppModel, key: String) {
         instance.tabOwner = self
+        instance.playbackPrefetch = playbackPrefetch
         instance.profile = profile
         var subscriptions = Set<AnyCancellable>()
         instance.$loginPresented.dropFirst().sink { [weak self] value in
