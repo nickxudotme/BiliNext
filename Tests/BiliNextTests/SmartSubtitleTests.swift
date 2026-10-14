@@ -148,7 +148,6 @@ func rawMPVFramesDriveAutomaticSubtitleHidingAndRecovery() async throws {
         backing: .buffered, defer: false)
     window.contentView = surface
     window.orderFront(nil)
-    surface.prepareOpenGL()
     defer {
         core.stop()
         surface.releaseRenderer()

@@ -162,14 +162,14 @@ struct ShellView: View {
             }
             .overlay(alignment: .bottom) {
                 if let toast = model.toast {
+                    // Over a video, stay above the floating control bar.
+                    let overVideo = model.selected != nil && !model.miniPlayer
                     Text(toast).font(GlassTheme.labelFont)
                         .padding(.horizontal, 18).padding(.vertical, 10)
-                        .chromeSurface(in: Capsule()).padding(28)
+                        .chromeSurface(in: Capsule())
+                        .padding(.horizontal, 28).padding(.bottom, overVideo ? 108 : 28)
+                        .allowsHitTesting(false)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .task(id: toast) {
-                            try? await Task.sleep(for: .seconds(2))
-                            if !Task.isCancelled { model.toast = nil }
-                        }
                 }
             }
             .animation(Motion.standard(reduceMotion), value: model.toast)

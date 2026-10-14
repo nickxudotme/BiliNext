@@ -111,7 +111,6 @@ private struct SidebarTabRow: View {
                 if !hovered && playing {
                     Image(systemName: "waveform")
                         .font(GlassTheme.smallIconFont).foregroundStyle(GlassTheme.accent)
-                        .symbolEffect(.variableColor.iterative, isActive: !reduceMotion)
                         .frame(width: 18).accessibilityLabel("正在播放")
                 } else if !hovered && unseen {
                     Circle().fill(GlassTheme.accent).frame(width: 7, height: 7)

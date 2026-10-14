@@ -20,7 +20,7 @@ final class MPVPlayer {
     private var waitingForStart = false
     private var reported = false
     private var wasCachePaused = false
-    var captureVideoFrame: (() -> SubtitleFrame?)?
+    var captureVideoFrame: (() async -> SubtitleFrame?)?
     var onUpdate: ((Double, Double, Bool, Bool) -> Void)?
     var time: Double { number("time-pos") }
     var duration: Double { number("duration") }
@@ -132,7 +132,7 @@ final class MPVPlayer {
     func play() { set("pause", "no") }
     func subtitleFrame() async -> SubtitleFrame? {
         guard loaded else { return nil }
-        return captureVideoFrame?()
+        return await captureVideoFrame?()
     }
 
     func stop() {
@@ -241,89 +241,37 @@ struct MPVSurface: NSViewRepresentable {
     func updateNSView(_ view: Surface, context: Context) {}
     static func dismantleNSView(_ view: Surface, coordinator: ()) { view.releaseRenderer() }
 
-    final class Surface: NSOpenGLView {
+    /// Hosts the video layer; frames are drawn on the layer's render queue, not here.
+    final class Surface: NSView {
         let player: MPVPlayer
-        var renderer: OpaquePointer?
+        let video: MPVVideoLayer
         init?(player: MPVPlayer) {
+            guard let video = MPVVideoLayer(handle: player.handle) else { return nil }
             self.player = player
-            let attributes: [NSOpenGLPixelFormatAttribute] = [
-                UInt32(NSOpenGLPFAOpenGLProfile), UInt32(NSOpenGLProfileVersion3_2Core),
-                UInt32(NSOpenGLPFAAccelerated), UInt32(NSOpenGLPFADoubleBuffer), 0,
-            ]
-            super.init(frame: .zero, pixelFormat: NSOpenGLPixelFormat(attributes: attributes)!)
-            wantsBestResolutionOpenGLSurface = true
+            self.video = video
+            super.init(frame: .zero)
+            wantsLayer = true
+            layerContentsRedrawPolicy = .duringViewResize
+            player.captureVideoFrame = { [weak player, video] in
+                guard let player else { return nil }
+                return await video.subtitleFrame(
+                    sourceWidth: player.number("video-params/w"),
+                    sourceHeight: player.number("video-params/h"))
+            }
         }
         required init?(coder: NSCoder) { fatalError() }
-        override func prepareOpenGL() {
-            super.prepareOpenGL()
-            guard renderer == nil else { return }
-            openGLContext?.makeCurrentContext()
-            var initialization = mpv_opengl_init_params(
-                get_proc_address: { _, name in
-                    guard let name else { return nil }
-                    return dlsym(UnsafeMutableRawPointer(bitPattern: -2), name)
-                }, get_proc_address_ctx: nil)
-            "opengl".withCString { api in
-                withUnsafeMutablePointer(to: &initialization) { gl in
-                    var parameters = [
-                        mpv_render_param(
-                            type: MPV_RENDER_PARAM_API_TYPE,
-                            data: UnsafeMutableRawPointer(mutating: api)),
-                        mpv_render_param(type: MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, data: gl),
-                        mpv_render_param(type: MPV_RENDER_PARAM_INVALID, data: nil),
-                    ]
-                    let result = mpv_render_context_create(&renderer, player.handle, &parameters)
-                    if result < 0 { NSLog("mpv renderer: %s", mpv_error_string(result)) }
-                }
-            }
-            if let renderer {
-                player.captureVideoFrame = { [weak self] in self?.captureSubtitleFrame() }
-                mpv_render_context_set_update_callback(
-                    renderer,
-                    { context in
-                        guard let context else { return }
-                        let view = Unmanaged<Surface>.fromOpaque(context).takeUnretainedValue()
-                        DispatchQueue.main.async { [weak view] in view?.needsDisplay = true }
-                    }, Unmanaged.passUnretained(self).toOpaque())
-            }
-        }
-        override func draw(_ dirtyRect: NSRect) {
-            openGLContext?.makeCurrentContext()
-            guard let renderer else { return }
-            let size = convertToBacking(bounds).size
-            var fbo = mpv_opengl_fbo(
-                fbo: 0, w: Int32(size.width), h: Int32(size.height), internal_format: 0)
-            var flip: Int32 = 1
-            var block: Int32 = 0
-            withUnsafeMutablePointer(to: &fbo) { buffer in
-                withUnsafeMutablePointer(to: &flip) { orientation in
-                    var parameters = [
-                        mpv_render_param(type: MPV_RENDER_PARAM_OPENGL_FBO, data: buffer),
-                        mpv_render_param(type: MPV_RENDER_PARAM_FLIP_Y, data: orientation),
-                        mpv_render_param(type: MPV_RENDER_PARAM_INVALID, data: nil),
-                    ]
-                    withUnsafeMutablePointer(to: &block) { wait in
-                        parameters.insert(
-                            mpv_render_param(
-                                type: MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME, data: wait), at: 2)
-                        mpv_render_context_render(renderer, &parameters)
-                    }
-                }
-            }
-            openGLContext?.flushBuffer()
-        }
-        override func reshape() {
-            super.reshape()
-            needsDisplay = true
+        override func makeBackingLayer() -> CALayer { video }
+        override var isOpaque: Bool { true }
+        override func viewDidChangeBackingProperties() {
+            super.viewDidChangeBackingProperties()
+            video.contentsScale = window?.backingScaleFactor ?? 2
+            video.setNeedsDisplay()
         }
         func releaseRenderer() {
-            guard let renderer else { return }
             player.captureVideoFrame = nil
-            openGLContext?.makeCurrentContext()
-            mpv_render_context_set_update_callback(renderer, nil, nil)
-            mpv_render_context_free(renderer)
-            self.renderer = nil
+            video.releaseRenderer()
         }
-        deinit { releaseRenderer() }
+        // The layer can outlive this view; its render context must not outlive the player.
+        deinit { video.releaseRenderer() }
     }
 }
