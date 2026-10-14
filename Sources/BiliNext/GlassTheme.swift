@@ -10,7 +10,7 @@ enum GlassTheme {
     static let rowRadius: CGFloat = 8
     static let panelRadius: CGFloat = 16
     /// Gap between the window edge and the content card, and the card's concentric corner.
-    static let cardGap: CGFloat = 8
+    static let cardGap: CGFloat = 10
     static let cardRadius: CGFloat = 10
 
     static let pageTitleFont = Font.system(size: 26, weight: .bold)

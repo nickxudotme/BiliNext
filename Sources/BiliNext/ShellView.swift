@@ -72,9 +72,10 @@ struct ShellView: View {
             .padding([.top, .bottom, .trailing], cardGap)
             .background { WindowBackdrop().ignoresSafeArea() }
             .background(
-                WindowChrome(pinned: model.windowPinned, miniPlayer: model.miniPlayer) {
-                    fullScreen = $0
-                }
+                WindowChrome(
+                    pinned: model.windowPinned, miniPlayer: model.miniPlayer,
+                    showsButtons: pinned || revealed
+                ) { fullScreen = $0 }
             )
             .onChange(of: fullScreen) { _, entered in
                 if entered && model.selected != nil {
@@ -184,28 +185,36 @@ struct ShellView: View {
 
     private var sidebar: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 2) {
+            // Arc's header: window buttons, the sidebar toggle right after them, then back,
+            // forward and reload at the trailing edge, all centred on the window buttons.
+            HStack(spacing: 6) {
                 if !fullScreen {
-                    // Room for the system window buttons, which stay in the titlebar.
-                    Color.clear.frame(width: 64, height: 24)
+                    // The row's own spacing completes the gap after the window buttons.
+                    Color.clear.frame(width: WindowButtons.trailingEdge - headerOrigin.x)
                 }
-                headerButton("sidebar.left", label: pinned ? "隐藏侧栏" : "固定侧栏") {
+                headerButton("sidebar.left", size: 17, label: pinned ? "隐藏侧栏" : "固定侧栏") {
                     revealTask?.cancel()
                     hideTask?.cancel()
                     pinned.toggle()
                     revealed = false
                     pointerZone = -1
                 }
+                .foregroundStyle(.primary.opacity(0.75))
                 Spacer(minLength: 0)
-                headerButton("chevron.left", label: "后退") { model.moveHistory(-1) }
+                headerButton("arrow.left", label: "后退") { model.moveHistory(-1) }
                     .disabled(!model.canBack)
-                headerButton("chevron.right", label: "前进") { model.moveHistory(1) }
+                headerButton("arrow.right", label: "前进") { model.moveHistory(1) }
                     .disabled(!model.canForward)
                 headerButton("arrow.clockwise", label: "刷新") { model.refresh() }
+                    .foregroundStyle(.primary.opacity(0.75))
             }
-            // Centre the row on the system window buttons (16pt from the window top).
-            .frame(height: fullScreen || pinned ? 32 : 24)
-            .padding(.top, fullScreen ? 8 : 0).padding(.horizontal, 8).padding(.bottom, 10)
+            .foregroundStyle(.primary.opacity(0.6))
+            .frame(height: Self.headerButtonSize)
+            .padding(
+                .top,
+                fullScreen ? 10 : WindowButtons.centerY - headerOrigin.y - Self.headerButtonSize / 2
+            )
+            .padding(.leading, fullScreen ? 10 : 0).padding(.trailing, 7).padding(.bottom, 12)
             ScrollView {
                 VStack(spacing: 2) {
                     ForEach(BrowseDestination.allCases, id: \.self) { item in
@@ -312,12 +321,18 @@ struct ShellView: View {
         .font(GlassTheme.bodyFont)
     }
 
+    private static let headerButtonSize: CGFloat = 28
+
+    /// Where the sidebar's top-left corner sits in the window: flush when pinned, inset when it
+    /// floats, so the header stays aligned with the window buttons either way.
+    private var headerOrigin: CGPoint { pinned ? .zero : CGPoint(x: 4, y: 4) }
+
     private func headerButton(
-        _ symbol: String, label: String, action: @escaping () -> Void
+        _ symbol: String, size: CGFloat = 16, label: String, action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Image(systemName: symbol).font(GlassTheme.iconFont.weight(.medium))
-                .foregroundStyle(.secondary).iconControlFrame(size: 30)
+            Image(systemName: symbol).font(.system(size: size, weight: .regular))
+                .iconControlFrame(size: Self.headerButtonSize)
         }
         .buttonStyle(InteractionButtonStyle())
         .help(label).accessibilityLabel(label)

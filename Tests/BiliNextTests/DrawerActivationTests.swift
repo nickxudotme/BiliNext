@@ -15,9 +15,11 @@ import Testing
 }
 
 @Test func hiddenDrawerAlsoRevealsFromTheWindowButtonCorner() {
-    #expect(DrawerActivation.zone(x: 40, top: 12, width: 220, pinned: false) == 1)
-    #expect(DrawerActivation.zone(x: 96, top: 32, width: 220, pinned: false) == 1)
-    #expect(DrawerActivation.zone(x: 97, top: 12, width: 220, pinned: false) == 2)
-    #expect(DrawerActivation.zone(x: 40, top: 33, width: 220, pinned: false) == 2)
-    #expect(DrawerActivation.zone(x: 40, top: 12, width: 220, pinned: true) == 2)
+    let corner = DrawerActivation.cornerSize
+    #expect(DrawerActivation.zone(x: 40, top: 24, width: 220, pinned: false) == 1)
+    #expect(
+        DrawerActivation.zone(x: corner.width, top: corner.height, width: 220, pinned: false) == 1)
+    #expect(DrawerActivation.zone(x: corner.width + 1, top: 24, width: 220, pinned: false) == 2)
+    #expect(DrawerActivation.zone(x: 40, top: corner.height + 1, width: 220, pinned: false) == 2)
+    #expect(DrawerActivation.zone(x: 40, top: 24, width: 220, pinned: true) == 2)
 }
