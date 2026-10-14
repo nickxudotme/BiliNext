@@ -449,13 +449,37 @@ public actor BilibiliAPI {
         }
     }
     public func subtitleTracks(bvid: String, cid: Int64) async throws -> [SubtitleTrack] {
+        try await playerInfo(bvid: bvid, cid: cid).subtitles
+    }
+
+    /// The player page's per-part data: subtitle tracks and the uploader's 看点 chapters.
+    public func playerInfo(bvid: String, cid: Int64) async throws -> PlayerInfo {
         let d = try await request(
             "/x/player/wbi/v2", params: ["bvid": bvid, "cid": "\(cid)"], signed: true)
+        return Self.parsePlayerInfo(d)
+    }
+
+    static func parsePlayerInfo(_ d: [String: Any]) -> PlayerInfo {
         let subtitle = d["subtitle"] as? [String: Any] ?? [:]
-        return (subtitle["subtitles"] as? [[String: Any]] ?? []).compactMap {
-            guard let url = secureURL($0["subtitle_url"] as? String ?? "") else { return nil }
-            return SubtitleTrack(language: $0["lan_doc"] as? String ?? "字幕", url: url)
+        let tracks = (subtitle["subtitles"] as? [[String: Any]] ?? []).compactMap {
+            item -> SubtitleTrack? in
+            guard let url = secureURL(item["subtitle_url"] as? String ?? "") else { return nil }
+            return SubtitleTrack(language: item["lan_doc"] as? String ?? "字幕", url: url)
         }
+        // type 2 marks the uploader's chapters; other types are highlight markers.
+        let points = (d["view_points"] as? [[String: Any]] ?? []).compactMap {
+            item -> ViewPoint? in
+            guard (item["type"] as? NSNumber)?.intValue ?? 2 == 2,
+                let start = (item["from"] as? NSNumber)?.doubleValue,
+                let end = (item["to"] as? NSNumber)?.doubleValue, start >= 0, end > start
+            else { return nil }
+            let title = (item["content"] as? String ?? "").trimmingCharacters(in: .whitespaces)
+            return ViewPoint(
+                start: start, end: end, title: title.isEmpty ? "章节" : title,
+                image: secureURL(item["imgUrl"] as? String ?? ""))
+        }
+        .sorted { $0.start < $1.start }
+        return PlayerInfo(subtitles: tracks, viewPoints: points)
     }
     public func subtitles(_ track: SubtitleTrack) async throws -> [Cue] {
         guard let host = track.url.host,

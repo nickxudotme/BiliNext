@@ -158,6 +158,8 @@ final class AppModel: ObservableObject {
     var playbackCodec = ""
     @Published var qualities: [PlaybackQuality] = []
     @Published var highEnergy: HighEnergyCurve?
+    /// The current part's 看点 chapters, empty when the uploader marked none.
+    @Published var viewPoints: [ViewPoint] = []
     @Published var relation = VideoRelation()
     var relationLoaded = false
     /// Which video `relation` describes, and the newest read or write that may set it.
@@ -294,6 +296,14 @@ final class AppModel: ObservableObject {
                 let first = tabs.first
             {
                 activate(first.id)
+                return
+            }
+            // Opens a video paused in a new tab, as above; it stays in the restored session.
+            if let bvid = ProcessInfo.processInfo.environment["BILINEXT_DEBUG_OPEN_VIDEO"] {
+                if !tabs.contains(where: { $0.id == bvid }) {
+                    tabs.append(SessionTab(video: Video(bvid: bvid, title: bvid)))
+                }
+                activate(bvid)
                 return
             }
             // Opens an uploader's space page, which plays nothing, for the same checks.

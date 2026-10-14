@@ -11,6 +11,8 @@ struct PlaybackScrubber: View {
     /// Normalised activity samples spread evenly across the video, or empty when unknown.
     var activity: [Double] = []
     var showsActivity = false
+    /// 看点 chapters: the track breaks between them and the bubble names the one under it.
+    var chapters: [ViewPoint] = []
     @Binding var scrubbing: Bool
     @Binding var scrubTime: Double
     let seek: (Double) -> Void
@@ -48,10 +50,14 @@ struct PlaybackScrubber: View {
                     .padding(.bottom, 8)
                 if engaged, duration > 0 {
                     let x = scrubbing ? played : (hoverX ?? played)
-                    bubble(seconds: fraction(at: x, width: width) * duration)
+                    let seconds = fraction(at: x, width: width) * duration
+                    let chapter = ViewPoint.containing(seconds, in: chapters)?.title
+                    bubble(seconds: seconds, chapter: chapter)
                         .position(
                             x: min(max(x, 28), width - 28),
-                            y: proxy.size.height - 34 - (showsActivity ? Self.activityHeight : 0)
+                            // A chapter title adds a line; grow upwards, clear of the track.
+                            y: proxy.size.height - 34 - (chapter == nil ? 0 : 8)
+                                - (showsActivity ? Self.activityHeight : 0)
                         )
                         .allowsHitTesting(false)
                         .transition(.opacity)
@@ -103,6 +109,12 @@ struct PlaybackScrubber: View {
             .overlay(alignment: .leading) {
                 Capsule().fill(GlassTheme.accent).frame(width: max(height, played))
             }
+            .mask {
+                ChapterBreaks(
+                    starts: chapters.map { fraction($0.start) }.filter { $0 > 0.002 && $0 < 0.998 }
+                )
+                .fill(style: FillStyle(eoFill: true))
+            }
             // The knob is an overlay so its size never changes the track's height.
             .overlay(alignment: .leading) {
                 Circle().fill(.white)
@@ -113,12 +125,22 @@ struct PlaybackScrubber: View {
             }
     }
 
-    private func bubble(seconds: Double) -> some View {
-        Text(timestamp(seconds)).font(GlassTheme.captionFont.weight(.semibold)).monospacedDigit()
-            .foregroundStyle(.white)
-            .padding(.horizontal, 8).padding(.vertical, 4)
-            .background(.black.opacity(0.72), in: Capsule())
-            .overlay { Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.5) }
+    private func bubble(seconds: Double, chapter: String?) -> some View {
+        VStack(spacing: 1) {
+            if let chapter {
+                Text(chapter).font(GlassTheme.captionFont.weight(.medium)).lineLimit(1)
+                    .frame(maxWidth: 220).fixedSize()
+            }
+            Text(timestamp(seconds)).font(GlassTheme.captionFont.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(chapter == nil ? .white : .white.opacity(0.75))
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 9))
+        .overlay {
+            RoundedRectangle(cornerRadius: 9).strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
+        }
     }
 
     private func fraction(_ seconds: Double) -> CGFloat {
@@ -128,6 +150,20 @@ struct PlaybackScrubber: View {
 
     private func fraction(at x: CGFloat, width: CGFloat) -> Double {
         Double(min(1, max(0, x / width)))
+    }
+}
+
+/// The track's mask: the full width, less a 2pt gap at each chapter start.
+private struct ChapterBreaks: Shape {
+    let starts: [CGFloat]
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path(rect)
+        for start in starts {
+            path.addRect(
+                CGRect(x: rect.width * start - 1, y: rect.minY, width: 2, height: rect.height))
+        }
+        return path
     }
 }
 

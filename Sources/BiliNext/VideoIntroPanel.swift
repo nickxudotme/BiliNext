@@ -68,6 +68,10 @@ struct VideoIntroPanel: View {
             IntroDetails(detail: detail)
             VideoActionBar(model: model, video: video).padding(.top, 14)
             Divider().opacity(0.6).padding(.top, 10)
+            if !model.viewPoints.isEmpty {
+                ChapterList(model: model, clock: model.playbackClock, points: model.viewPoints)
+                    .padding(.top, 18)
+            }
             if let season = detail.extras.season {
                 SeasonList(model: model, season: season, current: video.bvid)
                     .padding(.top, 18)
@@ -333,6 +337,72 @@ struct FlowLayout: Layout {
 // MARK: - 合集 and 分P
 
 /// A native group heading: a quiet label, with an optional position on the right.
+/// 看点: the uploader's chapters with their frames; the playing one is lifted.
+private struct ChapterList: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var clock: PlaybackClock
+    let points: [ViewPoint]
+    @State private var expanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private static let collapsedCount = 5
+
+    var body: some View {
+        let current = ViewPoint.containing(clock.time, in: points)?.start
+        let shown = expanded ? points : Array(points.prefix(Self.collapsedCount))
+        VStack(alignment: .leading, spacing: 2) {
+            GroupHeader(title: "看点", detail: "\(points.count) 个章节")
+            ForEach(shown) { point in
+                let playing = point.start == current
+                Button {
+                    model.seek(point.start)
+                } label: {
+                    HStack(spacing: 10) {
+                        ThumbnailView(url: point.image, pixels: 160) {
+                            Color.primary.opacity(0.06)
+                        }
+                        .frame(width: 64, height: 36)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(point.title).font(
+                                GlassTheme.labelFont.weight(playing ? .semibold : .regular)
+                            )
+                            .lineLimit(1)
+                            Text(timestamp(point.start)).font(GlassTheme.captionFont)
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                        if playing {
+                            Image(systemName: "waveform").font(GlassTheme.smallIconFont)
+                                .foregroundStyle(GlassTheme.accent)
+                                .accessibilityLabel("正在播放")
+                        }
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background {
+                        if playing {
+                            RoundedRectangle(cornerRadius: GlassTheme.rowRadius)
+                                .fill(GlassTheme.raisedFill)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(InteractionButtonStyle(kind: .row))
+                .padding(.horizontal, -8)
+                .help("跳到 \(timestamp(point.start))")
+            }
+            if points.count > Self.collapsedCount {
+                Button(expanded ? "收起" : "展开全部 \(points.count) 个章节") {
+                    withAnimation(Motion.standard(reduceMotion)) { expanded.toggle() }
+                }
+                .buttonStyle(.plain).font(GlassTheme.metadataFont.weight(.medium))
+                .foregroundStyle(.secondary).padding(.top, 4)
+            }
+        }
+    }
+}
+
 private struct GroupHeader: View {
     let title: String
     let detail: String?

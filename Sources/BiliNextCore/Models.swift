@@ -279,3 +279,29 @@ public func timestamp(_ seconds: Double) -> String {
         ? String(format: "%d:%02d:%02d", value / 3600, value / 60 % 60, value % 60)
         : String(format: "%d:%02d", value / 60, value % 60)
 }
+
+/// One 看点 chapter the uploader marked on the timeline.
+public struct ViewPoint: Sendable, Equatable, Identifiable {
+    public var id: Double { start }
+    public let start: Double
+    public let end: Double
+    public let title: String
+    public let image: URL?
+
+    public init(start: Double, end: Double, title: String, image: URL? = nil) {
+        self.start = start
+        self.end = end
+        self.title = title
+        self.image = image
+    }
+
+    /// The chapter playing at `seconds`, if any.
+    public static func containing(_ seconds: Double, in points: [ViewPoint]) -> ViewPoint? {
+        points.last { $0.start <= seconds && seconds < $0.end }
+    }
+}
+
+public struct PlayerInfo: Sendable {
+    public let subtitles: [SubtitleTrack]
+    public let viewPoints: [ViewPoint]
+}

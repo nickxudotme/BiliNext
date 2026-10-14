@@ -193,11 +193,14 @@ extension AppModel {
             guard generation == videoGeneration else { return }
             highEnergy = curve
         }
+        viewPoints = []
         // Subtitles are independent: media failure must not discard a readable transcript.
         subtitleTask = Task {
             do {
-                let result = try await api.subtitleTracks(bvid: id, cid: cid)
+                let info = try await api.playerInfo(bvid: id, cid: cid)
                 guard !Task.isCancelled, generation == videoGeneration else { return }
+                viewPoints = info.viewPoints
+                let result = info.subtitles
                 tracks = result
                 if let first = result.first {
                     selectTrack(first.id)

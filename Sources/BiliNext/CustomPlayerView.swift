@@ -294,7 +294,8 @@ struct CustomPlayerView: View {
                     time: model.time, duration: model.duration,
                     buffered: model.mpv.map { $0.number("demuxer-cache-time") } ?? 0,
                     activity: highEnergyEnabled ? model.highEnergy?.samples ?? [] : [],
-                    showsActivity: hoveringBar, scrubbing: $scrubbing, scrubTime: $scrubTime,
+                    showsActivity: hoveringBar, chapters: model.viewPoints,
+                    scrubbing: $scrubbing, scrubTime: $scrubTime,
                     seek: { model.seek($0) }, interact: { revealControls() }
                 )
                 .disabled(model.duration <= 0)
