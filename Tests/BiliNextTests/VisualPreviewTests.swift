@@ -76,3 +76,35 @@ private func renderPreview(_ view: some View, name: String) throws {
         .environment(\.colorScheme, .dark)
     try renderPreview(view, name: "bilinext-video-actions")
 }
+
+@MainActor
+@Test func visualPreviewComments() throws {
+    guard ProcessInfo.processInfo.environment["BILINEXT_RENDER_PREVIEW"] == "1" else { return }
+    func parse(_ json: String) -> BiliNextCore.Comment {
+        BiliNextCore.Comment.parse(
+            (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [String: Any] ?? [:])!
+    }
+    let reply = parse(
+        #"{"rpid":2,"root":1,"parent":1,"like":3,"ctime":1760400000,"member":{"uname":"路过的鼠鼠"},"content":{"message":"回复 @小明 :03:21 这里真的笑死"}}"#
+    )
+    let root = parse(
+        #"""
+        {"rpid":1,"mid":7,"like":12843,"rcount":97,"ctime":1760390000,
+         "member":{"uname":"小约翰可汗","level_info":{"current_level":6},"vip":{"vipStatus":1,"nickname_color":"#FB7299"}},
+         "up_action":{"like":true},"reply_control":{"location":"IP属地：上海","max_line":6},
+         "content":{"message":"本期参考资料都放在简介里了，03:21 那段是当年的原始录音。另一期 BV1xx411c7mD 也可以对照着看，欢迎讨论枯木逢春。"},
+         "replies":[{"rpid":2,"root":1,"parent":1,"member":{"uname":"路过的鼠鼠"},
+           "content":{"message":"回复 @小明 :03:21 这里真的笑死"}},
+           {"rpid":3,"root":1,"parent":1,"member":{"uname":"阿B"},
+           "content":{"message":"UP 主更新好快"}}]}
+        """#)
+    var rootWithReplies = root
+    rootWithReplies.pinned = true
+    let view = VStack(spacing: 0) {
+        CommentRow(comment: rootWithReplies, uploaderID: 7) {}
+        Divider()
+        CommentRow(comment: reply, uploaderID: 7, compact: true, showsReplies: false)
+    }
+    .frame(width: 380).background(GlassTheme.canvas).environment(\.colorScheme, .dark)
+    try renderPreview(view, name: "bilinext-comments")
+}

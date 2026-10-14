@@ -10,6 +10,18 @@ private enum PlaybackPanel: String, CaseIterable, Identifiable {
     case transcript = "字幕"
     case danmaku = "弹幕"
     var id: String { rawValue }
+
+    /// Debug builds can open another panel first for screenshots, e.g. BILINEXT_DEBUG_PANEL=评论.
+    static var initial: PlaybackPanel {
+        #if DEBUG
+            if let name = ProcessInfo.processInfo.environment["BILINEXT_DEBUG_PANEL"],
+                let panel = PlaybackPanel(rawValue: name)
+            {
+                return panel
+            }
+        #endif
+        return .info
+    }
     var symbol: String {
         switch self {
         case .info: "info.circle"
@@ -27,7 +39,7 @@ struct PlaybackView: View {
     var miniPlayer = false
     var windowPinned = false
     var isActive = true
-    @State private var panel = PlaybackPanel.info
+    @State private var panel = PlaybackPanel.initial
     @State private var playerWidth: CGFloat = 0
     @State private var pointer: NSPoint?
     @State private var hoveringVideo = false
@@ -77,8 +89,7 @@ struct PlaybackView: View {
                     Group {
                         switch panel {
                         case .info: VideoInformationView(model: model)
-                        case .comments:
-                            VideoCommunityView(model: model, section: "评论").id(model.selected)
+                        case .comments: CommentsPanel(model: model).id(model.selected)
                         case .related:
                             VideoCommunityView(model: model, section: "相关推荐").id(model.selected)
                         case .transcript: TranscriptView(model: model)
