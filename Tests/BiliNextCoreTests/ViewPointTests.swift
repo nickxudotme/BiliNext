@@ -45,3 +45,14 @@ import Testing
     #expect(shots.frame(at: 10_000).map { [$0.sheet, $0.column, $0.row] } == [1, 9, 4])
     #expect(BilibiliAPI.parseVideoShots(["image": [String]()]) == nil)
 }
+
+@Test func videoShotTimesFallBackToThePvdataFile() throws {
+    let times = BilibiliAPI.decodeShotTimes(Data([0, 0, 0, 0, 0, 5, 0x05, 0x96]))
+    #expect(times == [0, 0, 5, 1430])
+    let data: [String: Any] = [
+        "image": ["//bimp.hdslb.com/a-0001.jpg"], "img_x_len": 10, "img_y_len": 10,
+        "index": [Int](),
+    ]
+    #expect(BilibiliAPI.parseVideoShots(data) == nil)
+    #expect(BilibiliAPI.parseVideoShots(data, times: times)?.times.count == 4)
+}

@@ -459,16 +459,31 @@ public actor BilibiliAPI {
     public func videoShots(bvid: String, cid: Int64) async throws -> VideoShots? {
         let d = try await request(
             "/x/player/videoshot", params: ["bvid": bvid, "cid": "\(cid)", "index": "1"])
-        return Self.parseVideoShots(d)
+        if let shots = Self.parseVideoShots(d) { return shots }
+        // The index list is sometimes returned empty; the same times are in the pvdata file.
+        guard let file = secureURL(d["pvdata"] as? String ?? ""),
+            let (data, response) = try? await session.data(from: file),
+            (response as? HTTPURLResponse)?.statusCode == 200
+        else { return nil }
+        return Self.parseVideoShots(d, times: Self.decodeShotTimes(data))
     }
 
-    static func parseVideoShots(_ d: [String: Any]) -> VideoShots? {
+    static func parseVideoShots(_ d: [String: Any], times: [Double]? = nil) -> VideoShots? {
         let sheets = (d["image"] as? [String] ?? []).compactMap(secureURL)
         let columns = (d["img_x_len"] as? NSNumber)?.intValue ?? 0
         let rows = (d["img_y_len"] as? NSNumber)?.intValue ?? 0
-        let times = (d["index"] as? [NSNumber] ?? []).map(\.doubleValue)
+        let times = times ?? (d["index"] as? [NSNumber] ?? []).map(\.doubleValue)
         guard !sheets.isEmpty, columns > 0, rows > 0, !times.isEmpty else { return nil }
         return VideoShots(sheets: sheets, columns: columns, rows: rows, times: times)
+    }
+
+    /// pvdata: frame times in seconds as big-endian 16-bit integers.
+    static func decodeShotTimes(_ data: Data) -> [Double] {
+        stride(from: 0, to: data.count - 1, by: 2).map { offset in
+            Double(
+                UInt16(data[data.startIndex + offset]) << 8
+                    | UInt16(data[data.startIndex + offset + 1]))
+        }
     }
 
     /// The player page's per-part data: subtitle tracks and the uploader's 看点 chapters.

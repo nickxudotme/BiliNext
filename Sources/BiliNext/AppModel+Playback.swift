@@ -197,7 +197,8 @@ extension AppModel {
         Task {
             let shots = try? await api.videoShots(bvid: id, cid: cid)
             guard generation == videoGeneration else { return }
-            videoShots = shots ?? nil
+            videoShots = shots
+            startup?.mark("videoshot", shots.map { "\($0.times.count) frames" } ?? "none")
         }
         Task {
             // Optional decoration: a missing or failed curve leaves the plain progress bar.
