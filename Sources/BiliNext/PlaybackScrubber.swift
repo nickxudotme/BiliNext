@@ -13,6 +13,8 @@ struct PlaybackScrubber: View {
     var showsActivity = false
     /// 看点 chapters: the track breaks between them and the bubble names the one under it.
     var chapters: [ViewPoint] = []
+    /// Preview frames shown in the bubble while hovering or dragging.
+    var shots: VideoShots?
     @Binding var scrubbing: Bool
     @Binding var scrubTime: Double
     let seek: (Double) -> Void
@@ -57,6 +59,7 @@ struct PlaybackScrubber: View {
                             x: min(max(x, 28), width - 28),
                             // A chapter title adds a line; grow upwards, clear of the track.
                             y: proxy.size.height - 34 - (chapter == nil ? 0 : 8)
+                                - (shots == nil ? 0 : 48)
                                 - (showsActivity ? Self.activityHeight : 0)
                         )
                         .allowsHitTesting(false)
@@ -127,6 +130,10 @@ struct PlaybackScrubber: View {
 
     private func bubble(seconds: Double, chapter: String?) -> some View {
         VStack(spacing: 1) {
+            if let shots {
+                VideoShotPreview(shots: shots, seconds: seconds).padding(.top, 2).padding(
+                    .bottom, 3)
+            }
             if let chapter {
                 Text(chapter).font(GlassTheme.captionFont.weight(.medium)).lineLimit(1)
                     .frame(maxWidth: 220).fixedSize()

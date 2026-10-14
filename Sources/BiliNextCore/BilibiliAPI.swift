@@ -455,6 +455,22 @@ public actor BilibiliAPI {
         try await playerInfo(bvid: bvid, cid: cid).subtitles
     }
 
+    /// Preview frames for the scrubber; nil when the part has none.
+    public func videoShots(bvid: String, cid: Int64) async throws -> VideoShots? {
+        let d = try await request(
+            "/x/player/videoshot", params: ["bvid": bvid, "cid": "\(cid)", "index": "1"])
+        return Self.parseVideoShots(d)
+    }
+
+    static func parseVideoShots(_ d: [String: Any]) -> VideoShots? {
+        let sheets = (d["image"] as? [String] ?? []).compactMap(secureURL)
+        let columns = (d["img_x_len"] as? NSNumber)?.intValue ?? 0
+        let rows = (d["img_y_len"] as? NSNumber)?.intValue ?? 0
+        let times = (d["index"] as? [NSNumber] ?? []).map(\.doubleValue)
+        guard !sheets.isEmpty, columns > 0, rows > 0, !times.isEmpty else { return nil }
+        return VideoShots(sheets: sheets, columns: columns, rows: rows, times: times)
+    }
+
     /// The player page's per-part data: subtitle tracks and the uploader's 看点 chapters.
     public func playerInfo(bvid: String, cid: Int64) async throws -> PlayerInfo {
         let d = try await request(

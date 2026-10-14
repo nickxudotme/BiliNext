@@ -311,3 +311,30 @@ public struct PlayerInfo: Sendable {
     public let subtitles: [SubtitleTrack]
     public let viewPoints: [ViewPoint]
 }
+
+/// The scrubber's preview frames: sprite sheets of a fixed grid and the time of every frame.
+public struct VideoShots: Sendable, Equatable {
+    public let sheets: [URL]
+    public let columns: Int
+    public let rows: Int
+    /// Seconds for each frame, in sheet order.
+    public let times: [Double]
+
+    public init(sheets: [URL], columns: Int, rows: Int, times: [Double]) {
+        self.sheets = sheets
+        self.columns = columns
+        self.rows = rows
+        self.times = times
+    }
+
+    /// The frame shown at `seconds`: the last one at or before it.
+    public func frame(at seconds: Double) -> (sheet: Int, column: Int, row: Int)? {
+        let perSheet = columns * rows
+        guard perSheet > 0, !times.isEmpty else { return nil }
+        let index = max(0, (times.lastIndex { $0 <= seconds } ?? 0))
+        let sheet = index / perSheet
+        guard sheet < sheets.count else { return nil }
+        let cell = index % perSheet
+        return (sheet, cell % columns, cell / columns)
+    }
+}

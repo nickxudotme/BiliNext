@@ -192,7 +192,13 @@ extension AppModel {
         danmaku.configure(cid: cid)
         danmaku.update(time: position, duration: 0, api: api)
         highEnergy = nil
+        videoShots = nil
         let aid = detail?.video.aid
+        Task {
+            let shots = try? await api.videoShots(bvid: id, cid: cid)
+            guard generation == videoGeneration else { return }
+            videoShots = shots ?? nil
+        }
         Task {
             // Optional decoration: a missing or failed curve leaves the plain progress bar.
             let curve = try? await api.highEnergy(aid: aid, bvid: id, cid: cid)

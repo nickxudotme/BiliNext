@@ -24,7 +24,7 @@
 | --- | --- | --- | --- | --- |
 | 1 | ~~自动连播与播完后模式~~（已完成） | PiliPlus | S–M | |
 | 2 | ~~看点章节~~（已完成 `35c3408`） | 三者 | S | |
-| 3 | 进度条缩略图：`/x/player/videoshot` 雪碧图，拖动或悬停预览画面 | bilibili-api | S–M | 公开接口 |
+| 3 | ~~进度条缩略图~~（已完成） | bilibili-api | S–M | |
 | 4 | Cookie 刷新：`cookie/info` → correspond → `cookie/refresh` → `confirm/refresh`，并保存扫码返回的 `refresh_token` | bilibili-api | M | Release 钥匙串登录可能静默过期 |
 | 5 | ~~编码偏好与无损／杜比音轨~~（已完成）；响度均衡 `voice_balance` 未做 | PiliPlus、bilibili-api | S | |
 | 6 | ~~快捷键补全~~（已完成，设置中列出） | 官方、PiliPlus | S | |

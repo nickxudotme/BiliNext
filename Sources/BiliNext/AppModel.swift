@@ -162,6 +162,8 @@ final class AppModel: ObservableObject {
     @Published var highEnergy: HighEnergyCurve?
     /// The current part's 看点 chapters, empty when the uploader marked none.
     @Published var viewPoints: [ViewPoint] = []
+    /// The current part's scrubber preview frames.
+    @Published var videoShots: VideoShots?
     @Published var relation = VideoRelation()
     var relationLoaded = false
     /// Which video `relation` describes, and the newest read or write that may set it.

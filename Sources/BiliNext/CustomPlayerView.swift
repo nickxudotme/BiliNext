@@ -326,6 +326,7 @@ struct CustomPlayerView: View {
                     buffered: model.mpv.map { $0.number("demuxer-cache-time") } ?? 0,
                     activity: highEnergyEnabled ? model.highEnergy?.samples ?? [] : [],
                     showsActivity: hoveringBar, chapters: model.viewPoints,
+                    shots: model.videoShots,
                     scrubbing: $scrubbing, scrubTime: $scrubTime,
                     seek: { model.seek($0) }, interact: { revealControls() }
                 )

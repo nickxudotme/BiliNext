@@ -30,3 +30,18 @@ import Testing
     #expect(relation.liked && relation.coins == 1 && !relation.favorited && relation.following)
     #expect(!VideoRelation([:]).following)
 }
+
+@Test func videoShotsLocateFramesAcrossSheets() throws {
+    let data: [String: Any] = [
+        "image": ["//bimp.hdslb.com/a-0001.jpg", "//bimp.hdslb.com/a-0002.jpg"],
+        "img_x_len": 10, "img_y_len": 10, "img_x_size": 480, "img_y_size": 270,
+        "index": (0..<150).map { $0 * 5 },
+    ]
+    let shots = try #require(BilibiliAPI.parseVideoShots(data))
+    #expect(shots.sheets.first?.scheme == "https")
+    #expect(shots.frame(at: 0).map { [$0.sheet, $0.column, $0.row] } == [0, 0, 0])
+    #expect(shots.frame(at: 58).map { [$0.sheet, $0.column, $0.row] } == [0, 1, 1])
+    #expect(shots.frame(at: 504).map { [$0.sheet, $0.column, $0.row] } == [1, 0, 0])
+    #expect(shots.frame(at: 10_000).map { [$0.sheet, $0.column, $0.row] } == [1, 9, 4])
+    #expect(BilibiliAPI.parseVideoShots(["image": [String]()]) == nil)
+}
