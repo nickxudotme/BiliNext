@@ -648,22 +648,23 @@ struct CommentRow: View {
             }
             Spacer(minLength: 0)
             // Each Menu is an AppKit pop-up rebuilt on every update, so only the hovered row
-            // has one; the frame keeps the footer's layout the same either way.
-            Group {
-                if hovered {
-                    Menu {
-                        menuItems
-                    } label: {
-                        Image(systemName: "ellipsis").font(GlassTheme.labelFont.weight(.semibold))
-                            .frame(width: 24, height: 20)
+            // has one. It floats over a fixed placeholder so hovering never changes the
+            // footer's height.
+            Color.clear.frame(width: 24, height: 20)
+                .overlay {
+                    if hovered {
+                        Menu {
+                            menuItems
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .font(GlassTheme.labelFont.weight(.semibold))
+                        }
+                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                        .transition(.opacity)
+                        .accessibilityLabel("评论选项")
                     }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                    .transition(.opacity)
-                    .accessibilityLabel("评论选项")
                 }
-            }
-            .frame(width: 24, height: 20)
-            .animation(Motion.quick(reduceMotion), value: hovered)
+                .animation(Motion.quick(reduceMotion), value: hovered)
         }
         .font(GlassTheme.captionFont).foregroundStyle(.secondary)
     }
