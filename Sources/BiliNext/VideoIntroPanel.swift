@@ -358,7 +358,6 @@ private struct EpisodeRow: View {
     let duration: Double
     let current: Bool
     let action: () -> Void
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: action) {
@@ -366,7 +365,6 @@ private struct EpisodeRow: View {
                 if current {
                     Image(systemName: "waveform").font(GlassTheme.smallIconFont)
                         .foregroundStyle(GlassTheme.accent)
-                        .symbolEffect(.variableColor.iterative, isActive: !reduceMotion)
                 }
                 Text(title).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                     .opacity(current ? 1 : 0.85)
