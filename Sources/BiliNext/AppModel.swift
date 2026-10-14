@@ -56,6 +56,8 @@ final class AppModel: ObservableObject {
     let player = AVPlayer()
     @Published var mpv: MPVPlayer?
     var awaitingMPVLoad = false
+    /// Timing of the current video's startup, until its first frame plays.
+    var startup: PlaybackStartup?
     var playbackRecovery: PlaybackRecovery?
     var recoveryPosition = 0.0
     var recoveryGeneration = UUID()

@@ -6,6 +6,8 @@ MPVPlayer 直接接收原始视频和音频 URL，通过 mpv EDL 多轨格式加
 
 时间、时长、暂停与缓冲状态每 250ms 读取；弹幕调度直接读取 mpv 时间，保留原有 Core Animation 渲染。视频由 `MPVVideoLayer`（`CAOpenGLLayer`）在独立的串行渲染队列上用 libmpv render API 绘制：mpv 的更新回调合并成一次待渲染，先用 `mpv_render_context_update` 确认有新帧再画，不经过主线程，界面忙时视频不受影响。所有绘制都只在渲染队列上进行：图层缩放时 Core Animation 在主线程请求重画，这个请求会转交给渲染队列强制重画当前帧，而不是在主线程直接画。主线程从不等待渲染队列，因为渲染队列提交画面（`CATransaction.flush`）时要拿 Core Animation 的事务锁，主线程若在提交布局时等它就会死锁（2026-10-14 曾因此整窗卡死）。字幕识别的取帧也在渲染队列上异步完成。渲染上下文必须在 mpv 核心销毁前释放：`MPVSurface` 销毁时在渲染队列上异步释放，并持有播放器直到释放完成。（2026-10-14 前为 NSOpenGLView，每帧在主线程绘制。）OpenGL 属于 macOS 已弃用但仍可用的接口；后续可单独评估 Metal 渲染，当前不同时改写弹幕。
 
+开播（2026-10-14）：playurl 常把 PCDN 镜像（`xy….mcdn.bilivideo.cn`、`*.mountaintoys.cn`、`szbdyd.com`）排在首位，这类泛解析域名首次解析常需数秒甚至失败，实测曾占开播 3 秒。`CDNPreference` 把官方 `upos-…`／`cn-….bilivideo.com` 排到前面，PCDN 保留为失败后的备选。mpv 关闭 `cache-pause-initial`，拿到首帧即开播，不再先缓冲 3 秒；播放中缓冲不足仍会暂停等待（`cache-pause`）。每次开播由 `PlaybackStartup` 记录各阶段（详情、playurl、mpv 加载、加载完成、首帧）为 signpost 区间，并写一条持久日志，便于事后分析。
+
 ## 构建
 
 开发依赖：`brew install mpv pkgconf`，提供 C 头文件和链接库。`swift build` / `swift test` 使用 pkg-config。

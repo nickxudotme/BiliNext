@@ -48,7 +48,9 @@ final class MPVPlayer {
             "input-default-bindings": "no", "load-scripts": "no", "sub-auto": "no",
             "cache": "yes", "cache-secs": "60", "demuxer-max-bytes": "134217728",
             "demuxer-readahead-secs": "60", "demuxer-max-back-bytes": "16777216",
-            "cache-pause": "yes", "cache-pause-initial": "yes", "cache-pause-wait": "3",
+            // Start as soon as the first frames arrive; waiting to buffer 3 s first made the
+            // start of playback take seconds on a slow mirror. Mid-play underruns still pause.
+            "cache-pause": "yes", "cache-pause-initial": "no", "cache-pause-wait": "3",
             "network-timeout": "15",
             "user-agent": "Mozilla/5.0", "referrer": "https://www.bilibili.com/",
         ]

@@ -63,6 +63,9 @@ extension AppModel {
             }
             return
         }
+        startup?.finish("superseded")
+        startup = PlaybackStartup(
+            videoID: id, position: tabs.first { $0.id == id }?.position ?? 0, autoplay: autoplay)
         saveSession()
         watchHistoryReporter.flush()
         officialCore = false
@@ -110,6 +113,7 @@ extension AppModel {
                     }
                 }
                 guard !Task.isCancelled, generation == videoGeneration else { return }
+                startup?.mark("detail")
                 detail = loaded
                 loadRelation(for: loaded.video.bvid)
                 if let index = tabs.firstIndex(where: { $0.id == id }) {
@@ -127,6 +131,7 @@ extension AppModel {
             } catch {
                 guard !Task.isCancelled, generation == videoGeneration else { return }
                 playerError = error.localizedDescription
+                startup?.finish("failed: \(error.localizedDescription)")
                 videoLoading = false
             }
         }
@@ -201,6 +206,8 @@ extension AppModel {
         do {
             let source = try await api.playback(
                 bvid: id, cid: cid, quality: 80, episodeID: detail?.video.episodeID)
+            startup?.mark(
+                "playurl", "\(source.quality) \(source.videoStream?.codec ?? "mp4")")
             guard !Task.isCancelled, generation == videoGeneration,
                 qualityRequest == qualityGeneration, !officialCore
             else { return }
@@ -215,6 +222,7 @@ extension AppModel {
         } catch {
             guard !Task.isCancelled, generation == videoGeneration else { return }
             playerError = error.localizedDescription
+            startup?.finish("failed: \(error.localizedDescription)")
             videoLoading = false
         }
     }
@@ -229,6 +237,8 @@ extension AppModel {
             if let failure = core.failure {
                 self.playbackRecovery?.failed(code: core.failureCode, message: failure)
                 let recovering = self.playbackRecovery?.recovering == true
+                self.startup?.mark("mpv failure", "\(core.failureCode ?? 0) \(failure)")
+                if !recovering { self.startup?.finish("failed: \(failure)") }
                 self.updatePlayback(
                     time: self.recoveryPosition, duration: self.duration,
                     playing: recovering && self.playbackIntent && self.playbackTabActive,
@@ -243,6 +253,11 @@ extension AppModel {
                 self.awaitingMPVLoad = false
                 self.videoLoading = false
                 self.playbackRecovery?.loaded()
+                self.startup?.mark("mpv loaded")
+                if self.startup?.autoplay == false { self.startup?.finish("ready") }
+            }
+            if let startup = self.startup, core.loaded, playing, time > startup.position + 0.05 {
+                startup.finish(buffering ? "playing (buffering)" : "playing")
             }
             if self.playbackTabActive { self.updateDanmaku() }
             if core.loaded && self.playbackTabActive && Date().timeIntervalSince(self.lastSaved) > 5
@@ -293,6 +308,8 @@ extension AppModel {
                 self.qualities = candidate.playback.qualities
                 self.playbackCodec = "mpv · " + (candidate.playback.videoStream?.codec ?? "MP4")
                 self.awaitingMPVLoad = true
+                self.startup?.mark(
+                    "mpv load", "\(phase) #\(attempt) \(candidate.playback.quality)")
                 core.speed = self.playbackRate
                 try core.load(
                     candidate.playback, position: self.recoveryPosition,

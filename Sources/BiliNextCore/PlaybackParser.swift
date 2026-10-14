@@ -53,7 +53,13 @@ enum PlaybackParser {
                 videoStream: chosen.1, audioStream: audio)
         }
         let segments = data["durl"] as? [[String: Any]] ?? []
-        guard segments.count == 1, let url = secureURL(segments[0]["url"] as? String ?? "") else {
+        let candidates =
+            segments.count == 1
+            ? ([segments[0]["url"] as? String ?? ""]
+                + (segments[0]["backup_url"] as? [String] ?? []))
+                .compactMap(secureURL)
+            : []
+        guard let url = CDNPreference.ordered(candidates).first else {
             throw APIError(code: -1, message: "当前视频未提供可播放的 DASH 或单段 MP4")
         }
         let actual = (data["quality"] as? NSNumber)?.intValue ?? 0
@@ -78,7 +84,7 @@ enum PlaybackParser {
             let index = range(segment["indexRange"] as? String ?? segment["index_range"] as? String)
         else { return nil }
         return PlaybackStream(
-            urls: urls, codec: row["codecs"] as? String ?? "",
+            urls: CDNPreference.ordered(urls), codec: row["codecs"] as? String ?? "",
             bandwidth: (row["bandwidth"] as? NSNumber)?.intValue ?? 0,
             initialization: initialization, index: index)
     }

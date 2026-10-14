@@ -21,7 +21,9 @@ import Testing
 @MainActor
 @Test func mpvBufferMarginTracksRateWithinMemoryLimit() throws {
     let core = try MPVPlayer(videoOutput: "null")
-    #expect(core.flag("options/cache-pause-initial"))
+    // Playback starts on the first frames; `mpvTripleSpeedMaintainsForwardBuffer` checks that
+    // 3x still keeps ahead without the initial pause.
+    #expect(!core.flag("options/cache-pause-initial"))
     core.speed = 3
     #expect(core.number("options/cache-secs") == 180)
     #expect(core.number("options/cache-pause-wait") == 9)
