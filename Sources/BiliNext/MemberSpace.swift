@@ -22,6 +22,9 @@ final class MemberSpace: ObservableObject {
     @Published private(set) var uploads: [Video] = []
     @Published private(set) var uploadsLoading = false
     @Published private(set) var uploadsError: String?
+    /// Set when the chosen order or search needs a signed-in account. Signed out, Bilibili's
+    /// risk control rejects them; BiliNext does not send fabricated fingerprints to get past it.
+    @Published private(set) var uploadsNeedLogin = false
     @Published private(set) var uploadsMore = false
     @Published var order = "pubdate"
     @Published var keyword = ""
@@ -42,6 +45,7 @@ final class MemberSpace: ObservableObject {
 
     @Published private(set) var followBusy = false
     var onCard: ((MemberCard) -> Void)?
+    var isSignedIn: () -> Bool = { false }
     var onError: ((String) -> Void)?
 
     private let api: BilibiliAPI
@@ -102,14 +106,21 @@ final class MemberSpace: ObservableObject {
             uploadsMore = false
             searched = query
         }
-        uploadsLoading = true
         uploadsError = nil
+        uploadsNeedLogin = false
+        let signed = !(sort == "pubdate" && query.isEmpty)
+        guard !signed || isSignedIn() else {
+            uploadsNeedLogin = true
+            uploadsLoading = false
+            return
+        }
+        uploadsLoading = true
         Task {
             do {
                 let feed =
-                    sort == "pubdate" && query.isEmpty
-                    ? try await api.memberUploads(mid: mid, page: page)
-                    : try await api.memberVideos(mid: mid, page: page, keyword: query, order: sort)
+                    signed
+                    ? try await api.memberVideos(mid: mid, page: page, keyword: query, order: sort)
+                    : try await api.memberUploads(mid: mid, page: page)
                 guard uploadsGeneration == generation else { return }
                 var seen = Set(uploads.map(\.id))
                 uploads += feed.videos.filter { seen.insert($0.id).inserted }
@@ -130,6 +141,13 @@ final class MemberSpace: ObservableObject {
     func clearSearch() {
         keyword = ""
         if !searched.isEmpty { loadUploads() }
+    }
+
+    /// Back to the public newest-first list, dropping any search.
+    func showLatest() {
+        keyword = ""
+        order = "pubdate"
+        loadUploads()
     }
 
     func setOrder(_ value: String) {
@@ -224,7 +242,7 @@ final class MemberSpace: ObservableObject {
     /// Risk control is reported plainly rather than retried.
     static func describe(_ error: Error) -> String {
         if let error = error as? APIError, error.code == -352 || error.code == 412 {
-            return "B 站暂时限制了这项请求，请稍后再试。最新发布不受影响。"
+            return "B 站暂时限制了这项请求，请稍后再试。「最新发布」不受影响。"
         }
         return error.localizedDescription
     }

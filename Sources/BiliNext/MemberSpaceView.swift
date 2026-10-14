@@ -43,6 +43,10 @@ struct MemberSpaceView: View {
             } action: { _, pinned in
                 barPinned = pinned
             }
+            // Signing in from the prompt retries the order or search that needed it.
+            .onChange(of: model.profile?.id) { _, id in
+                if id != nil && space.uploadsNeedLogin { space.loadUploads() }
+            }
             .onChange(of: space.openCollection?.id) { _, _ in
                 withAnimation(Motion.standard(reduceMotion)) { proxy.scrollTo("top") }
             }
@@ -75,13 +79,14 @@ struct MemberSpaceView: View {
             } else if space.order == "pubdate", let pinned = space.pinned {
                 PinnedVideoRow(video: pinned, model: model)
             }
-            if let error = space.uploadsError, space.uploads.isEmpty {
+            if space.uploadsNeedLogin {
+                loginPrompt
+            } else if let error = space.uploadsError, space.uploads.isEmpty {
                 ErrorBanner(message: error) { space.loadUploads() }
-            }
-            if space.uploads.isEmpty && space.uploadsLoading {
+            } else if space.uploads.isEmpty && space.uploadsLoading {
                 SkeletonVideoGrid().padding(.horizontal, -GlassTheme.contentInset)
                     .frame(height: 640, alignment: .top)
-            } else if space.uploads.isEmpty && space.uploadsError == nil {
+            } else if space.uploads.isEmpty {
                 ContentUnavailableView(
                     space.searched.isEmpty ? "还没有投稿" : "没有找到相关投稿",
                     systemImage: "play.rectangle"
@@ -91,12 +96,25 @@ struct MemberSpaceView: View {
                 videoGrid(space.uploads, more: space.uploadsMore) {
                     space.loadUploads(more: true)
                 }
-                footer(
-                    loading: space.uploadsLoading,
-                    error: space.uploads.isEmpty ? nil : space.uploadsError
-                ) { space.loadUploads(more: true) }
+                footer(loading: space.uploadsLoading, error: space.uploadsError) {
+                    space.loadUploads(more: true)
+                }
             }
         }
+    }
+
+    /// Signed out, play-count order and search are refused by Bilibili's risk control.
+    private var loginPrompt: some View {
+        ContentUnavailableView {
+            Label("登录后可用", systemImage: "person.crop.circle")
+        } description: {
+            Text("按「最多播放」排序和搜索投稿需要登录。「最新发布」无需登录。")
+        } actions: {
+            Button("扫码登录") { model.loginPresented = true }.buttonStyle(.glass)
+            Button("看最新发布") { space.showLatest() }.buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity).padding(.top, 24)
     }
 
     // MARK: 合集和系列

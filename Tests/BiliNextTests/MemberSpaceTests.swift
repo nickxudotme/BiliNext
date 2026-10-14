@@ -26,3 +26,15 @@ import Testing
     #expect(!model.miniPlayer)
     model.clearTabs()
 }
+
+@MainActor
+@Test func signedOutSpaceAsksForLoginInsteadOfRequestingSignedLists() {
+    let space = MemberSpace(api: BilibiliAPI(restoreSession: false), mid: 7)
+    space.isSignedIn = { false }
+    space.setOrder("click")
+    #expect(space.uploadsNeedLogin && !space.uploadsLoading && space.uploadsError == nil)
+    space.order = "pubdate"
+    space.keyword = "超市"
+    space.search()
+    #expect(space.uploadsNeedLogin && space.searched == "超市")
+}

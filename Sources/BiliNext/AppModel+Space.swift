@@ -19,6 +19,7 @@ extension AppModel {
         let space = MemberSpace(api: api, mid: mid)
         memberSpace = space
         space.onError = { [weak self] in self?.toast = $0 }
+        space.isSignedIn = { [weak self] in self?.profile != nil }
         space.onCard = { [weak self] card in
             guard let self else { return }
             let video = Video(
