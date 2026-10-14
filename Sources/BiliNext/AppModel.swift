@@ -9,6 +9,8 @@ final class AppModel: ObservableObject {
     let api: BilibiliAPI
     lazy var followedLives = FollowedLives(api: api)
     @Published var liveSession: LiveSession?
+    /// The system Now Playing bridge; only the workspace owns one.
+    var nowPlaying: NowPlaying?
     lazy var watchHistoryReporter = WatchHistoryReporter(
         send: { [outbox = historyOutbox] progress in
             guard let account = progress.accountID else { return }
@@ -260,6 +262,7 @@ final class AppModel: ObservableObject {
     func start() async {
         guard !started else { return }
         started = true
+        if managesPlaybackTabs && nowPlaying == nil { nowPlaying = NowPlaying(workspace: self) }
         let account = accountGeneration
         let loadedProfile = try? await profileLoader()
         guard account == accountGeneration else { return }

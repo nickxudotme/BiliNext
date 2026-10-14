@@ -2,7 +2,7 @@ import ImageIO
 import SwiftUI
 
 /// Decode at the display's working size off the main thread and reuse decoded pixels.
-private enum ThumbnailStore {
+enum ThumbnailStore {
     static let cache: NSCache<NSString, CGImage> = {
         let cache = NSCache<NSString, CGImage>()
         cache.totalCostLimit = 64 * 1024 * 1024
