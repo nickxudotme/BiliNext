@@ -12,7 +12,9 @@ struct CommentsPanel: View {
 
     var body: some View {
         ZStack {
+            // Pages sit directly on the panel's glass, so only the top one is shown.
             CommentListPage(model: model, push: push)
+                .opacity(routes.isEmpty ? 1 : 0).allowsHitTesting(routes.isEmpty)
             ForEach(Array(routes.enumerated()), id: \.element) { index, route in
                 Group {
                     switch route {
@@ -25,13 +27,15 @@ struct CommentsPanel: View {
                             pop: pop)
                     }
                 }
-                .background(GlassTheme.canvas)
+                .opacity(index == routes.count - 1 ? 1 : 0)
+                .allowsHitTesting(index == routes.count - 1)
                 .zIndex(Double(index + 1))
                 .transition(.move(edge: .trailing))
             }
         }
         .clipped()
         .environment(\.openURL, OpenURLAction(handler: open))
+        .environment(\.videoDuration, model.duration)
         .environment(\.showCommentPictures) { pictures, index in
             viewer = PictureViewerState(pictures: pictures, index: index)
         }
@@ -421,12 +425,9 @@ struct CommentRow: View {
             )
             .labelStyle(.titleAndIcon).lineLimit(1).fixedSize()
             if comment.likedByUploader {
-                Text("UP 觉得很赞").lineLimit(1).fixedSize().font(
-                    GlassTheme.captionFont.weight(.medium)
-                )
-                .foregroundStyle(GlassTheme.accent)
-                .padding(.horizontal, 6).padding(.vertical, 1)
-                .background(GlassTheme.accent.opacity(0.12), in: Capsule())
+                Label("UP 觉得很赞", systemImage: "heart.fill").labelStyle(.titleAndIcon)
+                    .lineLimit(1).fixedSize().font(GlassTheme.captionFont.weight(.medium))
+                    .foregroundStyle(.secondary)
             }
             if let openDialog {
                 Button("查看对话", action: openDialog).buttonStyle(.plain)
@@ -479,7 +480,7 @@ struct CommentRow: View {
         .padding(.horizontal, 10).padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            .primary.opacity(0.045), in: RoundedRectangle(cornerRadius: GlassTheme.rowRadius))
+            .primary.opacity(0.06), in: RoundedRectangle(cornerRadius: GlassTheme.rowRadius))
     }
 }
 
@@ -499,10 +500,8 @@ private struct CommentIdentity: View {
                         RoundedRectangle(cornerRadius: 3).strokeBorder(levelColor, lineWidth: 1)
                     }
             }
-            if uploaderID != 0 && comment.authorID == uploaderID {
-                badge("UP", filled: true)
-            }
-            if comment.pinned { badge("置顶", filled: false) }
+            if uploaderID != 0 && comment.authorID == uploaderID { badge("UP") }
+            if comment.pinned { badge("置顶") }
         }
     }
 
@@ -518,14 +517,12 @@ private struct CommentIdentity: View {
         }
     }
 
-    private func badge(_ title: String, filled: Bool) -> some View {
-        Text(title).font(.system(size: 10, weight: .bold))
-            .foregroundStyle(filled ? .white : GlassTheme.accent)
-            .padding(.horizontal, 4).padding(.vertical, 1)
-            .background {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(filled ? GlassTheme.accent : GlassTheme.accent.opacity(0.12))
-            }
+    /// Neutral tags: identity is information, not the viewer's own state.
+    private func badge(_ title: String) -> some View {
+        Text(title).font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 5).padding(.vertical, 1)
+            .background(.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
     }
 }
 
@@ -580,6 +577,7 @@ struct CommentText: View {
     let segments: [CommentSegment]
     var prefix: String? = nil
     @ObservedObject private var emotes = EmoteCache.shared
+    @Environment(\.videoDuration) private var videoDuration
 
     init(comment: Comment, prefix: String? = nil) {
         self.init(segments: CommentSegment.split(comment), prefix: prefix)
@@ -620,6 +618,8 @@ struct CommentText: View {
         case .mention(let name): return Text("@" + name).foregroundStyle(GlassTheme.accent)
         case .video(let bvid): return link(bvid, CommentLinks.video(bvid), symbol: "play.rectangle")
         case .time(let label, let seconds):
+            // Clock times such as 23:59 are not positions in a shorter video.
+            guard videoDuration <= 0 || seconds <= videoDuration else { return Text(label) }
             return link(label, CommentLinks.seek(seconds), symbol: nil)
         }
     }
@@ -669,28 +669,32 @@ private struct CommentPictures: View {
         if pictures.count == 1, let picture = pictures.first {
             let ratio =
                 picture.width > 0 && picture.height > 0 ? picture.width / picture.height : 4 / 3
-            thumbnail(picture, index: 0)
-                .frame(
-                    width: ratio >= 1 ? 200 : 200 * ratio, height: ratio >= 1 ? 200 / ratio : 200)
+            // Very tall pictures, such as long screenshots, crop to a readable width.
+            thumbnail(
+                picture, index: 0,
+                size: CGSize(
+                    width: ratio >= 1 ? 200 : max(120, 200 * ratio),
+                    height: ratio >= 1 ? 200 / ratio : 200))
         } else {
             LazyVGrid(
                 columns: Array(repeating: GridItem(.fixed(78), spacing: 6), count: 3),
                 alignment: .leading, spacing: 6
             ) {
                 ForEach(Array(pictures.prefix(9).enumerated()), id: \.offset) { index, picture in
-                    thumbnail(picture, index: index).frame(width: 78, height: 78)
+                    thumbnail(picture, index: index, size: CGSize(width: 78, height: 78))
                 }
             }
         }
     }
 
-    private func thumbnail(_ picture: CommentPicture, index: Int) -> some View {
+    private func thumbnail(_ picture: CommentPicture, index: Int, size: CGSize) -> some View {
         Button {
             show(pictures, index)
         } label: {
             ThumbnailView(url: picture.url, pixels: 480) {
                 Rectangle().fill(.primary.opacity(0.06))
             }
+            .frame(width: size.width, height: size.height)
             .clipShape(RoundedRectangle(cornerRadius: GlassTheme.rowRadius))
             .contentShape(Rectangle())
         }
@@ -761,11 +765,21 @@ private struct PictureViewer: View {
     }
 }
 
+private struct VideoDurationKey: EnvironmentKey {
+    static let defaultValue: Double = 0
+}
+
 private struct ShowCommentPicturesKey: EnvironmentKey {
     static let defaultValue: @MainActor ([CommentPicture], Int) -> Void = { _, _ in }
 }
 
 extension EnvironmentValues {
+    /// The open video's length, so only timestamps inside it become seek links.
+    var videoDuration: Double {
+        get { self[VideoDurationKey.self] }
+        set { self[VideoDurationKey.self] = newValue }
+    }
+
     var showCommentPictures: @MainActor ([CommentPicture], Int) -> Void {
         get { self[ShowCommentPicturesKey.self] }
         set { self[ShowCommentPicturesKey.self] = newValue }

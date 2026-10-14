@@ -44,9 +44,12 @@ struct PlaybackView: View {
     @State private var hoveringDetails = false
     @State private var idle = false
     @State private var idleTask: Task<Void, Never>?
+    @AppStorage("playback.panelWidth") private var panelWidth = 372.0
+    @State private var dragStartWidth: Double?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HSplitView {
+        HStack(spacing: 0) {
             player
                 .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
                 .onGeometryChange(for: CGFloat.self) {
@@ -65,7 +68,6 @@ struct PlaybackView: View {
                             .foregroundStyle(.white)
                             .frame(width: 30, height: 60)
                             .chromeSurface(in: Capsule())
-                            .environment(\.colorScheme, .dark)
                     }
                     .buttonStyle(InteractionButtonStyle())
                     .help(model.theater ? "展开视频详情" : "收起视频详情")
@@ -76,27 +78,19 @@ struct PlaybackView: View {
                     .accessibilityHidden(!detailsToggleVisible)
                 }
             if !model.theater && !miniPlayer {
-                VStack(spacing: 0) {
-                    GlassEffectContainer(spacing: 6) {
-                        HStack(spacing: 8) {
-                            PlaybackPanelSwitcher(selection: $panel)
-                            playbackOptions
-                        }
-                    }.padding(.horizontal, 12).padding(.vertical, 8)
-                    Divider().opacity(0.5)
-                    Group {
-                        switch panel {
-                        case .info: VideoIntroPanel(model: model)
-                        case .comments: CommentsPanel(model: model).id(model.selected)
-                        case .transcript: TranscriptView(model: model)
-                        case .danmaku: DanmakuListView(model: model)
-                        }
-                    }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                }.frame(minWidth: 310, idealWidth: 360, maxWidth: 420, maxHeight: .infinity)
-                    .background { DetailSurface() }
-                    .ignoresSafeArea(.container, edges: .top)
+                detailsPanel
+                    .frame(width: panelWidth)
+                    .frame(maxHeight: .infinity)
+                    .floatingGlassPanel()
+                    .overlay(alignment: .leading) { resizeHandle }
+                    .padding(8)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
+        // The playback page is a dark screening room lit by the video's own cover.
+        .background { PlaybackAmbience(cover: model.detail?.video.cover ?? currentCover) }
+        .environment(\.colorScheme, .dark)
+        .animation(Motion.emphasized(reduceMotion), value: model.theater)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DrawerPointerTracker(externalWidth: 0, onPosition: trackPointer))
         .onChange(of: isActive) { _, active in
@@ -134,6 +128,47 @@ struct PlaybackView: View {
             content: {
                 if let aid = model.detail?.video.aid { FavoritePickerView(model: model, aid: aid) }
             })
+    }
+
+    private var currentCover: URL? {
+        model.tabs.first(where: { $0.id == model.selected })?.video.cover
+    }
+
+    private var detailsPanel: some View {
+        VStack(spacing: 0) {
+            GlassEffectContainer(spacing: 6) {
+                HStack(spacing: 8) {
+                    PlaybackPanelSwitcher(selection: $panel)
+                    playbackOptions
+                }
+            }.padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 4)
+            Group {
+                switch panel {
+                case .info: VideoIntroPanel(model: model)
+                case .comments: CommentsPanel(model: model).id(model.selected)
+                case .transcript: TranscriptView(model: model)
+                case .danmaku: DanmakuListView(model: model)
+                }
+            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+    }
+
+    /// Dragging the panel's leading edge resizes it, as the split view did.
+    private var resizeHandle: some View {
+        Color.clear.frame(width: 8).contentShape(Rectangle())
+            .onHover { inside in
+                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+            }
+            .gesture(
+                DragGesture(coordinateSpace: .global)
+                    .onChanged { value in
+                        if dragStartWidth == nil { dragStartWidth = panelWidth }
+                        panelWidth = min(
+                            460, max(320, (dragStartWidth ?? panelWidth) - value.translation.width))
+                    }
+                    .onEnded { _ in dragStartWidth = nil }
+            )
+            .offset(x: -4)
     }
 
     private var detailsToggleVisible: Bool {

@@ -60,8 +60,9 @@ enum GlassTheme {
 enum Motion {
     static let quick = Animation.easeOut(duration: 0.1)
     static let panel = Animation.timingCurve(0.25, 0.46, 0.45, 0.94, duration: 0.08)
-    static let standard = Animation.easeOut(duration: 0.2)
-    static let emphasized = Animation.timingCurve(0.65, 0, 0.35, 1, duration: 0.3)
+    /// State changes and larger moves use native springs.
+    static let standard = Animation.snappy(duration: 0.25)
+    static let emphasized = Animation.smooth(duration: 0.4)
 
     static func quick(_ reduceMotion: Bool) -> Animation? { reduceMotion ? nil : quick }
     static func panel(_ reduceMotion: Bool) -> Animation? { reduceMotion ? nil : panel }

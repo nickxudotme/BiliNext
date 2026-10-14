@@ -52,6 +52,7 @@ struct VideoIntroPanel: View {
             .onChange(of: model.detail?.video.bvid) { _, _ in proxy.scrollTo("top") }
         }
         .environment(\.openURL, OpenURLAction(handler: open))
+        .environment(\.videoDuration, model.duration)
         .sheet(isPresented: $memberPresented) {
             if let video = model.detail?.video, let mid = video.ownerID {
                 MemberView(model: model, mid: mid, name: video.author)
@@ -76,14 +77,16 @@ struct VideoIntroPanel: View {
         }
         .padding(.horizontal, 20)
         if !detail.extras.related.isEmpty {
-            VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                Divider().opacity(0.6).padding(.horizontal, 20).padding(.bottom, 16)
+                GroupHeader(title: "相关推荐", detail: nil).padding(.horizontal, 20)
                 ForEach(detail.extras.related) { related in
                     RelatedVideoRow(video: related) {
                         model.open(related, background: NSEvent.modifierFlags.contains(.command))
                     }
                 }
             }
-            .padding(.top, 14).padding(.bottom, 16)
+            .padding(.top, 18).padding(.bottom, 16)
         }
     }
 
@@ -142,10 +145,13 @@ private struct UploaderCard: View {
                     .font(GlassTheme.captionFont).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 8)
-                Text("主页").font(GlassTheme.metadataFont.weight(.medium))
-                    .foregroundStyle(GlassTheme.accent)
-                    .padding(.horizontal, 14).frame(height: 28)
-                    .background(GlassTheme.accent.opacity(0.12), in: Capsule())
+                HStack(spacing: 2) {
+                    Text("主页")
+                    Image(systemName: "chevron.right").font(GlassTheme.smallIconFont)
+                }
+                .font(GlassTheme.metadataFont.weight(.medium)).foregroundStyle(.secondary)
+                .padding(.horizontal, 12).frame(height: 28)
+                .background(.white.opacity(0.08), in: Capsule())
             }
             .contentShape(Rectangle())
         }
@@ -172,7 +178,7 @@ struct IntroDetails: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
-                Text(video.title).font(GlassTheme.bodyFont.weight(.semibold)).lineSpacing(3)
+                Text(video.title).font(.system(size: 20, weight: .semibold)).lineSpacing(3)
                     .lineLimit(expanded ? nil : 2).textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
@@ -194,12 +200,14 @@ struct IntroDetails: View {
             if !detail.extras.honors.isEmpty {
                 HStack(spacing: 6) {
                     ForEach(detail.extras.honors.prefix(2), id: \.self) { honor in
-                        Label(honor, systemImage: "flame.fill").labelStyle(.titleAndIcon)
-                            .font(GlassTheme.captionFont.weight(.medium))
-                            .foregroundStyle(.orange)
-                            .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(.orange.opacity(0.12), in: Capsule())
-                            .lineLimit(1)
+                        HStack(spacing: 4) {
+                            Image(systemName: "flame.fill").foregroundStyle(.orange)
+                            Text(honor).foregroundStyle(.secondary)
+                        }
+                        .font(GlassTheme.captionFont.weight(.medium))
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(.white.opacity(0.06), in: Capsule())
+                        .lineLimit(1)
                     }
                 }
             }
@@ -317,19 +325,34 @@ struct FlowLayout: Layout {
 
 // MARK: - 合集 and 分P
 
+/// A native group heading: a quiet label, with an optional position on the right.
+private struct GroupHeader: View {
+    let title: String
+    let detail: String?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(title).font(GlassTheme.metadataFont.weight(.semibold)).foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+            if let detail {
+                Text(detail).font(GlassTheme.captionFont).foregroundStyle(.tertiary)
+                    .monospacedDigit()
+            }
+        }
+        .padding(.bottom, 8)
+    }
+}
+
 /// A soft card holding a scrollable list, shared by 合集 and 分P.
 private struct ListCard<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) { content() }
-            .padding(.bottom, 6)
-            .background(
-                .primary.opacity(0.05), in: RoundedRectangle(cornerRadius: GlassTheme.rowRadius))
     }
 }
 
-/// One row in 合集 and 分P lists: the current item is pink on a pink wash with a waveform.
+/// One row in 合集 and 分P lists: the current item is lifted, with a pink waveform.
 private struct EpisodeRow: View {
     let title: String
     let duration: Double
@@ -342,25 +365,25 @@ private struct EpisodeRow: View {
             HStack(spacing: 8) {
                 if current {
                     Image(systemName: "waveform").font(GlassTheme.smallIconFont)
+                        .foregroundStyle(GlassTheme.accent)
                         .symbolEffect(.variableColor.iterative, isActive: !reduceMotion)
                 }
                 Text(title).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                    .opacity(current ? 1 : 0.85)
                 if duration > 0 {
                     Text(timestamp(duration)).font(GlassTheme.captionFont).monospacedDigit()
-                        .foregroundStyle(current ? GlassTheme.accent : .secondary)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .font(GlassTheme.labelFont.weight(current ? .medium : .regular))
-            .foregroundStyle(current ? GlassTheme.accent : .primary)
-            .padding(.horizontal, 12).frame(height: 36)
+            .font(GlassTheme.labelFont.weight(current ? .semibold : .regular))
+            .padding(.horizontal, 10).frame(height: 34)
             .background {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(GlassTheme.accent.opacity(current ? 0.1 : 0))
+                RoundedRectangle(cornerRadius: GlassTheme.rowRadius)
+                    .fill(GlassTheme.raisedFill.opacity(current ? 1 : 0))
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(InteractionButtonStyle(kind: .row))
-        .padding(.horizontal, 6)
         .accessibilityAddTraits(current ? [.isSelected] : [])
     }
 }
@@ -381,21 +404,18 @@ private struct SeasonList: View {
 
     var body: some View {
         ListCard {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(season.title).font(GlassTheme.labelFont.weight(.semibold)).lineLimit(1)
-                    Text("(\(position.map(String.init) ?? "-")/\(season.episodeCount))")
-                        .font(GlassTheme.captionFont).foregroundStyle(.secondary).monospacedDigit()
-                    Spacer(minLength: 0)
+            GroupHeader(
+                title: "合集",
+                detail: "\(position.map(String.init) ?? "-") / \(season.episodeCount)"
+            )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(season.title).font(GlassTheme.bodyFont.weight(.semibold)).lineLimit(1)
+                if let views = season.views {
+                    Text("\(DisplayFormat.count(views))次播放").font(GlassTheme.captionFont)
+                        .foregroundStyle(.secondary)
                 }
-                HStack(spacing: 6) {
-                    Image(systemName: "square.stack").font(GlassTheme.captionFont)
-                    Text("合集")
-                    if let views = season.views { Text("· \(DisplayFormat.count(views))播放") }
-                }
-                .font(GlassTheme.captionFont).foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 10)
+            .padding(.bottom, 8)
             if season.sections.count > 1 {
                 ScrollView(.horizontal) {
                     HStack(spacing: 4) {
@@ -404,23 +424,24 @@ private struct SeasonList: View {
                             Button {
                                 sectionID = item.id
                             } label: {
-                                Text(item.title).font(GlassTheme.metadataFont)
-                                    .foregroundStyle(selected ? GlassTheme.accent : .primary)
+                                Text(item.title)
+                                    .font(
+                                        GlassTheme.metadataFont.weight(
+                                            selected ? .semibold : .regular)
+                                    )
+                                    .foregroundStyle(selected ? .primary : .secondary)
                                     .padding(.horizontal, 12).frame(height: 28)
-                                    .background {
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .fill(GlassTheme.accent.opacity(selected ? 0.12 : 0))
-                                    }
+                                    .background(
+                                        GlassTheme.raisedFill.opacity(selected ? 1 : 0),
+                                        in: Capsule())
                             }
                             .buttonStyle(InteractionButtonStyle(kind: .row))
                         }
                     }
-                    .padding(.horizontal, 10)
                 }
                 .scrollIndicators(.hidden)
                 .padding(.bottom, 6)
             }
-            Divider().opacity(0.5)
             if let section {
                 EpisodeScroll(
                     ids: section.episodes.map(\.bvid), current: current,
@@ -463,10 +484,9 @@ private struct PageList: View {
     var body: some View {
         ListCard {
             HStack(spacing: 6) {
-                Text("视频选集").font(GlassTheme.labelFont.weight(.semibold))
-                Text("(\(position.map(String.init) ?? "-")/\(pages.count))")
-                    .font(GlassTheme.captionFont).foregroundStyle(.secondary).monospacedDigit()
-                Spacer(minLength: 0)
+                GroupHeader(
+                    title: "视频选集",
+                    detail: "\(position.map(String.init) ?? "-") / \(pages.count)")
                 Button {
                     grid.toggle()
                 } label: {
@@ -476,8 +496,7 @@ private struct PageList: View {
                 .buttonStyle(InteractionButtonStyle())
                 .help(grid ? "列表显示" : "宫格显示")
             }
-            .padding(.leading, 16).padding(.trailing, 8).padding(.vertical, 8)
-            Divider().opacity(0.5)
+
             if grid {
                 EpisodeScroll(
                     ids: pages.map { String($0.cid) }, current: model.pageID.map(String.init) ?? "",
@@ -492,19 +511,19 @@ private struct PageList: View {
                             Button {
                                 model.selectPage(page.cid)
                             } label: {
-                                Text("\(page.number)").font(GlassTheme.labelFont.weight(.medium))
+                                Text("\(page.number)")
+                                    .font(GlassTheme.labelFont.weight(current ? .bold : .medium))
                                     .monospacedDigit()
-                                    .foregroundStyle(current ? GlassTheme.accent : .primary)
-                                    .frame(maxWidth: .infinity).frame(height: 48)
+                                    .frame(maxWidth: .infinity).frame(height: 44)
                                     .background {
-                                        RoundedRectangle(cornerRadius: 6).fill(
-                                            current
-                                                ? GlassTheme.accent.opacity(0.1)
-                                                : Color.primary.opacity(0.06))
+                                        RoundedRectangle(cornerRadius: GlassTheme.rowRadius).fill(
+                                            current ? GlassTheme.raisedFill : .white.opacity(0.05))
                                     }
-                                    .overlay {
-                                        RoundedRectangle(cornerRadius: 6).strokeBorder(
-                                            GlassTheme.accent.opacity(current ? 0.8 : 0))
+                                    .overlay(alignment: .bottom) {
+                                        if current {
+                                            Capsule().fill(GlassTheme.accent)
+                                                .frame(width: 14, height: 3).padding(.bottom, 6)
+                                        }
                                     }
                             }
                             .buttonStyle(InteractionButtonStyle(kind: .row))
@@ -512,7 +531,7 @@ private struct PageList: View {
                             .id(String(page.cid))
                         }
                     }
-                    .padding(10)
+                    .padding(.vertical, 4)
                 }
             } else {
                 EpisodeScroll(
@@ -552,6 +571,8 @@ private struct EpisodeScroll<Content: View>: View {
                     }
             }
             .frame(height: min(maxHeight, max(height, 40)))
+            // Rows bleed into the margin so their text lines up with the group header.
+            .padding(.horizontal, -10)
             .scrollIndicators(height > maxHeight ? .automatic : .hidden)
             .onAppear { proxy.scrollTo(current, anchor: .center) }
             .onChange(of: current) { _, value in
@@ -572,7 +593,7 @@ struct RelatedVideoRow: View {
         Button(action: open) {
             HStack(alignment: .top, spacing: 10) {
                 ThumbnailView(url: video.cover, pixels: 340) { Color.primary.opacity(0.06) }
-                    .frame(width: 141, height: 79).clipped()
+                    .frame(width: 132, height: 74).clipped()
                     .overlay(alignment: .bottomTrailing) {
                         if let duration = video.duration, duration > 0 {
                             Text(timestamp(duration))
@@ -586,7 +607,11 @@ struct RelatedVideoRow: View {
                                 .padding(4)
                         }
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .clipShape(RoundedRectangle(cornerRadius: GlassTheme.rowRadius))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: GlassTheme.rowRadius)
+                            .strokeBorder(.white.opacity(0.08), lineWidth: 0.5)
+                    }
                 VStack(alignment: .leading, spacing: 4) {
                     Text(video.title).font(GlassTheme.labelFont.weight(.medium)).lineSpacing(2)
                         .lineLimit(2).frame(height: 40, alignment: .topLeading)
@@ -607,35 +632,12 @@ struct RelatedVideoRow: View {
                 .font(GlassTheme.captionFont).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 20).padding(.vertical, 8)
+            .padding(8)
             .contentShape(Rectangle())
         }
-        .buttonStyle(FullWidthRowStyle())
+        .buttonStyle(InteractionButtonStyle(kind: .row))
+        .padding(.horizontal, 12)
         .help("⌘-点击在后台标签打开")
-    }
-}
-
-/// Full-bleed hover wash for rows that run to the panel edges.
-private struct FullWidthRowStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        Feedback(configuration: configuration)
-    }
-
-    private struct Feedback: View {
-        let configuration: ButtonStyle.Configuration
-        @State private var hovered = false
-        @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-        var body: some View {
-            configuration.label
-                .background(
-                    .primary.opacity(
-                        configuration.isPressed
-                            ? GlassTheme.pressOpacity : hovered ? GlassTheme.hoverOpacity * 0.7 : 0)
-                )
-                .onHover { hovered = $0 }
-                .animation(Motion.quick(reduceMotion), value: hovered)
-        }
     }
 }
 
