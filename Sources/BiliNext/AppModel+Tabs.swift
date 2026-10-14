@@ -126,13 +126,40 @@ extension AppModel {
             return
         }
         saveSession()
+        var trail = tabTrails[id] ?? TabTrail()
+        trail.back.append(tabs[index])
+        trail.forward = []
+        swapTab(at: index, to: SessionTab(video: video, cid: video.historyCID), trail: trail)
+    }
+
+    /// Steps the selected tab back or forward through the videos it replaced in place.
+    /// Returns false when that tab has nowhere to go, so 后退 can leave it instead.
+    func stepTabTrail(_ delta: Int) -> Bool {
+        guard let id = selected, var trail = tabTrails[id],
+            let index = tabs.firstIndex(where: { $0.id == id })
+        else { return false }
+        saveSession()
+        guard let target = trail.step(delta, from: tabs[index]) else { return false }
+        // A video already open in another tab is selected there instead.
+        if tabs.contains(where: { $0.id == target.id }) {
+            activate(target.id, autoplay: true)
+            return true
+        }
+        swapTab(at: index, to: target, trail: trail)
+        return true
+    }
+
+    /// Puts `tab` in place of the tab at `index`, carrying its trail to the new video.
+    private func swapTab(at index: Int, to tab: SessionTab, trail: TabTrail) {
+        let id = tabs[index].id
         let wasSelected = selected == id
-        tabs[index] = SessionTab(video: video, cid: video.historyCID)
+        tabs[index] = tab
         releasePlaybackTab(id)
+        tabTrails[tab.id] = trail
         unseenTabs.remove(id)
         if wasSelected {
             selected = nil
-            activate(video.id, autoplay: true)
+            activate(tab.id, autoplay: true)
         }
         saveSession()
     }
@@ -228,6 +255,7 @@ extension AppModel {
         }
         playbackInstances.removeValue(forKey: id)
         tabSubscriptions.removeValue(forKey: id)
+        tabTrails.removeValue(forKey: id)
     }
 
     private func connectPage(_ instance: AppModel, key: String) {
@@ -334,4 +362,24 @@ extension AppModel {
         instance.activate(id, force: force, autoplay: autoplay)
     }
 
+}
+
+/// One tab's in-place navigation history.
+struct TabTrail {
+    var back: [SessionTab] = []
+    var forward: [SessionTab] = []
+
+    /// Moves one video back (`delta < 0`) or forward from `current`, which joins the other
+    /// side. Nil when there is nothing that way.
+    mutating func step(_ delta: Int, from current: SessionTab) -> SessionTab? {
+        if delta < 0, let previous = back.popLast() {
+            forward.append(current)
+            return previous
+        }
+        if delta > 0, let next = forward.popLast() {
+            back.append(current)
+            return next
+        }
+        return nil
+    }
 }

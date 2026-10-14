@@ -147,3 +147,34 @@ import Testing
     #expect(model.tabs.map(\.id) == ["BV3333333333", "BV2222222222"])
     #expect(model.unseenTabs.isEmpty && model.selected == nil)
 }
+
+@MainActor
+@Test func replacingInPlaceRemembersTheVideoForBack() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let model = AppModel(
+        sessionStore: SessionStore(directory: directory), api: BilibiliAPI(restoreSession: false))
+    model.tabs = [
+        SessionTab(video: Video(bvid: "BV1111111111", title: "第一集"), cid: 1, position: 30)
+    ]
+    model.replace("BV1111111111", with: Video(bvid: "BV2222222222", title: "第二集"))
+    model.replace("BV2222222222", with: Video(bvid: "BV3333333333", title: "第三集"))
+    var trail = try #require(model.tabTrails["BV3333333333"])
+    #expect(trail.back.map(\.id) == ["BV1111111111", "BV2222222222"])
+    #expect(trail.back.first?.position == 30 && trail.back.first?.cid == 1)
+    #expect(model.tabTrails["BV1111111111"] == nil && model.tabTrails["BV2222222222"] == nil)
+    // No tab is selected, so 后退 has no trail to step and leaves the trail alone.
+    #expect(!model.stepTabTrail(-1))
+
+    let current = model.tabs[0]
+    let back = trail.step(-1, from: current)
+    let previous = try #require(back)
+    #expect(previous.id == "BV2222222222" && trail.forward.map(\.id) == ["BV3333333333"])
+    let forward = trail.step(1, from: previous)
+    let next = try #require(forward)
+    #expect(next.id == "BV3333333333" && trail.back.map(\.id) == ["BV1111111111", "BV2222222222"])
+    let past = trail.step(1, from: next)
+    #expect(past == nil)
+    model.clearTabs()
+    #expect(model.tabTrails.isEmpty)
+}

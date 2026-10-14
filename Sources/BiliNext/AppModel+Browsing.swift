@@ -47,7 +47,10 @@ extension AppModel {
     // MARK: - Browsing and library
 
     var canBack: Bool { selected != nil || historyIndex > 0 }
-    var canForward: Bool { historyIndex < history.count - 1 }
+    var canForward: Bool {
+        if let selected, tabTrails[selected]?.forward.isEmpty == false { return true }
+        return historyIndex < history.count - 1
+    }
     func navigate(_ destination: BrowseDestination) {
         if let tabOwner {
             tabOwner.navigate(destination)
@@ -72,6 +75,8 @@ extension AppModel {
             tabOwner.moveHistory(delta)
             return
         }
+        // Inside a tab, first step through the videos it played in place.
+        if stepTabTrail(delta) { return }
         suspendPlaybackTabs()
         if selected != nil && delta < 0 {
             selected = nil
