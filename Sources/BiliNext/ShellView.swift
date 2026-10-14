@@ -115,8 +115,8 @@ struct ShellView: View {
                     .allowsHitTesting(pinned || revealed)
                     .accessibilityHidden(!pinned && !revealed)
             }
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: pinned)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: revealed)
+            .animation(Motion.panel(reduceMotion), value: pinned)
+            .animation(Motion.panel(reduceMotion), value: revealed)
             .ignoresSafeArea(.container, edges: .top)
             .onChange(of: model.selected) { _, selected in
                 // 小窗 only shows a video; closing the last one returns to the full window.
@@ -303,7 +303,8 @@ struct ShellView: View {
     }
 
     private func updatePointer(_ point: NSPoint?) {
-        let zone = DrawerActivation.zone(x: point?.x, width: drawerWidth, pinned: pinned)
+        let zone = DrawerActivation.zone(
+            x: point?.x, top: point?.y, width: drawerWidth, pinned: pinned)
         hovering = zone == 2 && (pinned || revealed)
         guard pointerZone != zone else { return }
         pointerZone = zone

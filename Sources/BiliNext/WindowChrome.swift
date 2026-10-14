@@ -179,17 +179,26 @@ struct DrawerPointerTracker: NSViewRepresentable {
             let corridor = NSRect(
                 x: bounds.minX - externalWidth, y: bounds.minY,
                 width: bounds.width + externalWidth, height: bounds.height)
-            onPosition(corridor.contains(point) ? point : nil)
+            // y is reported as the distance from the top edge, where the window buttons sit.
+            onPosition(
+                corridor.contains(point)
+                    ? NSPoint(x: point.x, y: isFlipped ? point.y : bounds.maxY - point.y) : nil)
         }
     }
 }
 
 // Include a narrow interior strip because a fullscreen pointer cannot travel
-// past the left screen edge. The rest of the sidebar keeps an open drawer alive.
+// past the left screen edge. As in Arc, resting in the top-left corner beside the
+// window buttons also reveals the drawer. The rest of the sidebar keeps it alive.
 enum DrawerActivation {
-    static func zone(x: CGFloat?, width: CGFloat, pinned: Bool) -> Int {
+    static let cornerSize = CGSize(width: 96, height: 32)
+
+    static func zone(x: CGFloat?, top: CGFloat? = nil, width: CGFloat, pinned: Bool) -> Int {
         guard let x, x >= -width else { return 0 }
         if x <= 3 { return 1 }
+        if !pinned, let top, top >= 0, top <= cornerSize.height, x <= cornerSize.width {
+            return 1
+        }
         return x <= width + (pinned ? 0 : 4) ? 2 : 0
     }
 }

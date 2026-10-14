@@ -54,13 +54,17 @@ enum GlassTheme {
     static let selectionOpacity = 0.14
 }
 
-/// Three motion speeds: hover/press feedback, standard state changes and larger layout moves.
+/// Motion speeds: hover/press feedback, standard state changes and larger layout moves.
+/// `quick` and `panel` follow Arc's measured values: 0.1s fades and a 0.08s
+/// cubic-bezier(0.25, 0.46, 0.45, 0.94) for the sidebar showing, hiding and floating.
 enum Motion {
-    static let quick = Animation.easeOut(duration: 0.15)
+    static let quick = Animation.easeOut(duration: 0.1)
+    static let panel = Animation.timingCurve(0.25, 0.46, 0.45, 0.94, duration: 0.08)
     static let standard = Animation.easeOut(duration: 0.2)
     static let emphasized = Animation.timingCurve(0.65, 0, 0.35, 1, duration: 0.3)
 
     static func quick(_ reduceMotion: Bool) -> Animation? { reduceMotion ? nil : quick }
+    static func panel(_ reduceMotion: Bool) -> Animation? { reduceMotion ? nil : panel }
     static func standard(_ reduceMotion: Bool) -> Animation? { reduceMotion ? nil : standard }
     static func emphasized(_ reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : emphasized
