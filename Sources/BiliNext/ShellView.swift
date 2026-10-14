@@ -28,15 +28,11 @@ struct ShellView: View {
                 if let instance = model.browseInstances[pageID] {
                     let active =
                         model.selected == nil && pageID == model.browsePageID(for: model.menu)
-                    BrowseView(
-                        model: instance,
-                        isActive: active
-                    )
-                    .padding(.top, BrowseToolbar.height)
-                    .id(ObjectIdentifier(instance))
-                    .opacity(active ? 1 : 0)
-                    .allowsHitTesting(active)
-                    .accessibilityHidden(!active)
+                    BrowseView(model: instance, isActive: active, topInset: BrowseToolbar.height)
+                        .id(ObjectIdentifier(instance))
+                        .opacity(active ? 1 : 0)
+                        .allowsHitTesting(active)
+                        .accessibilityHidden(!active)
                 }
             }
             if model.selected == nil {
@@ -217,7 +213,7 @@ struct ShellView: View {
             .padding(.leading, fullScreen ? 10 : 0).padding(.trailing, 7).padding(.bottom, 12)
             ScrollView {
                 VStack(spacing: 2) {
-                    ForEach(BrowseDestination.allCases, id: \.self) { item in
+                    ForEach(BrowseDestination.sidebarItems, id: \.self) { item in
                         let hasChildren = item.hasSidebarChildren
                         let active = model.menu == item && model.selected == nil
                         HStack(spacing: 0) {

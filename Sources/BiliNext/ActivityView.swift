@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ActivityView: View {
     @ObservedObject var model: AppModel
+    var topInset: CGFloat = 0
     @State private var items: [Activity] = []
     @State private var offset: String?
     @State private var loading = false
@@ -105,12 +106,15 @@ struct ActivityView: View {
                 }
             }.frame(maxWidth: 820).frame(maxWidth: .infinity).padding(.horizontal, 28).padding(
                 .bottom, 24)
-        }.task(id: model.timelineRefresh) { load() }.onDisappear { task?.cancel() }
-            .sheet(item: $member) { activity in
-                if let mid = activity.mid {
-                    MemberView(model: model, mid: mid, name: activity.author)
-                }
+        }
+        .contentMargins(.top, topInset + 12, for: .scrollContent)
+        .contentMargins(.top, topInset, for: .scrollIndicators)
+        .task(id: model.timelineRefresh) { load() }.onDisappear { task?.cancel() }
+        .sheet(item: $member) { activity in
+            if let mid = activity.mid {
+                MemberView(model: model, mid: mid, name: activity.author)
             }
+        }
     }
     private func load(append: Bool = false) {
         model.browseLoadAttempted = true

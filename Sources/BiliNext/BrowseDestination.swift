@@ -29,6 +29,9 @@ enum BrowseDestination: String, CaseIterable, Sendable {
         }
     }
 
+    /// Pages listed in the sidebar. Search is reached from the toolbar's search field and ⌘L.
+    static let sidebarItems = allCases.filter { $0 != .search }
+
     /// Favorite folders are listed under their sidebar row; home sections and dynamic modes
     /// live in the browse toolbar instead.
     var hasSidebarChildren: Bool { self == .favorites }

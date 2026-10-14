@@ -15,7 +15,8 @@ struct AvatarView: View {
 struct BrowseView: View {
     @ObservedObject var model: AppModel
     var isActive = true
-    @FocusState private var searching: Bool
+    /// Height of the floating toolbar; content starts below it but scrolls beneath it.
+    var topInset: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var emptyState: (title: String, message: String, symbol: String) {
         switch model.menu {
@@ -32,76 +33,8 @@ struct BrowseView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if model.menu == .search {
-                HStack {
-                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("搜索视频，或粘贴 BV 号 / 视频链接", text: $model.query)
-                        .textFieldStyle(.plain).focused($searching).onSubmit { model.refresh() }
-                    Picker("排序", selection: $model.searchOrder) {
-                        Text("综合").tag("totalrank")
-                        Text("最多播放").tag("click")
-                        Text("最新发布").tag("pubdate")
-                        Text("最多收藏").tag("stow")
-                    }.frame(width: 130).onChange(of: model.searchOrder) { _, _ in model.refresh() }
-                    Button("搜索") { model.refresh() }.buttonStyle(.glass)
-                }.font(GlassTheme.bodyFont).controlSize(.large)
-                    .frame(minHeight: GlassTheme.controlHeight).padding(12).chromeSurface(
-                        in: RoundedRectangle(cornerRadius: GlassTheme.panelRadius)
-                    )
-                    .padding(.horizontal, GlassTheme.contentInset).padding(.bottom, 20)
-            }
-            if model.menu == .dynamic, model.profile != nil {
-                FollowedLiveView(lives: model.followedLives, model: model)
-            }
-            if [.favorites, .history].contains(model.menu) {
-                HStack {
-                    TextField(
-                        model.menu == .favorites ? "搜索当前收藏夹" : "搜索观看历史", text: $model.libraryQuery
-                    )
-                    .textFieldStyle(.roundedBorder).onSubmit { model.refresh() }
-                    if model.menu == .favorites {
-                        Picker("排序", selection: $model.favoriteOrder) {
-                            Text("最近收藏").tag("mtime")
-                            Text("最近投稿").tag("pubtime")
-                            Text("最多播放").tag("view")
-                        }.frame(width: 150).onChange(of: model.favoriteOrder) { _, _ in
-                            model.refresh()
-                        }
-                    }
-                    Button("搜索") { model.refresh() }
-                    if !model.libraryQuery.isEmpty {
-                        Button("清除") {
-                            model.libraryQuery = ""
-                            model.refresh()
-                        }
-                    }
-                }.font(GlassTheme.bodyFont).controlSize(.large)
-                    .padding(.horizontal, GlassTheme.contentInset).padding(.bottom, 16)
-            }
-            if model.menu == .history {
-                Text("来自 B 站的观看历史 · 点击从上次进度继续").font(GlassTheme.metadataFont).foregroundStyle(
-                    .secondary
-                ).frame(
-                    maxWidth: .infinity, alignment: .leading
-                ).padding(.horizontal, GlassTheme.contentInset).padding(.bottom, 12)
-            }
-            if model.menu == .watchLater, let removed = model.removedLater {
-                HStack {
-                    Text("已移除「\(removed.title)」").lineLimit(1)
-                    Spacer()
-                    Button("撤销") { model.changeWatchLater(removed) }.disabled(
-                        model.libraryBusy.contains(removed.id))
-                }
-                .font(GlassTheme.bodyFont).controlSize(.large).padding(
-                    .horizontal, GlassTheme.contentInset
-                ).padding(.bottom, 12)
-            }
-            if let error = model.browseError {
-                ErrorBanner(message: error) { model.retryBrowse() }
-                    .padding(.horizontal, GlassTheme.contentInset).padding(.bottom, 16)
-            }
             if model.menu == .home && model.homeSection == "番剧" {
-                SeasonBrowser(model: model)
+                SeasonBrowser(model: model).padding(.top, topInset)
             } else if model.menu.requiresLogin && model.profile == nil {
                 ContentUnavailableView {
                     Label(
@@ -112,11 +45,14 @@ struct BrowseView: View {
                 } actions: {
                     Button("扫码登录") { model.loginPresented = true }.buttonStyle(.glassProminent)
                 }
+                .padding(.top, topInset)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             } else if model.menu == .dynamic && model.dynamicMode == "全部" {
-                ActivityView(model: model)
+                ActivityView(model: model, topInset: topInset)
             } else if model.videos.isEmpty && model.loading && model.browseError == nil {
                 SkeletonVideoGrid(history: model.menu == .history)
+                    .padding(.top, topInset + 12)
                     .transition(.opacity)
             } else if model.videos.isEmpty && !model.loading && model.browseError == nil {
                 ContentUnavailableView {
@@ -128,15 +64,40 @@ struct BrowseView: View {
                         Button("继续加载视频") { model.refresh(more: true) }.buttonStyle(.glass)
                     }
                 }
+                .padding(.top, topInset)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                NativeVideoGrid(model: model, isActive: isActive)
+                NativeVideoGrid(model: model, isActive: isActive, topInset: topInset)
                     .id(model.menu)
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .animation(Motion.standard(reduceMotion), value: model.videos.isEmpty)
-            .onChange(of: isActive) { _, active in
-                if !active { searching = false }
+            // Notices float as glass just below the toolbar or above the bottom edge.
+            .overlay(alignment: .top) {
+                if let error = model.browseError {
+                    ErrorBanner(message: error) { model.retryBrowse() }
+                        .frame(maxWidth: 560)
+                        .floatingGlass(in: RoundedRectangle(cornerRadius: GlassTheme.panelRadius))
+                        .padding(.top, topInset + 4).padding(.horizontal, GlassTheme.contentInset)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
-            .onChange(of: model.menu) { _, menu in if menu == .search { searching = true } }
+            .overlay(alignment: .bottom) {
+                if model.menu == .watchLater, let removed = model.removedLater {
+                    HStack(spacing: 12) {
+                        Text("已移除「\(removed.title)」").lineLimit(1).frame(maxWidth: 320)
+                        Button("撤销") { model.changeWatchLater(removed) }
+                            .buttonStyle(.glass)
+                            .disabled(model.libraryBusy.contains(removed.id))
+                    }
+                    .font(GlassTheme.labelFont)
+                    .padding(.leading, 18).padding(.trailing, 8).padding(.vertical, 6)
+                    .floatingGlass(in: Capsule())
+                    .padding(.bottom, 24)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(Motion.standard(reduceMotion), value: model.browseError)
+            .animation(Motion.standard(reduceMotion), value: model.removedLater?.id)
     }
 }
