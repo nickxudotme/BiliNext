@@ -21,7 +21,7 @@
 - 圆角：角标 4、行 8、封面 12、浮层 16、内容卡片 10（距窗口 8pt）。
 - 颜色：`accent` 浅色 #FF6699、深色 #ED5C8C；`canvas` 为 `textBackgroundColor`（浅色纯白）；`raisedFill` 浅色白、深色白 16%。
 - 反馈：悬停 7%、按下 14% 并缩放 0.95；卡片不画底板，改为抬起、封面阴影加深和图片 4% 放大。
-- 动效：`Motion.quick` 0.15s、`standard` 0.2s、`emphasized` 0.3s easeInOutCubic，均尊重减弱动态效果。
+- 动效：`Motion.quick` 0.1s、`panel` 0.08s（Arc 侧栏曲线）、`standard` 0.2s、`emphasized` 0.3s easeInOutCubic，均尊重减弱动态效果。
 
 ## 外壳
 
