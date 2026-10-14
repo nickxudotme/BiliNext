@@ -57,3 +57,34 @@ struct FloatingGlassPanel: ViewModifier {
 extension View {
     func floatingGlassPanel() -> some View { modifier(FloatingGlassPanel()) }
 }
+
+/// The player's controls as one floating Liquid Glass bar inset from the picture's edges,
+/// shared by on-demand and live playback.
+struct PlayerGlassBar: ViewModifier {
+    var compact = false
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: compact ? 16 : 22)
+        content
+            .padding(.horizontal, compact ? 8 : 14).padding(.top, compact ? 4 : 6)
+            .padding(.bottom, compact ? 4 : 8)
+            .background {
+                if reduceTransparency {
+                    shape.fill(.black.opacity(0.8))
+                } else {
+                    Color.clear.glassEffect(.regular.tint(.black.opacity(0.3)), in: shape)
+                }
+            }
+            .overlay { shape.strokeBorder(.white.opacity(0.1), lineWidth: 0.5) }
+            .shadow(color: .black.opacity(0.3), radius: 16, y: 6)
+            .frame(maxWidth: 1040)
+            .padding(.horizontal, compact ? 8 : 18).padding(.bottom, compact ? 8 : 16)
+    }
+}
+
+extension View {
+    func playerGlassBar(compact: Bool = false) -> some View {
+        modifier(PlayerGlassBar(compact: compact))
+    }
+}

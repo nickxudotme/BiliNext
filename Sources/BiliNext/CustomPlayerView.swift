@@ -426,17 +426,7 @@ struct CustomPlayerView: View {
             .font(.system(size: 17, weight: .medium)).buttonStyle(InteractionButtonStyle())
             .foregroundStyle(.white)
         }
-        .padding(.horizontal, 14).padding(.top, 44).padding(.bottom, 10)
-        .background {
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0),
-                    .init(color: .black.opacity(0.45), location: 0.45),
-                    .init(color: .black.opacity(0.82), location: 1),
-                ], startPoint: .top, endPoint: .bottom
-            )
-            .allowsHitTesting(false)
-        }
+        .playerGlassBar(compact: compact)
         // Controls over video always use light glyphs on dark feedback, in both appearances.
         .environment(\.colorScheme, .dark)
         .onHover { inside in

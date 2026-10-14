@@ -8,7 +8,6 @@ struct LivePlaybackControls: View {
     let toggleFullscreen: () -> Void
     let chatVisible: Bool
     let toggleChat: () -> Void
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @AppStorage("danmaku.enabled") private var danmakuEnabled = true
     @State private var panel: Panel?
     private enum Panel { case quality, volume, options, danmaku }
@@ -100,19 +99,8 @@ struct LivePlaybackControls: View {
                 .accessibilityLabel(chatVisible ? "收起弹幕列表" : "展开弹幕列表")
         }.font(.system(size: 17, weight: .medium)).buttonStyle(InteractionButtonStyle())
             .foregroundStyle(.white)
-            .padding(.horizontal, 14).padding(.top, 44).padding(.bottom, 12)
-            .background {
-                if reduceTransparency {
-                    Color.black
-                } else {
-                    LinearGradient(
-                        stops: [
-                            .init(color: .clear, location: 0),
-                            .init(color: .black.opacity(0.45), location: 0.45),
-                            .init(color: .black.opacity(0.82), location: 1),
-                        ], startPoint: .top, endPoint: .bottom)
-                }
-            }
+            .frame(minHeight: 44)
+            .playerGlassBar()
             // Same dark controls as on-demand playback, in both appearances.
             .environment(\.colorScheme, .dark)
             .onChange(of: panel) { _, value in panelPresented = value != nil }
