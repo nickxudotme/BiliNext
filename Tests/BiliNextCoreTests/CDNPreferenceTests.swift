@@ -31,3 +31,25 @@ import Testing
     #expect(stream.urls.first?.host == "upos-sz-mirrorcos.bilivideo.com")
     #expect(stream.urls.count == 2)
 }
+
+@Test func officialMediaMovesToTheChosenMirrorKeepingFallbacks() throws {
+    let urls = [
+        "https://cn-zjjh-ct-04-06.bilivideo.com/upgcxcode/1/2/a-1-100026.m4s?e=1&upsig=x",
+        "https://upos-sz-mirrorbd.bilivideo.com/upgcxcode/1/2/a-1-100026.m4s?e=1&upsig=x",
+        "https://xy1x2x3x4xy.mcdn.bilivideo.cn:8082/v1/resource/a.m4s",
+    ].compactMap(URL.init(string:))
+    let moved = CDNPreference.preferring("upos-sz-mirrorali.bilivideo.com", in: urls)
+    #expect(moved.count == 4)
+    #expect(moved[0].host == "upos-sz-mirrorali.bilivideo.com")
+    #expect(moved[0].path == urls[0].path && moved[0].query == urls[0].query)
+    #expect(Array(moved.dropFirst()) == urls)
+    // Nothing official to move, or no mirror chosen: unchanged.
+    #expect(CDNPreference.preferring("upos-sz-mirrorali.bilivideo.com", in: [urls[2]]) == [urls[2]])
+    #expect(CDNPreference.preferring(nil, in: urls) == urls)
+    let redirector = try #require(
+        URL(string: "https://upos-sz-302.bilivideo.com/upgcxcode/1/a.m4s"))
+    #expect(
+        CDNPreference.preferring("upos-sz-mirrorali.bilivideo.com", in: [redirector]) == [
+            redirector
+        ])
+}

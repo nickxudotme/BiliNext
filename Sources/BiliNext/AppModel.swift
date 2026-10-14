@@ -274,7 +274,10 @@ final class AppModel: ObservableObject {
     func start() async {
         guard !started else { return }
         started = true
-        if managesPlaybackTabs && nowPlaying == nil { nowPlaying = NowPlaying(workspace: self) }
+        if managesPlaybackTabs && nowPlaying == nil {
+            nowPlaying = NowPlaying(workspace: self)
+            DNSWarmup.keepMirrorWarm()
+        }
         let account = accountGeneration
         let loadedProfile = try? await profileLoader()
         guard account == accountGeneration else { return }

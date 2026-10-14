@@ -27,7 +27,9 @@ final class PlaybackPrefetch {
     private var speculative = 0
 
     init(api: BilibiliAPI) {
-        fetch = { key in try await api.playback(bvid: key.bvid, cid: key.cid, quality: key.quality)
+        fetch = { key in
+            try await api.playback(bvid: key.bvid, cid: key.cid, quality: key.quality)
+                .preferringMirror(Preferences.mirrorHost)
         }
     }
 
@@ -107,7 +109,22 @@ enum DNSWarmup {
         let urls =
             [playback.videoStream?.urls.prefix(2), playback.audioStream?.urls.prefix(2)]
             .compactMap { $0 }.flatMap { $0 } + [playback.url]
-        for host in Set(urls.compactMap(\.host)) {
+        resolve(hosts: Set(urls.compactMap(\.host)))
+    }
+
+    @MainActor private static var timer: Timer?
+
+    /// Keeps the chosen mirror's address cached: its DNS records live about ten minutes, and a
+    /// resolver that first tries an unresponsive server costs seconds on every cache miss.
+    @MainActor static func keepMirrorWarm() {
+        guard timer == nil else { return }
+        let refresh = { if let host = Preferences.mirrorHost { resolve(hosts: [host]) } }
+        refresh()
+        timer = Timer.scheduledTimer(withTimeInterval: 240, repeats: true) { _ in refresh() }
+    }
+
+    static func resolve(hosts: Set<String>) {
+        for host in hosts {
             queue.async {
                 var hints = addrinfo()
                 hints.ai_socktype = SOCK_STREAM

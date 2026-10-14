@@ -12,7 +12,8 @@ import Testing
 ///
 /// `BILINEXT_STARTUP_BVID` picks the video; `BILINEXT_STARTUP_LOGIN=1` (Debug) uses the
 /// development session for logged-in qualities; `BILINEXT_STARTUP_MPV_OPTIONS=a=b,c=d`
-/// overrides mpv properties; `BILINEXT_STARTUP_MPV_LOG=/path` writes mpv's verbose log.
+/// overrides mpv properties; `BILINEXT_STARTUP_MPV_LOG=/path` writes mpv's verbose log;
+/// `BILINEXT_STARTUP_MIRROR=ali` moves the streams to that CDN mirror first.
 @MainActor
 @Test(.enabled(if: ProcessInfo.processInfo.environment["BILINEXT_STARTUP_TEST"] == "1"))
 func playbackStartupLatency() async throws {
@@ -40,7 +41,9 @@ func playbackStartupLatency() async throws {
     let detail = try await api.videoPage(bvid)
     stamp("videoPage")
     let cid = try #require(detail.pages.first?.cid)
+    let mirror = environment["BILINEXT_STARTUP_MIRROR"].flatMap(CDNPreference.host(forMirror:))
     let playback = try await api.playback(bvid: bvid, cid: cid, quality: 80)
+        .preferringMirror(mirror)
     stamp("playurl \(playback.quality) \(playback.videoStream?.codec ?? "mp4")")
     for url in (playback.videoStream?.urls ?? []) + (playback.audioStream?.urls ?? []) {
         print("STARTUP mirror", url.host ?? "", CDNPreference.rank(url))

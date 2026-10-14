@@ -120,7 +120,7 @@ extension AppModel {
                     }
                 }
                 guard !Task.isCancelled, generation == videoGeneration else { return }
-                startup?.mark("detail")
+                startup?.mark("detail", "\(loaded.video.title) · \(loaded.video.author)")
                 detail = loaded
                 loadRelation(for: loaded.video.bvid)
                 if let index = tabs.firstIndex(where: { $0.id == id }) {
@@ -218,6 +218,7 @@ extension AppModel {
             let source =
                 if let episodeID = detail?.video.episodeID {
                     try await api.playback(bvid: id, cid: cid, quality: 80, episodeID: episodeID)
+                        .preferringMirror(Preferences.mirrorHost)
                 } else {
                     try await playbackPrefetch.playback(for: key)
                 }
@@ -313,7 +314,8 @@ extension AppModel {
                 return try await self.api.playback(
                     bvid: id, cid: cid, quality: requestedQuality,
                     episodeID: episodeID, preferDASH: options.preferDASH,
-                    allowAV1: options.allowAV1, allowHEVC: options.allowHEVC)
+                    allowAV1: options.allowAV1, allowHEVC: options.allowHEVC
+                ).preferringMirror(Preferences.mirrorHost)
             },
             load: { [weak self, weak core] candidate, attempt, phase in
                 guard let self, let core, self.recoveryGeneration == request,
