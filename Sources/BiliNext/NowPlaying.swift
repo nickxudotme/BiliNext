@@ -197,7 +197,10 @@ final class NowPlaying {
     }
 
     private func selectedPage() -> AppModel? {
-        guard let workspace, let id = workspace.selected else { return nil }
+        // A space page plays nothing, so media keys leave it alone.
+        guard let workspace, let id = workspace.selected, MemberSpace.mid(id) == nil else {
+            return nil
+        }
         return workspace.playbackInstances[id]
     }
 

@@ -325,7 +325,8 @@ private struct LibraryFilter: View {
     }
 }
 
-private struct SortMenu: View {
+/// A glass capsule menu for choosing a list order.
+struct SortMenu: View {
     let options: [(String, String)]
     let selection: String
     let choose: (String) -> Void

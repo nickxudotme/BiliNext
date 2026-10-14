@@ -10,7 +10,6 @@ struct ActivityView: View {
     @State private var error: String?
     @State private var task: Task<Void, Never>?
     @State private var generation = UUID()
-    @State private var member: Activity?
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 24) {
@@ -19,7 +18,11 @@ struct ActivityView: View {
                         HStack(spacing: 10) {
                             AvatarView(url: activity.avatar).frame(width: 40, height: 40)
                             Button {
-                                member = activity
+                                if let mid = activity.mid {
+                                    model.openSpace(
+                                        mid: mid, name: activity.author, avatar: activity.avatar,
+                                        background: NSEvent.modifierFlags.contains(.command))
+                                }
                             } label: {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(activity.author).font(
@@ -110,11 +113,6 @@ struct ActivityView: View {
         .contentMargins(.top, topInset + 12, for: .scrollContent)
         .contentMargins(.top, topInset, for: .scrollIndicators)
         .task(id: model.timelineRefresh) { load() }.onDisappear { task?.cancel() }
-        .sheet(item: $member) { activity in
-            if let mid = activity.mid {
-                MemberView(model: model, mid: mid, name: activity.author)
-            }
-        }
     }
     private func load(append: Bool = false) {
         model.browseLoadAttempted = true

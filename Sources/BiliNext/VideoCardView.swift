@@ -8,6 +8,8 @@ struct VideoCardView: View {
     @ObservedObject var model: AppModel
     let preview: HoverPreview
     var isActive: Bool
+    /// An uploader's own page already names them, so it shows only the date.
+    var showsAuthor = true
     @Environment(\.displayScale) private var displayScale
     @State private var coverPixels = 640
     @State private var hovered = false
@@ -31,21 +33,24 @@ struct VideoCardView: View {
                         .frame(height: VideoGridMetrics.titleHeight, alignment: .topLeading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     HStack(spacing: 6) {
-                        ThumbnailView(url: video.avatar, pixels: 64) {
-                            Image(systemName: "person.crop.circle.fill").resizable()
-                                .foregroundStyle(.secondary)
-                        }.frame(
-                            width: VideoGridMetrics.authorAvatarSize,
-                            height: VideoGridMetrics.authorAvatarSize
-                        ).clipShape(Circle())
-                        Text(video.author).foregroundStyle(.secondary).lineLimit(1)
-                            .layoutPriority(1)
+                        if showsAuthor {
+                            ThumbnailView(url: video.avatar, pixels: 64) {
+                                Image(systemName: "person.crop.circle.fill").resizable()
+                                    .foregroundStyle(.secondary)
+                            }.frame(
+                                width: VideoGridMetrics.authorAvatarSize,
+                                height: VideoGridMetrics.authorAvatarSize
+                            ).clipShape(Circle())
+                            Text(video.author).foregroundStyle(.secondary).lineLimit(1)
+                                .layoutPriority(1)
+                        }
                         if let date = video.pubdate {
-                            Text("· " + DisplayFormat.relativeDate(date))
+                            Text((showsAuthor ? "· " : "") + DisplayFormat.relativeDate(date))
                                 .foregroundStyle(.tertiary).lineLimit(1).fixedSize()
                         }
                         Spacer(minLength: 0)
                     }
+                    .frame(height: VideoGridMetrics.authorAvatarSize)
                     .font(GlassTheme.metadataFont)
                 }
                 .padding(.horizontal, 2).padding(.bottom, 6)

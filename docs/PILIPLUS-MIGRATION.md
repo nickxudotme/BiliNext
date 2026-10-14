@@ -76,7 +76,7 @@
 | `main` | macOS 26 外壳、抽屉及视频标签已实现 |
 | `main_reply` | 评论排序、分页、楼中楼展开与分页已实现；发表和互动待做 |
 | `match_info` | 待逐项迁移／验收 |
-| `member` | 资料与投稿浏览已实现；完整空间其他分类待做 |
+| `member` | UP 主个人页以侧栏标签打开：横幅与资料、投稿、合集和系列已实现；空间动态等其他分类待做 |
 | `member_article` | 待逐项迁移／验收 |
 | `member_audio` | 待逐项迁移／验收 |
 | `member_cheese` | 待逐项迁移／验收 |
@@ -86,13 +86,13 @@
 | `member_dynamics` | 待逐项迁移／验收 |
 | `member_favorite` | 待逐项迁移／验收 |
 | `member_guard` | 待逐项迁移／验收 |
-| `member_home` | UP 主资料与投稿入口已实现 |
+| `member_home` | 置顶视频、最新投稿与关注已实现 |
 | `member_like_arc` | 待逐项迁移／验收 |
 | `member_opus` | 待逐项迁移／验收 |
 | `member_pgc` | 待逐项迁移／验收 |
-| `member_profile` | 头像、昵称、签名已实现；其他资料待做 |
+| `member_profile` | 头像、昵称、签名、等级、大会员、认证、粉丝／关注／获赞／投稿数已实现 |
 | `member_search` | UP 主投稿关键词搜索已实现 |
-| `member_season_series` | 待逐项迁移／验收 |
+| `member_season_series` | 合集与系列列表及详情已实现 |
 | `member_shop` | 待逐项迁移／验收 |
 | `member_upower_rank` | 待逐项迁移／验收 |
 | `member_video` | 投稿、分页与排序已实现，真实接口及 UI 已验证 |

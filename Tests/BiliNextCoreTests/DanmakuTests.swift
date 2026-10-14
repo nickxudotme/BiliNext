@@ -55,7 +55,8 @@ import Testing
         let me = try await api.profile()
         _ = try await api.favoriteSelection(mid: me.id, aid: aid)
         let owner = try #require(detail.video.ownerID)
-        _ = try await api.member(mid: owner)
+        #expect(try await api.memberCard(mid: owner).id == owner)
+        #expect(try await !api.memberUploads(mid: owner).videos.isEmpty)
         #expect(try await !api.memberVideos(mid: owner).videos.isEmpty)
     }
 #endif

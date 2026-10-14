@@ -46,6 +46,10 @@ extension AppModel {
             activateLive(roomID, force: force, autoplay: autoplay)
             return
         }
+        if let mid = MemberSpace.mid(id) {
+            activateSpace(mid, force: force)
+            return
+        }
         if liveSession != nil { stopMedia() }
         selected = id
         if mediaID == id && !force {

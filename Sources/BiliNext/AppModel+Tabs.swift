@@ -100,7 +100,8 @@ extension AppModel {
             windowPinned = previous?.windowPinned ?? false
             stateBeforeMiniPlayer = nil
         } else {
-            guard selected != nil else { return }
+            // 小窗 only shows media; a space page has none.
+            guard let selected, MemberSpace.mid(selected) == nil else { return }
             stateBeforeMiniPlayer = (sidebarPinned, windowPinned)
             sidebarPinned = false
             windowPinned = true

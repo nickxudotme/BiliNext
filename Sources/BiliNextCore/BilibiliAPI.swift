@@ -264,7 +264,8 @@ public actor BilibiliAPI {
     }
     func video(_ d: [String: Any]) -> Video? {
         guard let bvid = d["bvid"] as? String, !bvid.isEmpty else { return nil }
-        let owner = d["owner"] as? [String: Any] ?? [:]
+        // Space uploads name the uploader `author` as an object rather than a string.
+        let owner = d["owner"] as? [String: Any] ?? d["author"] as? [String: Any] ?? [:]
         let stat = d["stat"] as? [String: Any] ?? [:]
         func count(_ value: Any?) -> String? {
             if let value = value as? NSNumber { return value.stringValue }
@@ -301,22 +302,25 @@ public actor BilibiliAPI {
             "/x/web-interface/popular", params: ["pn": "\(page)", "ps": "20"])
         return (d["list"] as? [[String: Any]] ?? []).compactMap(video)
     }
+    /// Acquires the public buvid3 browser identifier that search and space pages expect.
+    func ensureBrowserIdentifier() async throws {
+        guard !(cookieJar.cookies ?? []).contains(where: { $0.name == "buvid3" }) else { return }
+        let identifiers = try await request("/x/frontend/finger/spi")
+        if let id = identifiers["b_3"] as? String,
+            let c = HTTPCookie(properties: [
+                .name: "buvid3", .value: id, .domain: ".bilibili.com", .path: "/",
+                .secure: "TRUE",
+            ])
+        {
+            cookieJar.setCookie(c)
+        }
+    }
     public func search(_ keyword: String, page: Int = 1, order: String = "totalrank") async throws
         -> [Video]
     {
         // Acquire the public browser identifier before search; this does not
         // bypass risk controls. 412 is surfaced to the user without retry loops.
-        if !(cookieJar.cookies ?? []).contains(where: { $0.name == "buvid3" }) {
-            let identifiers = try await request("/x/frontend/finger/spi")
-            if let id = identifiers["b_3"] as? String,
-                let c = HTTPCookie(properties: [
-                    .name: "buvid3", .value: id, .domain: ".bilibili.com", .path: "/",
-                    .secure: "TRUE",
-                ])
-            {
-                cookieJar.setCookie(c)
-            }
-        }
+        try await ensureBrowserIdentifier()
         let d = try await request(
             "/x/web-interface/wbi/search/type",
             params: [

@@ -36,6 +36,11 @@ struct CommentsPanel: View {
         .clipped()
         .environment(\.openURL, OpenURLAction(handler: open))
         .environment(\.videoDuration, model.duration)
+        .environment(\.openMemberSpace) { comment in
+            model.openSpace(
+                mid: comment.authorID, name: comment.author, avatar: comment.avatar,
+                background: NSEvent.modifierFlags.contains(.command))
+        }
         .environment(\.showCommentPictures) { pictures, index in
             viewer = PictureViewerState(pictures: pictures, index: index)
         }
@@ -378,6 +383,7 @@ struct CommentRow: View {
     @State private var hovered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    @Environment(\.openMemberSpace) private var openMemberSpace
     init(
         comment: Comment, uploaderID: Int64, compact: Bool = false, showsReplies: Bool = true,
         openDialog: (() -> Void)? = nil, openThread: (() -> Void)? = nil
@@ -392,8 +398,14 @@ struct CommentRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            AvatarView(url: comment.avatar)
-                .frame(width: compact ? 28 : 32, height: compact ? 28 : 32)
+            Button {
+                openMemberSpace(comment)
+            } label: {
+                AvatarView(url: comment.avatar)
+                    .frame(width: compact ? 28 : 32, height: compact ? 28 : 32)
+            }
+            .buttonStyle(.plain).disabled(comment.authorID == 0)
+            .help("打开 \(comment.author) 的主页")
             VStack(alignment: .leading, spacing: 6) {
                 CommentIdentity(comment: comment, uploaderID: uploaderID)
                 CollapsibleCommentText(comment: comment)
@@ -487,11 +499,17 @@ struct CommentRow: View {
 private struct CommentIdentity: View {
     let comment: Comment
     let uploaderID: Int64
+    @Environment(\.openMemberSpace) private var openMemberSpace
 
     var body: some View {
         HStack(spacing: 5) {
-            Text(comment.author).font(GlassTheme.metadataFont.weight(.medium)).lineLimit(1)
-                .foregroundStyle(comment.nameColor.flatMap(Color.init(hex:)) ?? .secondary)
+            Button {
+                openMemberSpace(comment)
+            } label: {
+                Text(comment.author).font(GlassTheme.metadataFont.weight(.medium)).lineLimit(1)
+                    .foregroundStyle(comment.nameColor.flatMap(Color.init(hex:)) ?? .secondary)
+            }
+            .buttonStyle(.plain).disabled(comment.authorID == 0)
             if comment.level > 0 {
                 Text("LV\(comment.level)").font(.system(size: 9, weight: .heavy, design: .rounded))
                     .foregroundStyle(levelColor)
@@ -769,6 +787,10 @@ private struct VideoDurationKey: EnvironmentKey {
     static let defaultValue: Double = 0
 }
 
+private struct OpenMemberSpaceKey: EnvironmentKey {
+    static let defaultValue: @MainActor (Comment) -> Void = { _ in }
+}
+
 private struct ShowCommentPicturesKey: EnvironmentKey {
     static let defaultValue: @MainActor ([CommentPicture], Int) -> Void = { _, _ in }
 }
@@ -778,6 +800,12 @@ extension EnvironmentValues {
     var videoDuration: Double {
         get { self[VideoDurationKey.self] }
         set { self[VideoDurationKey.self] = newValue }
+    }
+
+    /// Opens a commenter's space page as a tab.
+    var openMemberSpace: @MainActor (Comment) -> Void {
+        get { self[OpenMemberSpaceKey.self] }
+        set { self[OpenMemberSpaceKey.self] = newValue }
     }
 
     var showCommentPictures: @MainActor ([CommentPicture], Int) -> Void {

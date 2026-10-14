@@ -6,7 +6,6 @@ import SwiftUI
 /// collapsible description, actions, the 合集 or 分P list, then related videos.
 struct VideoIntroPanel: View {
     @ObservedObject var model: AppModel
-    @State private var memberPresented = false
     @State private var showsTop = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -53,18 +52,19 @@ struct VideoIntroPanel: View {
         }
         .environment(\.openURL, OpenURLAction(handler: open))
         .environment(\.videoDuration, model.duration)
-        .sheet(isPresented: $memberPresented) {
-            if let video = model.detail?.video, let mid = video.ownerID {
-                MemberView(model: model, mid: mid, name: video.author)
-            }
-        }
     }
 
     @ViewBuilder private func content(_ detail: VideoDetail) -> some View {
         let video = detail.video
         VStack(alignment: .leading, spacing: 0) {
-            UploaderCard(video: video, extras: detail.extras) { memberPresented = true }
-                .padding(.top, 16).padding(.bottom, 18)
+            UploaderCard(video: video, extras: detail.extras) {
+                if let mid = video.ownerID {
+                    model.openSpace(
+                        mid: mid, name: video.author, avatar: video.avatar,
+                        background: NSEvent.modifierFlags.contains(.command))
+                }
+            }
+            .padding(.top, 16).padding(.bottom, 18)
             IntroDetails(detail: detail)
             VideoActionBar(model: model, video: video).padding(.top, 14)
             Divider().opacity(0.6).padding(.top, 10)

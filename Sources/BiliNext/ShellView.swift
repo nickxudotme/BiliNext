@@ -41,7 +41,14 @@ struct ShellView: View {
             }
             ForEach(model.tabs) { tab in
                 if let instance = model.playbackInstances[tab.id] {
-                    if let session = instance.liveSession {
+                    if let space = instance.memberSpace {
+                        MemberSpaceView(
+                            space: space, model: instance, isActive: model.selected == tab.id
+                        )
+                        .opacity(model.selected == tab.id ? 1 : 0)
+                        .allowsHitTesting(model.selected == tab.id)
+                        .accessibilityHidden(model.selected != tab.id)
+                    } else if let session = instance.liveSession {
                         LiveRoomView(session: session, isActive: model.selected == tab.id)
                             .opacity(model.selected == tab.id ? 1 : 0)
                             .allowsHitTesting(model.selected == tab.id)
@@ -116,6 +123,7 @@ struct ShellView: View {
             .overlayPreferenceValue(TabRowAnchorKey.self) { anchors in
                 GeometryReader { proxy in
                     if let id = tabPreview.tabID, id != model.selected, !model.miniPlayer,
+                        MemberSpace.mid(id) == nil,
                         pinned || revealed, let anchor = anchors[id],
                         let tab = model.tabs.first(where: { $0.id == id })
                     {

@@ -83,6 +83,7 @@ private struct SidebarTabRow: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var live: Bool { LiveSession.roomID(tab.id) != nil }
+    private var space: Bool { MemberSpace.mid(tab.id) != nil }
     private var progress: Double? {
         guard let duration = tab.video.duration, duration > 0, tab.position > 0 else { return nil }
         return min(1, tab.position / duration)
@@ -158,6 +159,7 @@ private struct SidebarTabRow: View {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(
                     LiveSession.roomID(tab.id).map { "https://live.bilibili.com/\($0)" }
+                        ?? MemberSpace.mid(tab.id).map { "https://space.bilibili.com/\($0)" }
                         ?? "https://www.bilibili.com/video/\(tab.id)",
                     forType: .string)
             }
@@ -165,7 +167,17 @@ private struct SidebarTabRow: View {
     }
 
     /// A small 16:9 cover keeps tabs recognisable; progress and live state sit on its edge.
-    private var cover: some View {
+    /// A space tab shows the uploader's round avatar in the same footprint.
+    @ViewBuilder private var cover: some View {
+        if space {
+            AvatarView(url: tab.video.avatar).frame(width: 22, height: 22)
+                .frame(width: 38, height: 22)
+        } else {
+            videoCover
+        }
+    }
+
+    private var videoCover: some View {
         ThumbnailView(url: tab.video.cover, pixels: 96) {
             Rectangle().fill(.primary.opacity(0.08))
         }

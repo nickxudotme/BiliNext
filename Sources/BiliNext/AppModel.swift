@@ -11,6 +11,8 @@ final class AppModel: ObservableObject {
     @Published var liveSession: LiveSession?
     /// The system Now Playing bridge; only the workspace owns one.
     var nowPlaying: NowPlaying?
+    /// Set when this tab shows an uploader's space page instead of media.
+    @Published var memberSpace: MemberSpace?
     lazy var watchHistoryReporter = WatchHistoryReporter(
         send: { [outbox = historyOutbox] progress in
             guard let account = progress.accountID else { return }
@@ -279,6 +281,13 @@ final class AppModel: ObservableObject {
                 let first = tabs.first
             {
                 activate(first.id)
+                return
+            }
+            // Opens an uploader's space page, which plays nothing, for the same checks.
+            if let value = ProcessInfo.processInfo.environment["BILINEXT_DEBUG_OPEN_SPACE"],
+                let mid = Int64(value)
+            {
+                openSpace(mid: mid, name: "UP 主")
                 return
             }
         #endif
