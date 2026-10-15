@@ -6,7 +6,10 @@ import SwiftUI
 /// collapsible description, actions, the 合集 or 分P list, then related videos.
 struct VideoIntroPanel: View {
     @ObservedObject var model: AppModel
+    var isActive = true
     @State private var showsTop = false
+    @State private var onlineViewers = OnlineViewerPoller()
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -52,6 +55,25 @@ struct VideoIntroPanel: View {
         }
         .environment(\.openURL, OpenURLAction(handler: open))
         .environment(\.videoDuration, model.duration)
+        .task(id: onlineTarget) { [target = onlineTarget] in await pollOnlineViewers(target) }
+        .onDisappear { onlineViewers.stop() }
+    }
+
+    private var onlineTarget: OnlineViewerPoller.Target? {
+        OnlineViewerPoller.Target(
+            video: model.detail?.video, cid: model.pageID,
+            isActive: isActive && scenePhase == .active)
+    }
+
+    private func pollOnlineViewers(_ target: OnlineViewerPoller.Target?) async {
+        guard !Task.isCancelled else { return }
+        guard let target else {
+            onlineViewers.stop()
+            return
+        }
+        await onlineViewers.poll(target) { target in
+            try await model.api.onlineViewerCount(bvid: target.bvid, cid: target.cid)
+        }
     }
 
     @ViewBuilder private func content(_ detail: VideoDetail) -> some View {
@@ -65,7 +87,7 @@ struct VideoIntroPanel: View {
                 }
             }
             .padding(.top, 16).padding(.bottom, 18)
-            IntroDetails(detail: detail)
+            IntroDetails(detail: detail, onlineViewerCount: onlineViewers.value(for: onlineTarget))
             VideoActionBar(model: model, video: video).padding(.top, 14)
             Divider().opacity(0.6).padding(.top, 10)
             if !model.viewPoints.isEmpty {
@@ -169,12 +191,16 @@ private struct UploaderCard: View {
 
 struct IntroDetails: View {
     let detail: VideoDetail
+    let onlineViewerCount: OnlineViewerCount?
     @State private var expanded: Bool
     @AppStorage(Preferences.autoExpandIntro) private var autoExpand = false
 
     /// Starts expanded when 设置 asks for it, unless `expanded` is given.
-    init(detail: VideoDetail, expanded: Bool? = nil) {
+    init(
+        detail: VideoDetail, expanded: Bool? = nil, onlineViewerCount: OnlineViewerCount? = nil
+    ) {
         self.detail = detail
+        self.onlineViewerCount = onlineViewerCount
         self._expanded = State(
             initialValue: expanded
                 ?? UserDefaults.standard.bool(forKey: Preferences.autoExpandIntro))
@@ -213,6 +239,11 @@ struct IntroDetails: View {
                 .accessibilityLabel(expanded ? "收起简介" : "展开简介")
             }
             stats
+            if let onlineViewerCount {
+                Label("\(onlineViewerCount.total) 人正在看", systemImage: "person.2")
+                    .labelStyle(StatLabelStyle())
+                    .font(GlassTheme.captionFont).foregroundStyle(.secondary).monospacedDigit()
+            }
             if !detail.extras.honors.isEmpty {
                 HStack(spacing: 6) {
                     ForEach(detail.extras.honors.prefix(2), id: \.self) { honor in

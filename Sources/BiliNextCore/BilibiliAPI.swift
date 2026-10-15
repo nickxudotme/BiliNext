@@ -402,6 +402,15 @@ public actor BilibiliAPI {
         let d = try await request("/x/web-interface/view", params: ["bvid": bvid])
         return try parseDetail(d)
     }
+    /// Public, read-only viewer total for one ordinary video's part, independent of player core.
+    public func onlineViewerCount(bvid: String, cid: Int64) async throws -> OnlineViewerCount? {
+        guard Video.extractBVID(bvid) == bvid, cid > 0 else {
+            throw APIError(code: -1, message: "在线人数的视频或分 P 参数无效")
+        }
+        return OnlineViewerCount(
+            data: try await request(
+                "/x/player/online/total", params: ["bvid": bvid, "cid": String(cid)]))
+    }
     /// The video page in one request: the video, its UP card, tags, 合集 and related videos.
     public func videoPage(_ bvid: String) async throws -> VideoDetail {
         try parseVideoPage(
