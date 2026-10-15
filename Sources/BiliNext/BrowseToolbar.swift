@@ -6,6 +6,7 @@ import SwiftUI
 /// filter, followed lives) live here rather than in rows above the content.
 struct BrowseToolbar: View {
     @ObservedObject var model: AppModel
+    @State private var managingFavoriteFolders = false
     static let height: CGFloat = 68
 
     private static let homeSections = [
@@ -32,6 +33,9 @@ struct BrowseToolbar: View {
         .background(alignment: .top) {
             SoftScrollEdge().frame(height: Self.height + 30).allowsHitTesting(false)
         }
+        .sheet(isPresented: $managingFavoriteFolders) {
+            FavoriteFolderManagementView(model: model)
+        }
     }
 
     @ViewBuilder private var leading: some View {
@@ -53,7 +57,17 @@ struct BrowseToolbar: View {
         switch model.menu {
         case .search:
             if let page { SearchPageField(page: page) }
-        case .favorites, .history:
+        case .favorites:
+            if let page { LibraryFilter(page: page) }
+            if model.profile != nil {
+                Button("管理收藏夹", systemImage: "folder.badge.gearshape") {
+                    managingFavoriteFolders = true
+                }
+                .labelStyle(.iconOnly).buttonStyle(.plain)
+                .frame(width: 38, height: 38).floatingGlass(in: Capsule())
+                .help("管理收藏夹")
+            }
+        case .history:
             if let page { LibraryFilter(page: page) }
         case .dynamic:
             if let page, page.profile != nil {

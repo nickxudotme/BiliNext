@@ -212,7 +212,7 @@ public actor BilibiliAPI {
         if let expectedUserID {
             guard let value = cookieJar.cookies?.first(where: { $0.name == "DedeUserID" })?.value,
                 Int64(value) == expectedUserID
-            else { throw APIError(code: -101, message: "历史记录的账号已变化") }
+            else { throw APIError(code: -101, message: "账号已变化，请重新操作") }
             // Bind this request to a cookie snapshot before the first suspension point.
             req.httpShouldHandleCookies = false
             let cookies = cookieJar.cookies(for: u.url!) ?? []
@@ -598,12 +598,7 @@ public actor BilibiliAPI {
     public func favoriteFolders(mid: Int64) async throws -> [FavoriteFolder] {
         let data = try await request(
             "/x/v3/fav/folder/created/list-all", params: ["up_mid": String(mid)])
-        return (data["list"] as? [[String: Any]] ?? []).compactMap {
-            guard let id = ($0["id"] as? NSNumber)?.int64Value else { return nil }
-            return FavoriteFolder(
-                id: id, title: $0["title"] as? String ?? "收藏夹",
-                count: ($0["media_count"] as? NSNumber)?.intValue ?? 0)
-        }
+        return (data["list"] as? [[String: Any]] ?? []).compactMap(Self.parseFavoriteFolder)
     }
     public func favorites(folder: Int64, page: Int, keyword: String = "", order: String = "mtime")
         async throws -> Feed

@@ -63,9 +63,25 @@ public struct MemberLiveRoom: Sendable, Equatable {
 }
 
 public struct FavoriteSelection: Identifiable, Sendable {
-    public let id: Int64
-    public let title: String
+    public let folder: FavoriteFolder
     public let selected: Bool
+    public var id: Int64 { folder.id }
+    public var title: String { folder.title }
+    public var count: Int { folder.count }
+    public var attr: Int? { folder.attr }
+    public var ownerID: Int64? { folder.ownerID }
+    public var intro: String? { folder.intro }
+    public var cover: String? { folder.cover }
+    public var privacy: Int? { folder.privacy }
+    public var isDefault: Bool { folder.isDefault }
+
+    public init(folder: FavoriteFolder, selected: Bool) {
+        self.folder = folder
+        self.selected = selected
+    }
+    public init(id: Int64, title: String, selected: Bool) {
+        self.init(folder: FavoriteFolder(id: id, title: title), selected: selected)
+    }
 }
 extension BilibiliAPI {
     /// The space header. Needs the public browser identifier but no signing.
@@ -235,13 +251,15 @@ extension BilibiliAPI {
             "/x/v3/fav/folder/created/list-all",
             params: ["up_mid": String(mid), "rid": String(aid), "type": "2"])
         return (data["list"] as? [[String: Any]] ?? []).compactMap { item in
-            guard let id = (item["id"] as? NSNumber)?.int64Value else { return nil }
+            guard let folder = Self.parseFavoriteFolder(item) else { return nil }
             return FavoriteSelection(
-                id: id, title: item["title"] as? String ?? "收藏夹",
+                folder: folder,
                 selected: (item["fav_state"] as? NSNumber)?.intValue == 1)
         }
     }
-    public func saveFavorites(aid: Int64, add: Set<Int64>, remove: Set<Int64>) async throws {
+    public func saveFavorites(
+        aid: Int64, add: Set<Int64>, remove: Set<Int64>, expectedUserID: Int64? = nil
+    ) async throws {
         guard !add.isEmpty || !remove.isEmpty else { return }
         _ = try await request(
             "/x/v3/fav/resource/batch-deal",
@@ -249,6 +267,6 @@ extension BilibiliAPI {
                 "resources": "\(aid):2",
                 "add_media_ids": add.sorted().map(String.init).joined(separator: ","),
                 "del_media_ids": remove.sorted().map(String.init).joined(separator: ","),
-            ])
+            ], expectedUserID: expectedUserID)
     }
 }

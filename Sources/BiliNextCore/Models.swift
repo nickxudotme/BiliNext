@@ -224,10 +224,31 @@ public struct Feed: Sendable {
     public let videos: [Video]
     public let next: String?
 }
-public struct FavoriteFolder: Identifiable, Sendable {
+public struct FavoriteFolder: Identifiable, Sendable, Equatable {
     public let id: Int64
     public let title: String
-    public let count: Int
+    public var count: Int
+    /// Attribute bits from Bilibili: bit 0 is private; a cleared bit 1 marks the default folder.
+    public let attr: Int?
+    public let ownerID: Int64?
+    /// List-all may omit these fields. Missing metadata must never become an empty edit value.
+    public let intro: String?
+    public let cover: String?
+    public var privacy: Int? { attr.map { $0 & 1 } }
+    public var isDefault: Bool { attr.map { $0 & 2 == 0 } ?? false }
+
+    public init(
+        id: Int64, title: String, count: Int = 0, attr: Int? = nil, ownerID: Int64? = nil,
+        intro: String? = nil, cover: String? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.count = count
+        self.attr = attr
+        self.ownerID = ownerID
+        self.intro = intro
+        self.cover = cover
+    }
 }
 public struct LoginCode: Sendable {
     public let url: String
