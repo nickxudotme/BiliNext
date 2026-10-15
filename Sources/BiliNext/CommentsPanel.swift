@@ -7,9 +7,27 @@ import SwiftUI
 struct CommentsPanel: View {
     @ObservedObject var model: AppModel
     var isActive = true
+
+    var body: some View {
+        CommentPanelContent(model: model, isActive: isActive)
+            // API action flags belong to the account that fetched them.
+            .id(CommentInteractionModel.context(for: model))
+    }
+}
+
+private struct CommentPanelContent: View {
+    @ObservedObject var model: AppModel
+    let isActive: Bool
     @State private var routes: [CommentRoute] = []
     @State private var viewer: PictureViewerState?
+    @State private var interactions: CommentInteractionModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(model: AppModel, isActive: Bool) {
+        self.model = model
+        self.isActive = isActive
+        _interactions = State(initialValue: CommentInteractionModel(model: model))
+    }
 
     var body: some View {
         ZStack {
@@ -27,6 +45,7 @@ struct CommentsPanel: View {
         .clipped()
         .environment(\.openURL, OpenURLAction(handler: open))
         .environment(\.videoDuration, model.duration)
+        .environment(\.commentInteractions, interactions)
         .environment(\.openMemberSpace) { comment in
             model.openSpace(
                 mid: comment.authorID, name: comment.author, avatar: comment.avatar,
@@ -37,6 +56,7 @@ struct CommentsPanel: View {
         }
         .sheet(item: $viewer) { state in PictureViewer(state: state) }
         .onChange(of: model.detail?.video.bvid) { _, _ in routes = [] }
+        .onDisappear { interactions.cancel() }
     }
 
     @ViewBuilder
@@ -709,11 +729,7 @@ struct CommentRow: View {
                     .joined(separator: " · ")
             )
             .foregroundStyle(.tertiary).lineLimit(1).fixedSize()
-            Label(
-                comment.likes > 0 ? DisplayFormat.count(comment.likes) : "赞",
-                systemImage: "hand.thumbsup"
-            )
-            .labelStyle(.titleAndIcon).lineLimit(1).fixedSize()
+            CommentLikeButton(comment: comment)
             if comment.likedByUploader {
                 Label("UP 觉得很赞", systemImage: "heart.fill").labelStyle(.titleAndIcon)
                     .lineLimit(1).fixedSize().font(GlassTheme.captionFont.weight(.medium))
@@ -789,21 +805,56 @@ private struct PreviewReplyLine: View {
     @State private var hovered = false
 
     var body: some View {
-        Button(action: action) {
-            CommentText(comment: reply, prefix: reply.author)
-                .font(GlassTheme.labelFont).lineSpacing(3).lineLimit(2)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(
-                    .primary.opacity(hovered ? 0.06 : 0), in: RoundedRectangle(cornerRadius: 6)
-                )
-                .padding(.horizontal, -6)
-                .contentShape(Rectangle())
+        HStack(alignment: .top, spacing: 8) {
+            Button(action: action) {
+                CommentText(comment: reply, prefix: reply.author)
+                    .font(GlassTheme.labelFont).lineSpacing(3).lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(
+                        .primary.opacity(hovered ? 0.06 : 0), in: RoundedRectangle(cornerRadius: 6)
+                    )
+                    .padding(.horizontal, -6)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onHover { hovered = $0 }
+            .help("在评论详情中查看")
+            CommentLikeButton(comment: reply).font(GlassTheme.captionFont).padding(.top, 3)
+        }
+    }
+}
+
+private struct CommentLikeButton: View {
+    let comment: Comment
+    @Environment(\.commentInteractions) private var interactions
+
+    var body: some View {
+        let state =
+            interactions?.state(for: comment)
+            ?? .init(liked: comment.liked, likes: max(0, comment.likes))
+        let busy = interactions?.isBusy(comment.id) == true
+        Button {
+            interactions?.toggle(comment)
+        } label: {
+            Label {
+                Text(state.likes > 0 ? DisplayFormat.count(state.likes) : "赞")
+            } icon: {
+                Image(
+                    systemName: busy
+                        ? "hourglass"
+                        : state.liked ? "hand.thumbsup.fill" : "hand.thumbsup"
+                ).frame(width: 12)
+            }
+            .labelStyle(.titleAndIcon).lineLimit(1).fixedSize()
         }
         .buttonStyle(.plain)
-        .onHover { hovered = $0 }
-        .help("在评论详情中查看")
+        .foregroundStyle(state.liked ? GlassTheme.accent : Color.secondary)
+        .disabled(busy || interactions == nil)
+        .help(state.liked ? "取消赞" : "点赞")
+        .accessibilityLabel(state.liked ? "取消点赞评论" : "点赞评论")
+        .accessibilityValue(busy ? "正在提交" : "\(state.likes) 个赞")
     }
 }
 
@@ -1127,7 +1178,16 @@ private struct ShowCommentPicturesKey: EnvironmentKey {
     static let defaultValue: @MainActor ([CommentPicture], Int) -> Void = { _, _ in }
 }
 
+private struct CommentInteractionsKey: EnvironmentKey {
+    static let defaultValue: CommentInteractionModel? = nil
+}
+
 extension EnvironmentValues {
+    var commentInteractions: CommentInteractionModel? {
+        get { self[CommentInteractionsKey.self] }
+        set { self[CommentInteractionsKey.self] = newValue }
+    }
+
     /// The open video's length, so only timestamps inside it become seek links.
     var videoDuration: Double {
         get { self[VideoDurationKey.self] }

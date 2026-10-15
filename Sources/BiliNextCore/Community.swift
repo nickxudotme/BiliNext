@@ -19,6 +19,8 @@ public struct Comment: Identifiable, Sendable {
     public let replies: [Comment]
     public var pinned = false
     public var likedByUploader = false
+    /// The signed-in viewer's action: 1 means liked; 0 and 2 do not.
+    public var liked = false
     public var location: String? = nil
     /// Lines shown before 展开; Bilibili sends 6 for long comments.
     public var maxLines = 0
@@ -47,6 +49,7 @@ public struct Comment: Identifiable, Sendable {
             date: Date(timeIntervalSince1970: (value["ctime"] as? NSNumber)?.doubleValue ?? 0),
             replies: (value["replies"] as? [[String: Any]] ?? []).compactMap(parse))
         comment.dialogID = (value["dialog"] as? NSNumber)?.int64Value ?? 0
+        comment.liked = (value["action"] as? NSNumber)?.intValue == 1
         comment.authorID =
             (value["mid"] as? NSNumber)?.int64Value
             ?? Int64(member["mid"] as? String ?? "") ?? 0
@@ -255,6 +258,23 @@ public struct CommentPage: Sendable {
 }
 
 extension BilibiliAPI {
+    public func likeComment(
+        aid: Int64, replyID: Int64, liked: Bool, expectedUserID: Int64
+    ) async throws {
+        guard aid > 0, replyID > 0, expectedUserID > 0 else {
+            throw APIError(code: -1, message: "评论或账号参数无效")
+        }
+        guard
+            officialPlayerCookies().contains(where: { $0.name == "SESSDATA" && !$0.value.isEmpty })
+        else { throw APIError(code: -101, message: "请先登录") }
+        _ = try await request(
+            "/x/v2/reply/action",
+            form: [
+                "type": "1", "oid": String(aid), "rpid": String(replyID),
+                "action": liked ? "1" : "0",
+            ], expectedUserID: expectedUserID)
+    }
+
     public func videoRelation(bvid: String) async throws -> VideoRelation {
         VideoRelation(
             try await request("/x/web-interface/archive/relation", params: ["bvid": bvid]))
