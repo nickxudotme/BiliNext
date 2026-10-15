@@ -132,7 +132,9 @@ public enum CommentSegment: Equatable, Sendable {
                 #"(?<![0-9])(?<![0-9]:)(?:\d{1,2}:)?\d{1,2}:\d{2}(?![0-9]|:[0-9])"#,
                 { token in
                     let parts = token.split(separator: ":").compactMap { Double($0) }
-                    guard parts.count >= 2, parts.last! < 60 else { return nil }
+                    guard parts.count >= 2, parts.dropFirst().allSatisfy({ $0 < 60 }) else {
+                        return nil
+                    }
                     return .time(token, seconds: parts.reduce(0) { $0 * 60 + $1 })
                 }
             ),

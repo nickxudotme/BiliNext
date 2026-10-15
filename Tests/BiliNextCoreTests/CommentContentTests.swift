@@ -44,3 +44,13 @@ private func comment(_ json: String) throws -> BiliNextCore.Comment {
             .time("9:05", seconds: 545),
         ])
 }
+
+@Test(arguments: ["1:60:00", "01:99:02", "0:75:59", "00:00:60"])
+func timestampsRejectInvalidClockComponents(_ text: String) {
+    #expect(CommentSegment.split(text: text) == [.text(text)])
+}
+
+@Test func timestampsAcceptLongMinuteAndHourPositions() {
+    #expect(CommentSegment.split(text: "75:59") == [.time("75:59", seconds: 4559)])
+    #expect(CommentSegment.split(text: "1:59:59") == [.time("1:59:59", seconds: 7199)])
+}

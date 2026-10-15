@@ -61,7 +61,7 @@ struct CommentsPanel: View {
     /// background), keywords search, and other pages go to the browser.
     private func open(_ url: URL) -> OpenURLAction.Result {
         if url.scheme == CommentLinks.scheme {
-            let value = url.pathComponents.dropFirst().first ?? ""
+            let value = CommentLinks.value(in: url)
             switch url.host {
             case "seek":
                 if let seconds = Double(value) {
@@ -112,6 +112,12 @@ enum CommentRoute: Hashable {
 /// Custom link targets inside comment text.
 enum CommentLinks {
     static let scheme = "bilinext-comment"
+    static func value(in url: URL) -> String {
+        // Search keywords can contain slashes, spaces and escaped punctuation.
+        let path = URLComponents(url: url, resolvingAgainstBaseURL: false)?.path ?? ""
+        return String(path.dropFirst())
+    }
+
     static func seek(_ seconds: Double) -> URL {
         URL(string: "\(scheme)://seek/\(Int(seconds))")!
     }
