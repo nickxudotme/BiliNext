@@ -169,36 +169,81 @@ public enum CommentSegment: Equatable, Sendable {
 
 public struct CommentBranch: Identifiable, Sendable {
     public var id: Int64 { comment.id }
-    public let comment: Comment
-    public let children: [CommentBranch]
-    public var descendantCount: Int { children.reduce(0) { $0 + 1 + $1.descendantCount } }
+    public var comment: Comment { storage.comments[index] }
+    public var children: [CommentBranch] {
+        storage.children[index].map { CommentBranch(storage: storage, index: $0) }
+    }
+    public var descendantCount: Int { storage.descendants[index] }
+    private let storage: CommentForest
+    private let index: Int
+
+    private init(storage: CommentForest, index: Int) {
+        self.storage = storage
+        self.index = index
+    }
 
     /// API reply pages are flat. Only attach known parents; orphaned replies stay
     /// visible until a later page brings their parent into the loaded set.
     public static func forest(_ comments: [Comment], rootID: Int64) -> [CommentBranch] {
+        let storage = CommentForest(comments, rootID: rootID)
+        return storage.roots.map { CommentBranch(storage: storage, index: $0) }
+    }
+}
+
+/// Shared flat storage avoids recursive construction and destruction for deep reply chains.
+/// Each parent path is resolved once; descendant totals are accumulated from leaves to roots.
+private final class CommentForest: Sendable {
+    let comments: [Comment]
+    let children: [[Int]]
+    let descendants: [Int]
+    let roots: [Int]
+
+    init(_ comments: [Comment], rootID: Int64) {
         var seen = Set<Int64>()
         let unique = comments.filter { $0.id != rootID && seen.insert($0.id).inserted }
-        let byID = Dictionary(uniqueKeysWithValues: unique.map { ($0.id, $0) })
-        var parents: [Int64: Int64] = [:]
-        for comment in unique {
-            var ancestors: Set<Int64> = [comment.id]
-            var candidate = comment.parentID
-            var valid = true
-            while let parent = byID[candidate] {
-                if !ancestors.insert(candidate).inserted {
-                    valid = false
-                    break
-                }
-                candidate = parent.parentID
+        let byID = Dictionary(uniqueKeysWithValues: unique.indices.map { (unique[$0].id, $0) })
+        var parents = unique.map { byID[$0.parentID] }
+        // 0: unvisited, 1: on the current path, 2: acyclic, 3: reaches a cycle.
+        var states = Array(repeating: UInt8(0), count: unique.count)
+        for start in unique.indices where states[start] == 0 {
+            var path: [Int] = []
+            var next: Int? = start
+            while let index = next, states[index] == 0 {
+                states[index] = 1
+                path.append(index)
+                next = parents[index]
             }
-            if valid, byID[comment.parentID] != nil { parents[comment.id] = comment.parentID }
+            let acyclic = next.map { states[$0] == 2 } ?? true
+            for index in path { states[index] = acyclic ? 2 : 3 }
         }
-        let children = Dictionary(
-            grouping: unique.filter { parents[$0.id] != nil }, by: { parents[$0.id]! })
-        func branch(_ comment: Comment) -> CommentBranch {
-            CommentBranch(comment: comment, children: (children[comment.id] ?? []).map(branch))
+        var children = Array(repeating: [Int](), count: unique.count)
+        var roots: [Int] = []
+        for index in unique.indices {
+            // As before, every reply leading into a cycle remains a visible root.
+            if states[index] == 3 { parents[index] = nil }
+            if let parent = parents[index] {
+                children[parent].append(index)
+            } else {
+                roots.append(index)
+            }
         }
-        return unique.filter { parents[$0.id] == nil }.map(branch)
+        var descendants = Array(repeating: 0, count: unique.count)
+        var remaining = children.map(\.count)
+        var ready = unique.indices.filter { remaining[$0] == 0 }
+        var cursor = 0
+        while cursor < ready.count {
+            let index = ready[cursor]
+            cursor += 1
+            if let parent = parents[index] {
+                descendants[parent] += descendants[index] + 1
+                remaining[parent] -= 1
+                if remaining[parent] == 0 { ready.append(parent) }
+            }
+        }
+        self.comments = unique
+        self.children = children
+        self.descendants = descendants
+        self.roots = roots
     }
 }
 public struct CommentPage: Sendable {
@@ -319,7 +364,11 @@ public enum CommentThread {
         root: Int64, replies: [Comment], collapsed: Set<Int64> = [], maxDepth: Int = 6
     ) -> [CommentThreadRow] {
         var rows: [CommentThreadRow] = []
-        func visit(_ branch: CommentBranch, depth: Int, ancestors: [Int64], rails: [Bool]) {
+        var pending = CommentBranch.forest(replies, rootID: root).reversed().map {
+            (branch: $0, depth: 1, ancestors: [Int64](), rails: [Bool]())
+        }
+        while let next = pending.popLast() {
+            let (branch, depth, ancestors, rails) = next
             var shown = branch.comment
             if depth > 1 && depth <= maxDepth { shown.text = stripReplyPrefix(shown.text) }
             let folded = collapsed.contains(branch.id)
@@ -327,23 +376,23 @@ public enum CommentThread {
                 CommentThreadRow(
                     comment: shown, depth: min(depth, maxDepth), ancestors: ancestors,
                     rails: rails, descendants: branch.descendantCount, collapsed: folded))
-            guard !folded else { return }
-            for (index, child) in branch.children.enumerated() {
-                let more = index < branch.children.count - 1
+            guard !folded else { continue }
+            let children = branch.children
+            // Reverse the push order so the stack visits siblings in their input order.
+            for (index, child) in children.enumerated().reversed() {
+                let more = index < children.count - 1
                 if depth < maxDepth {
-                    visit(
-                        child, depth: depth + 1, ancestors: ancestors + [branch.id],
-                        rails: rails + [more])
+                    pending.append(
+                        (child, depth + 1, ancestors + [branch.id], rails + [more]))
                 } else {
                     // At the limit children line up with their parent under the same line.
-                    visit(
-                        child, depth: depth + 1, ancestors: ancestors,
-                        rails: rails.dropLast() + [more || (rails.last ?? false)])
+                    pending.append(
+                        (
+                            child, depth + 1, ancestors,
+                            rails.dropLast() + [more || (rails.last ?? false)]
+                        ))
                 }
             }
-        }
-        for branch in CommentBranch.forest(replies, rootID: root) {
-            visit(branch, depth: 1, ancestors: [], rails: [])
         }
         return rows
     }
