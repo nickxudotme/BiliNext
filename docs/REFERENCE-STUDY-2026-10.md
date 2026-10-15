@@ -34,8 +34,9 @@
 | 10 | AI 总结面板：`/x/web-interface/view/conclusion/get`，带时间点跳转 | PiliPlus、bilibili-api | S–M | 签名接口，登录后可用 |
 | 11 | 评论点赞与回复、发送／点赞弹幕（仅用户点击触发） | bilibili-api | M | 写操作 |
 | 12 | 空间页补全：空间动态、代表作、公告、关系状态（回关／互关）、合集排序 | bilibili-api、PiliPlus | M | 动态为签名接口 |
-| 13 | WBI 遇 -403 重算密钥并重试一次；签名请求默认带 `web_location` | bilibili-api | S | 减少偶发失败 |
+| 13 | ~~WBI 遇 -403 刷新密钥并重试一次；签名请求默认带 `web_location`~~（已完成） | bilibili-api | S | 仅签名 GET 的 API -403 重试一次，保留显式参数，不重放账号写操作；并发及取消有离线请求测试 |
 | 14 | 在线人数 `/x/player/online/total` | bilibili-api | S | |
 | 15 | 收藏夹增删改、移动复制，稍后再看清空 | bilibili-api | S–M | |
 | 16 | 画中画（系统 PiP） | PiliPlus | M | 与小窗互补 |
 | 17 | 自管 HTTP 层喂给 mpv：首字节超时换镜像、一次取头与索引、连接复用 | 官方客户端 | L | 弱网收益最大，单独评估 |
+| 18 | 评论超长回复链性能与详情页请求取消 | 本仓库回归 | M | 合成深链显示构树耗时二次增长，需结合真实评论分布验证；详情页离开后自动定位的分页任务取消待补 |
