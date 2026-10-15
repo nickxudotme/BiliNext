@@ -40,6 +40,12 @@ struct TranscriptView: View {
             HStack {
                 Text("字幕脚本").font(GlassTheme.readingFont.weight(.semibold))
                 Spacer()
+                Button("复制全部", systemImage: "doc.on.doc") { model.copyTranscript() }
+                    .font(GlassTheme.metadataFont)
+                    .buttonStyle(InteractionButtonStyle(kind: .row))
+                    .disabled(!model.canCopyTranscript)
+                    .help("复制当前视频（当前分 P）的完整主字幕，保留原始换行，不受搜索和段落模式影响")
+                    .accessibilityLabel("复制全部字幕脚本")
                 Toggle("段落", isOn: $paragraphs).toggleStyle(.switch).controlSize(.small)
                     .font(GlassTheme.labelFont)
             }

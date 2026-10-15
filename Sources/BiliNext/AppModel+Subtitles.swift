@@ -1,4 +1,5 @@
 import AVKit
+import AppKit
 import BiliNextCore
 import Combine
 import SwiftUI
@@ -6,6 +7,22 @@ import WebKit
 
 extension AppModel {
     // MARK: - Subtitles
+
+    var canCopyTranscript: Bool {
+        !subtitleLoading && subtitleError == nil && cues.contains { !$0.text.isEmpty }
+    }
+
+    /// Copies the complete primary track, independently of the transcript's display filters.
+    func copyTranscript() {
+        guard canCopyTranscript else { return }
+        let text = cues.map(\.text).joined(separator: "\n")
+        NSPasteboard.general.clearContents()
+        if NSPasteboard.general.setString(text, forType: .string) {
+            toast = "已复制全部字幕（\(cues.count) 条）"
+        } else {
+            toast = "未能写入剪贴板，请重试"
+        }
+    }
 
     func selectTrack(_ id: String) {
         guard let track = tracks.first(where: { $0.id == id }) else { return }
