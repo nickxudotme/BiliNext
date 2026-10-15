@@ -145,7 +145,7 @@ struct PlaybackView: View {
             Group {
                 switch panel {
                 case .info: VideoIntroPanel(model: model)
-                case .comments: CommentsPanel(model: model).id(model.selected)
+                case .comments: CommentsPanel(model: model, isActive: isActive).id(model.selected)
                 case .transcript: TranscriptView(model: model)
                 case .danmaku: DanmakuListView(model: model)
                 }

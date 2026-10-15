@@ -6,6 +6,7 @@ import SwiftUI
 /// and a thread page pushed inside the panel for the full replies and conversations.
 struct CommentsPanel: View {
     @ObservedObject var model: AppModel
+    var isActive = true
     @State private var routes: [CommentRoute] = []
     @State private var viewer: PictureViewerState?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -13,25 +14,14 @@ struct CommentsPanel: View {
     var body: some View {
         ZStack {
             // Pages sit directly on the panel's glass, so only the top one is shown.
-            CommentListPage(model: model, push: push)
+            CommentListPage(model: model, isActive: isActive && routes.isEmpty, push: push)
                 .opacity(routes.isEmpty ? 1 : 0).allowsHitTesting(routes.isEmpty)
             ForEach(Array(routes.enumerated()), id: \.element) { index, route in
-                Group {
-                    switch route {
-                    case .thread(let root, let uploader, let focus):
-                        CommentThreadPage(
-                            model: model, root: root, uploaderID: uploader, focus: focus,
-                            push: push, pop: pop)
-                    case .dialog(let root, let dialog, let uploader):
-                        CommentDialogPage(
-                            model: model, root: root, dialogID: dialog, uploaderID: uploader,
-                            pop: pop)
-                    }
-                }
-                .opacity(index == routes.count - 1 ? 1 : 0)
-                .allowsHitTesting(index == routes.count - 1)
-                .zIndex(Double(index + 1))
-                .transition(.move(edge: .trailing))
+                routePage(route, active: isActive && index == routes.count - 1)
+                    .opacity(index == routes.count - 1 ? 1 : 0)
+                    .allowsHitTesting(index == routes.count - 1)
+                    .zIndex(Double(index + 1))
+                    .transition(.move(edge: .trailing))
             }
         }
         .clipped()
@@ -47,6 +37,20 @@ struct CommentsPanel: View {
         }
         .sheet(item: $viewer) { state in PictureViewer(state: state) }
         .onChange(of: model.detail?.video.bvid) { _, _ in routes = [] }
+    }
+
+    @ViewBuilder
+    private func routePage(_ route: CommentRoute, active: Bool) -> some View {
+        switch route {
+        case .thread(let root, let aid, let uploader, let focus):
+            CommentThreadPage(
+                model: model, root: root, aid: aid, uploaderID: uploader, focus: focus,
+                isActive: active && aid == model.detail?.video.aid, push: push, pop: pop)
+        case .dialog(let root, let aid, let dialog, let uploader):
+            CommentDialogPage(
+                model: model, root: root, aid: aid, dialogID: dialog, uploaderID: uploader,
+                isActive: active && aid == model.detail?.video.aid, pop: pop)
+        }
     }
 
     private func push(_ route: CommentRoute) {
@@ -96,15 +100,15 @@ struct CommentsPanel: View {
 
 enum CommentRoute: Hashable {
     /// `focus` is a reply to scroll to and highlight, as when tapped in the preview.
-    case thread(Comment, uploaderID: Int64, focus: Comment? = nil)
-    case dialog(root: Comment, dialogID: Int64, uploaderID: Int64)
+    case thread(Comment, aid: Int64, uploaderID: Int64, focus: Comment? = nil)
+    case dialog(root: Comment, aid: Int64, dialogID: Int64, uploaderID: Int64)
 
     static func == (lhs: CommentRoute, rhs: CommentRoute) -> Bool { lhs.key == rhs.key }
     func hash(into hasher: inout Hasher) { hasher.combine(key) }
     private var key: String {
         switch self {
-        case .thread(let root, _, let focus): "thread:\(root.id):\(focus?.id ?? 0)"
-        case .dialog(let root, let dialog, _): "dialog:\(root.id):\(dialog)"
+        case .thread(let root, let aid, _, let focus): "thread:\(aid):\(root.id):\(focus?.id ?? 0)"
+        case .dialog(let root, let aid, let dialog, _): "dialog:\(aid):\(root.id):\(dialog)"
         }
     }
 }
@@ -135,23 +139,28 @@ enum CommentLinks {
 
 private struct CommentListPage: View {
     @ObservedObject var model: AppModel
+    let isActive: Bool
     let push: (CommentRoute) -> Void
-    @State private var comments: [Comment] = []
-    @State private var count = 0
-    @State private var page = 0
-    @State private var more = false
     @State private var sort = "hot"
-    @State private var loading = false
-    @State private var error: String?
-    @State private var uploaderID: Int64 = 0
-    @State private var generation = UUID()
+    @StateObject private var loader: CommentPageLoader
+
+    init(model: AppModel, isActive: Bool, push: @escaping (CommentRoute) -> Void) {
+        self.model = model
+        self.isActive = isActive
+        self.push = push
+        _loader = StateObject(wrappedValue: CommentPageLoader(api: model.api))
+    }
+
+    private var scope: CommentPageLoader.Scope? {
+        model.detail?.video.aid.map { .init(aid: $0, kind: .list(newest: sort == "new")) }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 Text("评论").font(GlassTheme.sectionTitleFont)
-                if count > 0 {
-                    Text(DisplayFormat.count(count)).font(GlassTheme.metadataFont)
+                if loader.count > 0 {
+                    Text(DisplayFormat.count(loader.count)).font(GlassTheme.metadataFont)
                         .foregroundStyle(.secondary).monospacedDigit()
                 }
                 Spacer()
@@ -163,99 +172,89 @@ private struct CommentListPage: View {
             .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 8)
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(comments) { comment in
+                    ForEach(loader.comments) { comment in
                         CommentRow(
-                            comment: comment, uploaderID: uploaderID,
+                            comment: comment, uploaderID: loader.uploaderID,
                             openReply: { reply in
-                                push(.thread(comment, uploaderID: uploaderID, focus: reply))
+                                openThread(comment, focus: reply)
                             }
                         ) {
-                            push(.thread(comment, uploaderID: uploaderID))
+                            openThread(comment)
                         }
                         Divider().opacity(0.5).padding(.leading, 58)
                     }
-                    PageSentinel { load(more: true) }
+                    PageSentinel(load: loader.loadNext)
                     CommentListFooter(
-                        loading: loading, error: error, isEmpty: comments.isEmpty,
-                        more: more, emptyTitle: "还没有评论",
-                        retry: {
-                            error = nil
-                            load(more: !comments.isEmpty)
-                        },
-                        loadMore: { load(more: true) })
+                        loading: loader.loading, error: loader.error,
+                        isEmpty: loader.comments.isEmpty,
+                        more: loader.more, emptyTitle: "还没有评论", retry: loader.retry,
+                        loadMore: loader.loadNext)
                 }
                 .padding(.bottom, 12)
             }
         }
-        .task(id: "\(model.detail?.video.bvid ?? ""):\(sort)") { load() }
+        .onChange(of: scope, initial: true) { _, _ in update() }
+        .onChange(of: isActive) { _, _ in update() }
+        .onAppear(perform: update)
+        .onDisappear(perform: loader.deactivate)
     }
 
-    private func load(more append: Bool = false) {
-        guard let aid = model.detail?.video.aid else { return }
-        if append && (loading || !more || error != nil) { return }
-        let token = UUID()
-        generation = token
-        if !append {
-            comments = []
-            page = 0
-            count = 0
-            more = false
-        }
-        loading = true
-        error = nil
-        let next = page + 1
-        Task {
-            do {
-                let result = try await model.api.comments(
-                    aid: aid, page: next, newest: sort == "new")
-                guard token == generation else { return }
-                var seen = Set(comments.map(\.id))
-                comments += result.comments.filter { seen.insert($0.id).inserted }
-                count = result.count
-                more = result.hasMore
-                page = next
-                if result.uploaderID != 0 { uploaderID = result.uploaderID }
-            } catch {
-                guard token == generation else { return }
-                self.error = error.localizedDescription
-            }
-            if token == generation { loading = false }
-        }
+    private func update() { loader.update(scope: scope, active: isActive) }
+
+    private func openThread(_ comment: Comment, focus: Comment? = nil) {
+        guard isActive, let aid = loader.scope?.aid else { return }
+        loader.deactivate()
+        push(.thread(comment, aid: aid, uploaderID: loader.uploaderID, focus: focus))
     }
 }
 
 private struct CommentThreadPage: View {
     @ObservedObject var model: AppModel
     let root: Comment
+    let aid: Int64
     let uploaderID: Int64
     var focus: Comment? = nil
+    let isActive: Bool
     let push: (CommentRoute) -> Void
     let pop: () -> Void
-    @State private var replies: [Comment] = []
-    /// The reply to scroll to once it is loaded; cleared after scrolling.
-    @State private var pendingFocus: Int64?
+    @StateObject private var loader: CommentPageLoader
     @State private var highlighted: Int64?
-    @State private var page = 0
-    @State private var count = 0
-    @State private var more = true
-    @State private var loading = false
-    @State private var error: String?
+    @State private var highlightTask: Task<Void, Never>?
     @State private var collapsed = Set<Int64>()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    init(
+        model: AppModel, root: Comment, aid: Int64, uploaderID: Int64, focus: Comment?,
+        isActive: Bool, push: @escaping (CommentRoute) -> Void, pop: @escaping () -> Void
+    ) {
+        self.model = model
+        self.root = root
+        self.aid = aid
+        self.uploaderID = uploaderID
+        self.focus = focus
+        self.isActive = isActive
+        self.push = push
+        self.pop = pop
+        _loader = StateObject(wrappedValue: CommentPageLoader(api: model.api))
+    }
+
     private var rows: [CommentThreadRow] {
-        CommentThread.rows(root: root.id, replies: replies, collapsed: collapsed)
+        CommentThread.rows(root: root.id, replies: loader.comments, collapsed: collapsed)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            CommentPageHeader(title: "评论详情", back: pop)
+            CommentPageHeader(title: "评论详情") {
+                loader.deactivate()
+                cancelHighlight()
+                pop()
+            }
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         CommentRow(comment: root, uploaderID: uploaderID, showsReplies: false)
                         Rectangle().fill(.primary.opacity(0.05)).frame(height: 8)
-                        Text(count > 0 ? "相关回复共 \(count) 条" : "相关回复")
+                        Text(loader.count > 0 ? "相关回复共 \(loader.count) 条" : "相关回复")
                             .font(GlassTheme.metadataFont.weight(.semibold)).foregroundStyle(
                                 .secondary
                             )
@@ -271,9 +270,12 @@ private struct CommentThreadPage: View {
                                 openDialog: row.depth == 1 && row.comment.parentID != root.id
                                     && row.comment.dialogID != 0
                                     ? {
+                                        loader.deactivate()
+                                        cancelHighlight()
                                         push(
                                             .dialog(
-                                                root: root, dialogID: row.comment.dialogID,
+                                                root: root, aid: aid,
+                                                dialogID: row.comment.dialogID,
                                                 uploaderID: uploaderID))
                                     }
                                     : nil,
@@ -288,62 +290,59 @@ private struct CommentThreadPage: View {
                                 }
                             )
                         }
-                        PageSentinel(load: load)
+                        PageSentinel(load: loader.loadNext)
                         CommentListFooter(
-                            loading: loading, error: error, isEmpty: replies.isEmpty, more: more,
-                            emptyTitle: "暂无回复", retry: load, loadMore: load)
+                            loading: loader.loading, error: loader.error,
+                            isEmpty: loader.comments.isEmpty, more: loader.more,
+                            emptyTitle: "暂无回复", retry: loader.retry, loadMore: loader.loadNext)
                     }
                     .padding(.bottom, 12)
                 }
                 .onChange(of: rows.map(\.id)) { _, ids in reveal(in: ids, proxy: proxy) }
+                .onChange(of: isActive) { _, active in
+                    if active { reveal(in: rows.map(\.id), proxy: proxy) }
+                }
+                .onAppear { reveal(in: rows.map(\.id), proxy: proxy) }
             }
         }
-        .task {
-            pendingFocus = focus?.id
-            load()
+        .onAppear(perform: update)
+        .onChange(of: isActive) { _, _ in
+            if !isActive { cancelHighlight() }
+            update()
         }
+        .onDisappear {
+            loader.deactivate()
+            cancelHighlight()
+        }
+    }
+
+    private func update() {
+        loader.update(
+            scope: .init(aid: aid, kind: .thread(root: root.id)), active: isActive, focus: focus)
+    }
+
+    private func cancelHighlight() {
+        highlightTask?.cancel()
+        highlightTask = nil
+        highlighted = nil
     }
 
     /// Scrolls to the focused reply when it appears, then highlights it briefly.
     private func reveal(in ids: [Int64], proxy: ScrollViewProxy) {
-        guard let id = pendingFocus, ids.contains(id) else { return }
-        pendingFocus = nil
-        Task {
+        guard isActive, let id = loader.pendingFocus, ids.contains(id) else { return }
+        highlightTask?.cancel()
+        highlightTask = Task {
             // Let the new rows lay out before scrolling to one of them.
-            try? await Task.sleep(for: .milliseconds(80))
+            do { try await Task.sleep(for: .milliseconds(80)) } catch { return }
+            guard !Task.isCancelled else { return }
+            loader.revealFocus(id)
             withAnimation(Motion.emphasized(reduceMotion)) {
                 proxy.scrollTo(id, anchor: .center)
             }
             highlighted = id
-            try? await Task.sleep(for: .seconds(1.8))
+            do { try await Task.sleep(for: .seconds(1.8)) } catch { return }
+            guard !Task.isCancelled else { return }
             withAnimation(.easeOut(duration: 0.6)) { if highlighted == id { highlighted = nil } }
-        }
-    }
-
-    private func load() {
-        guard !loading, more, let aid = model.detail?.video.aid else { return }
-        loading = true
-        error = nil
-        let next = page + 1
-        Task {
-            do {
-                let result = try await model.api.comments(aid: aid, page: next, root: root.id)
-                var seen = Set(replies.map(\.id))
-                replies += result.comments.filter { seen.insert($0.id).inserted }
-                count = result.count
-                more = result.hasMore
-                page = next
-            } catch { self.error = error.localizedDescription }
-            loading = false
-            // Keep paging towards a focused reply; past 10 pages, or at the end, show the
-            // previewed copy on its own so the tap still lands somewhere.
-            if let id = pendingFocus, !replies.contains(where: { $0.id == id }) {
-                if more && page < 10 && error == nil {
-                    load()
-                } else if let focus {
-                    replies.insert(focus, at: 0)
-                }
-            }
         }
     }
 }
@@ -526,41 +525,56 @@ private struct BranchLine: View {
 private struct CommentDialogPage: View {
     @ObservedObject var model: AppModel
     let root: Comment
+    let aid: Int64
     let dialogID: Int64
     let uploaderID: Int64
+    let isActive: Bool
     let pop: () -> Void
-    @State private var replies: [Comment] = []
-    @State private var loading = true
-    @State private var error: String?
+    @StateObject private var loader: CommentPageLoader
+
+    init(
+        model: AppModel, root: Comment, aid: Int64, dialogID: Int64, uploaderID: Int64,
+        isActive: Bool, pop: @escaping () -> Void
+    ) {
+        self.model = model
+        self.root = root
+        self.aid = aid
+        self.dialogID = dialogID
+        self.uploaderID = uploaderID
+        self.isActive = isActive
+        self.pop = pop
+        _loader = StateObject(wrappedValue: CommentPageLoader(api: model.api))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            CommentPageHeader(title: "查看对话", back: pop)
+            CommentPageHeader(title: "查看对话") {
+                loader.deactivate()
+                pop()
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(replies) { reply in
+                    ForEach(loader.comments) { reply in
                         CommentRow(
                             comment: reply, uploaderID: uploaderID, compact: true,
                             showsReplies: false)
                     }
                     CommentListFooter(
-                        loading: loading, error: error, isEmpty: replies.isEmpty, more: false,
-                        emptyTitle: "对话已不可见", retry: { Task { await load() } }, loadMore: {})
+                        loading: loader.loading, error: loader.error,
+                        isEmpty: loader.comments.isEmpty, more: false,
+                        emptyTitle: "对话已不可见", retry: loader.retry, loadMore: {})
                 }
                 .padding(.bottom, 12)
             }
         }
-        .task { await load() }
+        .onAppear(perform: update)
+        .onChange(of: isActive) { _, _ in update() }
+        .onDisappear(perform: loader.deactivate)
     }
 
-    private func load() async {
-        guard let aid = model.detail?.video.aid else { return }
-        loading = true
-        error = nil
-        do {
-            replies = try await model.api.dialog(aid: aid, root: root.id, dialog: dialogID)
-        } catch { self.error = error.localizedDescription }
-        loading = false
+    private func update() {
+        loader.update(
+            scope: .init(aid: aid, kind: .dialog(root: root.id, id: dialogID)), active: isActive)
     }
 }
 
