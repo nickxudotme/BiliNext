@@ -151,7 +151,10 @@ final class MPVPlayer {
         set("pause", "yes")
         playbackActivity.setActive(false)
     }
-    func play() { set("pause", "no") }
+    func play() {
+        if ended { seek(0) }
+        set("pause", "no")
+    }
     func subtitleFrame() async -> SubtitleFrame? {
         guard loaded else { return nil }
         return await captureVideoFrame?()

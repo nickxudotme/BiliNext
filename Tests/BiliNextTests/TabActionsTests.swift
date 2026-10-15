@@ -200,3 +200,53 @@ import Testing
     let tabs = try JSONDecoder().decode([SessionTab].self, from: legacy)
     #expect(tabs[0].cid == 3 && tabs[0].position == 12 && tabs[0].trail == TabTrail())
 }
+
+@MainActor
+@Test func savingANewPartBeforeItLoadsDoesNotCarryThePreviousPartsPosition() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = SessionStore(directory: directory)
+    let model = AppModel(sessionStore: store, api: BilibiliAPI(restoreSession: false))
+    let tab = SessionTab(
+        video: Video(bvid: "BV1111111111", title: "分 P 视频"), cid: 1, position: 123)
+    model.tabs = [tab]
+    let page = model.playbackInstance(for: tab)
+    page.selected = tab.id
+    page.mediaID = tab.id
+    page.pageID = 1
+
+    // selectPage resets the part before its async playurl request can start. Closing,
+    // switching tabs or quitting at this point must save P2 at 0, never P1's 123 s.
+    page.selectPage(2)
+    defer { model.clearTabs() }
+    model.saveSession()
+    let saved = try #require(store.read().first)
+    #expect(saved.cid == 2)
+    #expect(saved.position == 0)
+    #expect(model.tabs.first?.position == 0)
+}
+
+@MainActor
+@Test func savedPlaybackPositionAlsoUpdatesTheRetainedPagesReloadRecord() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let model = AppModel(
+        sessionStore: SessionStore(directory: directory), api: BilibiliAPI(restoreSession: false))
+    let tab = SessionTab(
+        video: Video(bvid: "BV1111111111", title: "保留的标签"), cid: 1, position: 5)
+    model.tabs = [tab]
+    let page = model.playbackInstance(for: tab)
+    page.mediaID = tab.id
+    page.pageID = 1
+    page.officialCore = true
+    page.time = 123
+
+    model.saveSession(updateTabs: false)
+    #expect(try SessionStore(directory: directory).read().first?.position == 123)
+    #expect(model.tabs.first?.position == 5 && page.tabs.first?.position == 5)
+    model.saveSession()
+    #expect(model.tabs.first?.position == 123)
+    // activate(force: true) resumes from the child page's tab record.
+    #expect(page.tabs.first?.position == 123)
+    model.clearTabs()
+}

@@ -32,14 +32,49 @@ import Testing
     #expect(AppModel.nextEpisode(after: "BV1", in: nil) == nil)
 }
 
-@Test func endActionDefaultsToContinuingParts() {
-    let defaults = UserDefaults.standard
-    let saved = defaults.string(forKey: Preferences.endActionKey)
-    defer { defaults.set(saved, forKey: Preferences.endActionKey) }
-    defaults.removeObject(forKey: Preferences.endActionKey)
-    #expect(Preferences.endAction == .next)
-    defaults.set("loop", forKey: Preferences.endActionKey)
-    #expect(Preferences.endAction == .loop)
+@Suite(.serialized)
+struct PlaybackEndPreferenceTests {
+    @Test func endActionDefaultsToContinuingParts() {
+        let defaults = UserDefaults.standard
+        let saved = defaults.string(forKey: Preferences.endActionKey)
+        defer { defaults.set(saved, forKey: Preferences.endActionKey) }
+        defaults.removeObject(forKey: Preferences.endActionKey)
+        #expect(Preferences.endAction == .next)
+        defaults.set("loop", forKey: Preferences.endActionKey)
+        #expect(Preferences.endAction == .loop)
+    }
+
+    @MainActor
+    @Test func completingPlaybackLetsTheFirstPlayClickResume() throws {
+        let defaults = UserDefaults.standard
+        let saved = defaults.string(forKey: Preferences.endActionKey)
+        defer { defaults.set(saved, forKey: Preferences.endActionKey) }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let page = AppModel(
+            sessionStore: SessionStore(directory: directory), managesPlaybackTabs: false,
+            api: BilibiliAPI(restoreSession: false))
+        let video = Video(bvid: "BV1111111111", title: "最后一集")
+        page.selected = video.id
+        page.mediaID = video.id
+        page.pageID = 1
+        page.detail = VideoDetail(
+            video: video, pages: [VideoPage(cid: 1, number: 1, title: "正片")], description: "")
+        page.mpv = try MPVPlayer(videoOutput: "null")
+        defer { page.stopMedia() }
+
+        for action in [PlaybackEndAction.pause, .next, .nextOrRelated] {
+            defaults.set(action.rawValue, forKey: Preferences.endActionKey)
+            // The EOF callback has updated playing, but its original intent was to play.
+            page.playing = false
+            page.playbackIntent = true
+            page.playbackEnded()
+            #expect(!page.playbackIntent)
+            page.togglePlayback()
+            #expect(page.playbackIntent && page.playing)
+        }
+    }
 }
 
 @MainActor
@@ -67,4 +102,11 @@ func mpvReportsTheEndOfPlayback() async throws {
         position: 0, autoplay: true)
     for _ in 0..<40 where ended == 0 { try await Task.sleep(for: .milliseconds(150)) }
     #expect(ended > 0 && !core.playing)
+    // keep-open holds EOF; play must seek back and then advance from the start.
+    core.play()
+    for _ in 0..<20 where core.ended || core.time < 0.1 {
+        try await Task.sleep(for: .milliseconds(50))
+    }
+    #expect(core.playing && !core.ended)
+    #expect(core.time >= 0.1 && core.time < 1.25)
 }

@@ -24,6 +24,9 @@ extension AppModel {
     /// Moves on when the current media ends, following 设置 · 播完后.
     func playbackEnded() {
         guard liveSession == nil, !officialCore, let detail else { return }
+        // EOF pauses the engine. Clear the old intent too, so the visible play button
+        // resumes on its first click when there is no next item. Continuing sets it again.
+        playbackIntent = false
         switch Preferences.endAction {
         case .pause:
             return

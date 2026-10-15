@@ -197,6 +197,13 @@ extension AppModel {
         var snapshot = tabs
         for index in snapshot.indices {
             guard let instance = playbackInstances[snapshot[index].id] else { continue }
+            let localIndex = instance.tabs.firstIndex(where: { $0.id == snapshot[index].id })
+            // A newly selected part may not have loaded yet. Its local record already
+            // has the new CID and zero position; the workspace still has the old part.
+            if let localIndex {
+                snapshot[index].cid = instance.tabs[localIndex].cid ?? snapshot[index].cid
+                snapshot[index].position = instance.tabs[localIndex].position
+            }
             if let video = instance.detail?.video { snapshot[index].video = video }
             snapshot[index].cid = instance.pageID ?? snapshot[index].cid
             let seconds =
@@ -212,6 +219,9 @@ extension AppModel {
             {
                 snapshot[index].position = max(0, seconds)
             }
+            // A forced reload reads the retained page's own record. Keep it current,
+            // while periodic saves continue avoiding published tab changes.
+            if updateTabs, let localIndex { instance.tabs[localIndex] = snapshot[index] }
         }
         if updateTabs { tabs = snapshot }
         if officialCore || mpv?.loaded == true || player.currentItem?.status == .readyToPlay,
