@@ -18,11 +18,26 @@ public actor BilibiliAPI {
     }
     private let cookieJar: HTTPCookieStorage
     private static let service = "me.nickxu.BiliNext.session"
-    private var signingKey: (value: String, date: Date)?
+    private struct SigningKey {
+        let value: String
+        let date: Date
+        let generation = UUID()
+
+        var isFresh: Bool { Date().timeIntervalSince(date) < 14400 }
+    }
+    private var signingKey: SigningKey?
     private let credentialStorage: CredentialStorage
     public init(restoreSession: Bool = true, credentialStorage: CredentialStorage = .keychain) {
+        self.init(
+            restoreSession: restoreSession, credentialStorage: credentialStorage,
+            sessionConfiguration: .ephemeral)
+    }
+    init(
+        restoreSession: Bool, credentialStorage: CredentialStorage = .keychain,
+        sessionConfiguration: URLSessionConfiguration
+    ) {
         self.credentialStorage = credentialStorage
-        let config = URLSessionConfiguration.ephemeral
+        let config = sessionConfiguration.copy() as! URLSessionConfiguration
         config.timeoutIntervalForRequest = 20
         config.httpAdditionalHeaders = [
             "User-Agent": "Mozilla/5.0", "Referer": "https://www.bilibili.com/",
@@ -136,26 +151,62 @@ public actor BilibiliAPI {
         signed: Bool = false, allowGuestNav: Bool = false, form: [String: String]? = nil,
         expectedUserID: Int64? = nil, live: Bool = false
     ) async throws -> [String: Any] {
-        var parameters = params
-        if signed {
-            if signingKey == nil || Date().timeIntervalSince(signingKey!.date) > 14400 {
-                let nav = try await request("/x/web-interface/nav", allowGuestNav: true)
-                let images = nav["wbi_img"] as? [String: Any] ?? [:]
-                func key(_ name: String) -> String {
-                    URL(string: images[name] as? String ?? "")?.deletingPathExtension()
-                        .lastPathComponent ?? ""
-                }
-                signingKey = (
-                    try WBISigner.mixinKey(image: key("img_url"), sub: key("sub_url")), Date()
-                )
-            }
-            parameters = WBISigner.sign(
-                params, key: signingKey!.value, timestamp: Int(Date().timeIntervalSince1970))
+        let key = signed ? try await currentSigningKey() : nil
+        let parameters = key.map { signedParameters(params, key: $0) } ?? params
+        do {
+            return try await sendRequest(
+                path, params: parameters, passport: passport, allowGuestNav: allowGuestNav,
+                form: form, expectedUserID: expectedUserID, live: live)
+        } catch let error as APIError where error.code == -403 && signed && form == nil {
+            try Task.checkCancellation()
+            let refreshedKey = try await currentSigningKey(replacing: key)
+            // Only a signed GET can be replayed, and the second failure is returned as-is.
+            return try await sendRequest(
+                path, params: signedParameters(params, key: refreshedKey), passport: passport,
+                allowGuestNav: allowGuestNav, form: nil, expectedUserID: expectedUserID, live: live)
         }
+    }
+    private func currentSigningKey(replacing rejectedKey: SigningKey? = nil) async throws
+        -> SigningKey
+    {
+        try Task.checkCancellation()
+        if let rejectedKey, signingKey?.generation == rejectedKey.generation {
+            signingKey = nil
+        }
+        if let signingKey, signingKey.isFresh { return signingKey }
+        let previousGeneration = signingKey?.generation
+        let nav = try await request("/x/web-interface/nav", allowGuestNav: true)
+        try Task.checkCancellation()
+        // Actor reentrancy lets another request refresh the key during this lookup.
+        // Keep that newer generation instead of publishing an older response over it.
+        if let signingKey, signingKey.generation != previousGeneration, signingKey.isFresh {
+            return signingKey
+        }
+        let images = nav["wbi_img"] as? [String: Any] ?? [:]
+        func key(_ name: String) -> String {
+            URL(string: images[name] as? String ?? "")?.deletingPathExtension()
+                .lastPathComponent ?? ""
+        }
+        let refreshedKey = SigningKey(
+            value: try WBISigner.mixinKey(image: key("img_url"), sub: key("sub_url")), date: Date())
+        signingKey = refreshedKey
+        return refreshedKey
+    }
+    private func signedParameters(_ params: [String: String], key: SigningKey) -> [String: String] {
+        var parameters = params
+        if parameters["web_location"] == nil { parameters["web_location"] = "1550101" }
+        return WBISigner.sign(
+            parameters, key: key.value, timestamp: Int(Date().timeIntervalSince1970))
+    }
+    private func sendRequest(
+        _ path: String, params: [String: String], passport: Bool, allowGuestNav: Bool,
+        form: [String: String]?, expectedUserID: Int64?, live: Bool
+    ) async throws -> [String: Any] {
+        try Task.checkCancellation()
         var u = URLComponents(
             string: "https://\(live ? "api.live" : (passport ? "passport" : "api")).bilibili.com"
                 + path)!
-        u.percentEncodedQuery = WBISigner.query(parameters)
+        u.percentEncodedQuery = WBISigner.query(params)
         var req = URLRequest(url: u.url!)
         if live { req.setValue("https://live.bilibili.com/", forHTTPHeaderField: "Referer") }
         if let expectedUserID {
@@ -179,6 +230,7 @@ public actor BilibiliAPI {
             req.httpBody = Data(WBISigner.query(form).utf8)
         }
         let (data, response) = try await session.data(for: req)
+        try Task.checkCancellation()
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw APIError(code: (response as? HTTPURLResponse)?.statusCode ?? -1, message: "请求失败")
         }
