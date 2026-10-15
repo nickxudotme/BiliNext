@@ -127,13 +127,16 @@ struct CustomPlayerView: View {
                 ProgressView().controlSize(.large).tint(.white).allowsHitTesting(false)
             }
             if boostedFrom != nil {
-                Label("2× 倍速播放中", systemImage: "forward.fill")
-                    .font(GlassTheme.labelFont.weight(.semibold)).foregroundStyle(.white)
-                    .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(.black.opacity(0.55), in: Capsule())
-                    .frame(maxHeight: .infinity, alignment: .top).padding(.top, 24)
-                    .allowsHitTesting(false)
-                    .transition(.opacity)
+                Label(
+                    "\(String(format: "%g", model.playbackRate))× 倍速播放中",
+                    systemImage: "forward.fill"
+                )
+                .font(GlassTheme.labelFont.weight(.semibold)).foregroundStyle(.white)
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(.black.opacity(0.55), in: Capsule())
+                .frame(maxHeight: .infinity, alignment: .top).padding(.top, 24)
+                .allowsHitTesting(false)
+                .transition(.opacity)
             }
             if let error = model.playerError {
                 VStack(spacing: 14) {
@@ -192,12 +195,12 @@ struct CustomPlayerView: View {
             return .handled
         }
         .onKeyPress(.leftArrow) {
-            model.seek(max(0, model.time - 5))
+            model.seek(max(0, model.time - PlaybackPreferences.current.seekStep))
             revealControls()
             return .handled
         }
         .onKeyPress(.rightArrow, phases: [.down, .repeat, .up]) { press in
-            // Tap → skips 5 s; holding it plays at 2× until released, as in the official client.
+            // A tap seeks; a hold temporarily changes speed until released.
             switch press.phase {
             case .down:
                 arrowDown = Date()
@@ -207,14 +210,15 @@ struct CustomPlayerView: View {
                     withAnimation(Motion.standard(reduceMotion)) {
                         boostedFrom = model.playbackRate
                     }
-                    model.setRate(2)
+                    model.setRate(PlaybackPreferences.current.holdRate)
                 }
             default:
                 if let previous = boostedFrom {
                     model.setRate(previous)
                     withAnimation(Motion.standard(reduceMotion)) { boostedFrom = nil }
                 } else {
-                    model.seek(min(model.duration, model.time + 5))
+                    model.seek(
+                        min(model.duration, model.time + PlaybackPreferences.current.seekStep))
                     revealControls()
                 }
                 arrowDown = nil
@@ -375,11 +379,13 @@ struct CustomPlayerView: View {
                             ? "倍速" : String(format: "%g×", model.playbackRate),
                         active: rateSettings
                     ) { rateSettings.toggle() }
-                    .help("播放速度 · 长按 → 2×")
+                    .help(
+                        "播放速度 · 长按 → \(String(format: "%g", PlaybackPreferences.current.holdRate))×"
+                    )
                     .popover(isPresented: $rateSettings, arrowEdge: .top) {
                         optionList(
                             "播放速度",
-                            options: [0.5, 0.75, 1, 1.25, 1.5, 2, 3].map {
+                            options: PlaybackPreferences.rates.map {
                                 (Int($0 * 100), String(format: "%g×", $0))
                             },
                             selected: Int(model.playbackRate * 100)

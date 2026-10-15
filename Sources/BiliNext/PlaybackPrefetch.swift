@@ -13,9 +13,13 @@ final class PlaybackPrefetch {
         var losslessAudio = false
 
         /// A request shaped by the current playback settings.
-        static func current(bvid: String, cid: Int64, quality: Int = 80) -> Key {
+        static func current(
+            bvid: String, cid: Int64, quality: Int? = nil,
+            preferences: PlaybackPreferences = .current
+        ) -> Key {
             Key(
-                bvid: bvid, cid: cid, quality: quality, codecs: Preferences.codecOrder,
+                bvid: bvid, cid: cid, quality: quality ?? preferences.quality,
+                codecs: Preferences.codecOrder,
                 losslessAudio: Preferences.losslessAudio)
         }
     }

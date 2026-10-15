@@ -184,6 +184,7 @@ extension AppModel {
         id: String, cid: Int64, position: Double, generation: UUID, autoplay: Bool = false
     ) async {
         let qualityRequest = qualityGeneration
+        let requestedQuality = PlaybackPreferences.current.quality
         smartSubtitles.configure(video: id, cid: cid, owner: detail?.video.ownerID, track: "")
         videoLoading = true
         playerError = nil
@@ -227,14 +228,14 @@ extension AppModel {
             }
         }
         do {
-            let key = PlaybackPrefetch.Key.current(bvid: id, cid: cid)
+            let key = PlaybackPrefetch.Key.current(bvid: id, cid: cid, quality: requestedQuality)
             let reused = playbackPrefetch.age(of: key).map {
                 String(format: "reused %.2fs old", $0)
             }
             let source =
                 if let episodeID = detail?.video.episodeID {
                     try await api.playback(
-                        bvid: id, cid: cid, quality: 80, episodeID: episodeID,
+                        bvid: id, cid: cid, quality: requestedQuality, episodeID: episodeID,
                         codecs: Preferences.codecOrder, losslessAudio: Preferences.losslessAudio
                     )
                     .preferringMirror(Preferences.mirrorHost)
@@ -256,7 +257,8 @@ extension AppModel {
             qualities = source.qualities
             playbackIntent = autoplay && playbackTabActive
             core.speed = playbackRate
-            try beginPlaybackRecovery(source, requestedQuality: 80, position: position, core: core)
+            try beginPlaybackRecovery(
+                source, requestedQuality: requestedQuality, position: position, core: core)
         } catch {
             guard !Task.isCancelled, generation == videoGeneration else { return }
             playerError = error.localizedDescription

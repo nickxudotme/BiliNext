@@ -78,7 +78,7 @@ final class AppModel: ObservableObject {
     @Published var downloadsPresented = false
     @Published var duration = 0.0
     @Published var buffering = false
-    @Published var playbackRate = 1.0
+    @Published var playbackRate = PlaybackPreferences.current.rate
     @Published var theater = false
     @Published var menu = BrowseDestination.dynamic
     @Published var tabs: [SessionTab] = []

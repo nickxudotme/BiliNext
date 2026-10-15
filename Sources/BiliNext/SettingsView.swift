@@ -10,6 +10,10 @@ enum Preferences {
     static let preferredCodec = "playback.preferredCodec"
     static let prefersLossless = "playback.losslessAudio"
     static let endActionKey = "playback.endAction"
+    static let defaultQuality = "playback.defaultQuality"
+    static let defaultRate = "playback.defaultRate"
+    static let seekStep = "playback.seekStep"
+    static let holdRate = "playback.holdRate"
 
     static var endAction: PlaybackEndAction {
         PlaybackEndAction(rawValue: UserDefaults.standard.string(forKey: endActionKey) ?? "")
@@ -42,6 +46,10 @@ struct SettingsView: View {
     @AppStorage(Preferences.preferredCodec) private var preferredCodec = "av1"
     @AppStorage(Preferences.prefersLossless) private var losslessAudio = true
     @AppStorage(Preferences.endActionKey) private var endAction = PlaybackEndAction.next.rawValue
+    @AppStorage(Preferences.defaultQuality) private var defaultQuality = 80
+    @AppStorage(Preferences.defaultRate) private var defaultRate = 1.0
+    @AppStorage(Preferences.seekStep) private var seekStep = 5.0
+    @AppStorage(Preferences.holdRate) private var holdRate = 2.0
 
     var body: some View {
         TabView {
@@ -55,6 +63,35 @@ struct SettingsView: View {
     private var general: some View {
         Form {
             Section("播放") {
+                Picker(selection: $defaultQuality) {
+                    ForEach(PlaybackPreferences.qualityOptions, id: \.id) {
+                        Text($0.title).tag($0.id)
+                    }
+                } label: {
+                    Text("默认清晰度")
+                    Text("新打开的视频优先使用此档位，实际清晰度由片源与账号权限决定。")
+                }
+                Picker(selection: $defaultRate) {
+                    ForEach(PlaybackPreferences.rates, id: \.self) {
+                        Text(String(format: "%g×", $0)).tag($0)
+                    }
+                } label: {
+                    Text("默认倍速")
+                    Text("新打开的视频使用此倍速，已打开的标签保留各自选择。")
+                }
+                Picker("快进／后退步长", selection: $seekStep) {
+                    ForEach(PlaybackPreferences.seekSteps, id: \.self) {
+                        Text("\(Int($0)) 秒").tag($0)
+                    }
+                }
+                Picker(selection: $holdRate) {
+                    ForEach(PlaybackPreferences.holdRates, id: \.self) {
+                        Text(String(format: "%g×", $0)).tag($0)
+                    }
+                } label: {
+                    Text("长按倍速")
+                    Text("按住 → 时使用，松开后恢复原来的倍速。")
+                }
                 Picker(selection: $endAction) {
                     ForEach(PlaybackEndAction.allCases, id: \.self) {
                         Text($0.title).tag($0.rawValue)
@@ -101,27 +138,34 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(height: 560)
     }
 }
 
 /// Every keyboard shortcut, so the official-style single keys can be discovered.
 private struct ShortcutList: View {
-    private static let player: [(String, String)] = [
-        ("空格", "播放 / 暂停"),
-        ("← →", "后退 / 前进 5 秒，按住 → 两倍速"),
-        ("↑ ↓", "音量"),
-        ("⇧1  ⇧2", "1 倍速 / 2 倍速"),
-        ("[  ]", "上一个 / 下一个分 P"),
-        ("F", "全屏"),
-        ("D", "弹幕开关"),
-        ("M", "静音"),
-        ("Q", "点赞，按住一秒一键三连"),
-        ("W", "投币"),
-        ("E", "收藏"),
-        ("G", "关注 UP 主"),
-        ("T", "稍后再看"),
-    ]
+    @AppStorage(Preferences.seekStep) private var seekStep = 5.0
+    @AppStorage(Preferences.holdRate) private var holdRate = 2.0
+
+    private var player: [(String, String)] {
+        let step = PlaybackPreferences.seekSteps.contains(seekStep) ? seekStep : 5
+        let rate = PlaybackPreferences.holdRates.contains(holdRate) ? holdRate : 2
+        return [
+            ("空格", "播放 / 暂停"),
+            ("← →", "后退 / 前进 \(Int(step)) 秒，按住 → \(String(format: "%g", rate)) 倍速"),
+            ("↑ ↓", "音量"),
+            ("⇧1  ⇧2", "1 倍速 / 2 倍速"),
+            ("[  ]", "上一个 / 下一个分 P"),
+            ("F", "全屏"),
+            ("D", "弹幕开关"),
+            ("M", "静音"),
+            ("Q", "点赞，按住一秒一键三连"),
+            ("W", "投币"),
+            ("E", "收藏"),
+            ("G", "关注 UP 主"),
+            ("T", "稍后再看"),
+        ]
+    }
     private static let window: [(String, String)] = [
         ("⌘L", "搜索"),
         ("⌘1 … ⌘9", "切换到第几个标签"),
@@ -137,7 +181,7 @@ private struct ShortcutList: View {
 
     var body: some View {
         Form {
-            Section("播放时") { rows(Self.player) }
+            Section("播放时") { rows(player) }
             Section("窗口与标签") { rows(Self.window) }
         }
         .formStyle(.grouped)
