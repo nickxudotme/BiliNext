@@ -344,7 +344,7 @@ struct ShellView: View {
 
     private func updatePointer(_ point: NSPoint?) {
         let zone = DrawerActivation.zone(
-            x: point?.x, top: point?.y, width: drawerWidth, pinned: pinned)
+            x: point?.x, top: point?.y, width: drawerWidth, pinned: pinned, fullScreen: fullScreen)
         hovering = zone == 2 && (pinned || revealed)
         guard pointerZone != zone else { return }
         pointerZone = zone

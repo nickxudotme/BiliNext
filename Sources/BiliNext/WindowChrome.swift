@@ -283,14 +283,20 @@ struct DrawerPointerTracker: NSViewRepresentable {
 
 // Include a narrow interior strip because a fullscreen pointer cannot travel
 // past the left screen edge. As in Arc, resting in the top-left corner beside the
-// window buttons also reveals the drawer. The rest of the sidebar keeps it alive.
+// window buttons also reveals the drawer in windowed mode. In fullscreen that
+// corner belongs to the page toolbar, so only the screen edge reveals it.
+// The rest of the sidebar keeps it alive once revealed.
 enum DrawerActivation {
     static let cornerSize = CGSize(width: 100, height: WindowButtons.centerY * 2 - 4)
 
-    static func zone(x: CGFloat?, top: CGFloat? = nil, width: CGFloat, pinned: Bool) -> Int {
+    static func zone(
+        x: CGFloat?, top: CGFloat? = nil, width: CGFloat, pinned: Bool, fullScreen: Bool = false
+    ) -> Int {
         guard let x, x >= -width else { return 0 }
         if x <= 3 { return 1 }
-        if !pinned, let top, top >= 0, top <= cornerSize.height, x <= cornerSize.width {
+        if !pinned, !fullScreen, let top, top >= 0, top <= cornerSize.height,
+            x <= cornerSize.width
+        {
             return 1
         }
         return x <= width + (pinned ? 0 : 4) ? 2 : 0
