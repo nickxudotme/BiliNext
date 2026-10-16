@@ -7,11 +7,24 @@ final class FollowedLives: ObservableObject {
     @Published private(set) var rooms: [LiveRoom] = []
     @Published private(set) var loading = false
     @Published private(set) var error: String?
-    private let api: BilibiliAPI
-    private var task: Task<Void, Never>?
+    private let load: () async throws -> [LiveRoom]
+    private(set) var task: Task<Void, Never>?
     private var generation = UUID()
 
-    init(api: BilibiliAPI) { self.api = api }
+    convenience init(api: BilibiliAPI) {
+        self.init(load: { try await api.followedLiveRooms() })
+    }
+
+    init(load: @escaping () async throws -> [LiveRoom]) { self.load = load }
+
+    func reset() {
+        generation = UUID()
+        task?.cancel()
+        task = nil
+        rooms = []
+        loading = false
+        error = nil
+    }
 
     func refresh() {
         task?.cancel()
@@ -21,7 +34,7 @@ final class FollowedLives: ObservableObject {
         error = nil
         task = Task {
             do {
-                let result = try await api.followedLiveRooms()
+                let result = try await load()
                 guard !Task.isCancelled, generation == request else { return }
                 rooms = result
             } catch {

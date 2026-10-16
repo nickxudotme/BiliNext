@@ -9,7 +9,15 @@ final class AppModel: ObservableObject {
     let api: BilibiliAPI
     /// Retained by the video page, independently of the selected details panel.
     var commentInteractionState: CommentInteractionModel?
-    lazy var followedLives = FollowedLives(api: api)
+    var ownedFollowedLives: FollowedLives?
+    /// Live status belongs to the account, not to an individual dynamic-feed filter.
+    var followedLives: FollowedLives {
+        if let tabOwner { return tabOwner.followedLives }
+        if let ownedFollowedLives { return ownedFollowedLives }
+        let lives = FollowedLives(api: api)
+        ownedFollowedLives = lives
+        return lives
+    }
     @Published var liveSession: LiveSession?
     /// The system Now Playing bridge; only the workspace owns one.
     var nowPlaying: NowPlaying?
@@ -103,7 +111,9 @@ final class AppModel: ObservableObject {
     }
     /// Shared by the workspace and every page it owns.
     lazy var playbackPrefetch = PlaybackPrefetch(api: api)
-    var accountGeneration = UUID()
+    var accountGeneration = UUID() {
+        didSet { ownedFollowedLives?.reset() }
+    }
     @Published var query = ""
     @Published var homeSection = "推荐"
     @Published var dynamicMode = "视频"
