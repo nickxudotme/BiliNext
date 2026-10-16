@@ -15,6 +15,14 @@ extension AppModel {
             return
         }
         guard profile?.id == accountID else { return }
+        // Opening the 收藏到 picker reads the folders too. When that finds them as every
+        // favorites page already has them, nothing changed, and stopping those pages' loads
+        // would only interrupt them.
+        if preferredFolderID == nil, deletedFolderID == nil, available == folders,
+            browseInstances.values.allSatisfy({ $0.menu != .favorites || $0.folders == available })
+        {
+            return
+        }
         let valid = Set(available.map(\.id))
         var removed = Set(folders.map(\.id))
         for instance in browseInstances.values where instance.menu == .favorites {

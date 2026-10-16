@@ -59,6 +59,33 @@ private final class FavoritePageGate {
 }
 
 @MainActor
+@Test func unchangedFolderListLeavesALoadingFavoritesPageAlone() async throws {
+    let initial = [FavoriteFolder(id: 42, title: "默认", count: 3)]
+    let gate = FavoritePageGate()
+    var calls = 0
+    let model = favoriteWorkspace { _ in
+        calls += 1
+        if calls == 2 { await gate.suspend() }
+        return BrowsePageResult(
+            videos: [Video(bvid: "BV1111111111", title: "第 \(calls) 次")], next: nil,
+            folders: initial, folderID: 42)
+    }
+    model.navigate(.favorites)
+    let page = try #require(model.loadedBrowseInstance(for: .favorites))
+    await page.browseTask?.value
+    model.favoriteFoldersDidChange(initial, accountID: 8)
+    page.refresh()
+    for _ in 0..<100 where !gate.started { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(page.loading)
+    // The picker's read finds the same folders: the in-flight load keeps going.
+    model.favoriteFoldersDidChange(initial, accountID: 8)
+    #expect(page.loading && page.browseTask != nil)
+    gate.release()
+    await page.browseTask?.value
+    #expect(page.videos.first?.title == "第 2 次" && calls == 2)
+}
+
+@MainActor
 @Test(arguments: [true, false])
 func favoriteDeletionReusesAnotherFolderAndRepairsHistory(explicitDeletion: Bool) async throws {
     let initial = [
