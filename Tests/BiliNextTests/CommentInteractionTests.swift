@@ -304,3 +304,77 @@ struct CommentInteractionTests {
         #expect(model.state(for: comment) == .init(liked: false, likes: 5))
     }
 }
+
+@MainActor
+@Test func reopeningCommentPanelSharesInFlightWriteAndConfirmedResult() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let page = AppModel(
+        sessionStore: SessionStore(directory: directory), managesPlaybackTabs: false,
+        api: BilibiliAPI(restoreSession: false))
+    defer { page.stopMedia() }
+    page.profile = UserProfile(id: 42, name: "测试")
+    page.detail = VideoDetail(
+        video: Video(bvid: "BV1111111111", title: "测试", aid: 100),
+        pages: [], description: "")
+    let gate = CommentWriteGate()
+    var writes = 0
+    page.commentInteractionState = CommentInteractionModel(
+        context: { [weak page] in page.flatMap(CommentInteractionModel.context(for:)) },
+        send: { _ in
+            writes += 1
+            try await gate.suspend()
+        },
+        requireLogin: {}, reportError: { _ in Issue.record("Expected success") })
+    var panel: CommentInteractionModel? = page.commentInteractionState
+    let comment = interactionComment()
+    let task = try #require(panel?.toggle(comment))
+    await gate.entered()
+    weak var retained = panel
+    panel = nil  // The switch to 简介 removes the comment view.
+    let reopened = page.commentInteractionsForCurrentContext()
+    #expect(retained === reopened)
+    #expect(reopened.isBusy(comment.id))
+    if retained === reopened { #expect(reopened.toggle(comment) == nil && writes == 1) }
+    gate.finish()
+    await task.value
+    // Even if reopening fetched an older server snapshot, the confirmed result wins.
+    #expect(reopened.state(for: comment) == .init(liked: true, likes: 6))
+    #expect(!reopened.isBusy(comment.id))
+    #expect(page.commentInteractionsForCurrentContext().state(for: comment).liked)
+}
+
+@MainActor
+@Test func retainedCommentInteractionsFollowVideoAndAccountContext() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let page = AppModel(
+        sessionStore: SessionStore(directory: directory), managesPlaybackTabs: false,
+        api: BilibiliAPI(restoreSession: false))
+    defer { page.stopMedia() }
+    page.detail = VideoDetail(
+        video: Video(bvid: "BV1111111111", title: "测试", aid: 100),
+        pages: [], description: "")
+    let initial = page.commentInteractionsForCurrentContext()
+    page.profile = UserProfile(id: 42, name: "测试")
+    #expect(page.commentInteractionsForCurrentContext() === initial)
+    page.accountGeneration = UUID()
+    let reauthenticated = page.commentInteractionsForCurrentContext()
+    #expect(reauthenticated !== initial)
+    #expect(initial.toggle(interactionComment()) == nil)
+    page.detail = VideoDetail(
+        video: Video(bvid: "BV1222222222", title: "另一个视频", aid: 200),
+        pages: [], description: "")
+    let otherVideo = page.commentInteractionsForCurrentContext()
+    #expect(otherVideo !== reauthenticated)
+    #expect(reauthenticated.toggle(interactionComment()) == nil)
+    // Two tabs showing the same video still own independent interaction models.
+    let otherPage = AppModel(
+        sessionStore: SessionStore(directory: directory), managesPlaybackTabs: false,
+        api: BilibiliAPI(restoreSession: false))
+    defer { otherPage.stopMedia() }
+    otherPage.detail = page.detail
+    otherPage.profile = page.profile
+    otherPage.accountGeneration = page.accountGeneration
+    #expect(otherPage.commentInteractionsForCurrentContext() !== otherVideo)
+}

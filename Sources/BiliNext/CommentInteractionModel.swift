@@ -85,6 +85,8 @@ final class CommentInteractionModel {
 
     deinit { for task in tasks.values { task.cancel() } }
 
+    func matches(_ context: Context?) -> Bool { self.context == context }
+
     func state(for comment: Comment) -> State {
         guard context == currentContext(), let value = confirmed[comment.id] else {
             return State(liked: comment.liked, likes: max(0, comment.likes))
@@ -163,5 +165,19 @@ final class CommentInteractionModel {
         guard shouldPresentFeedback() else { return }
         if (error as? APIError)?.code == -101 { requireLogin() }
         reportError(error.localizedDescription)
+    }
+}
+
+extension AppModel {
+    func commentInteractionsForCurrentContext() -> CommentInteractionModel {
+        if let commentInteractionState,
+            commentInteractionState.matches(CommentInteractionModel.context(for: self))
+        {
+            return commentInteractionState
+        }
+        commentInteractionState?.cancel()
+        let interactions = CommentInteractionModel(model: self)
+        commentInteractionState = interactions
+        return interactions
     }
 }

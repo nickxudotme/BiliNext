@@ -7,6 +7,8 @@ import WebKit
 @MainActor
 final class AppModel: ObservableObject {
     let api: BilibiliAPI
+    /// Retained by the video page, independently of the selected details panel.
+    var commentInteractionState: CommentInteractionModel?
     lazy var followedLives = FollowedLives(api: api)
     @Published var liveSession: LiveSession?
     /// The system Now Playing bridge; only the workspace owns one.

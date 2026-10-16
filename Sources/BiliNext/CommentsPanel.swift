@@ -9,9 +9,12 @@ struct CommentsPanel: View {
     var isActive = true
 
     var body: some View {
-        CommentPanelContent(model: model, isActive: isActive)
-            // API action flags belong to the account that fetched them.
-            .id(CommentInteractionModel.context(for: model))
+        CommentPanelContent(
+            model: model, isActive: isActive,
+            interactions: model.commentInteractionsForCurrentContext()
+        )
+        // API action flags belong to the account that fetched them.
+        .id(CommentInteractionModel.context(for: model))
     }
 }
 
@@ -20,14 +23,8 @@ private struct CommentPanelContent: View {
     let isActive: Bool
     @State private var routes: [CommentRoute] = []
     @State private var viewer: PictureViewerState?
-    @State private var interactions: CommentInteractionModel
+    let interactions: CommentInteractionModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    init(model: AppModel, isActive: Bool) {
-        self.model = model
-        self.isActive = isActive
-        _interactions = State(initialValue: CommentInteractionModel(model: model))
-    }
 
     var body: some View {
         ZStack {
