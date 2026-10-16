@@ -53,8 +53,8 @@ final class OnlineViewerPoller {
             } catch {
                 guard !Task.isCancelled, generation == request else { return }
                 if error is CancellationError || (error as? URLError)?.code == .cancelled { return }
-                // Auxiliary metadata failures never become playback errors or a made-up zero.
-                count = nil
+                // Auxiliary metadata failures never become playback errors or a made-up zero;
+                // the last good count stays so the intro does not reflow on a blip.
             }
             do { try await wait() } catch { return }
         }

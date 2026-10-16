@@ -84,10 +84,13 @@ private func reply(_ id: Int64, parent: Int64 = 1) -> BiliNextCore.Comment {
 
 @Test func replyTreeResolvesALongCycleWithoutLosingReplies() {
     let count = 20_000
-    let replies = (2..<(count + 2)).map {
-        reply(Int64($0), parent: $0 == count + 1 ? 2 : Int64($0 + 1))
+    let replies: [BiliNextCore.Comment] = (2..<(count + 2)).map { id in
+        let parent: Int64 = id == count + 1 ? 2 : Int64(id + 1)
+        return reply(Int64(id), parent: parent)
     }
     let tree = CommentBranch.forest(replies, rootID: 1)
-    #expect(tree.map(\.id) == replies.map(\.id))
+    let treeIDs: [Int64] = tree.map { $0.id }
+    let replyIDs: [Int64] = replies.map { $0.id }
+    #expect(treeIDs == replyIDs)
     #expect(tree.allSatisfy { $0.children.isEmpty && $0.descendantCount == 0 })
 }

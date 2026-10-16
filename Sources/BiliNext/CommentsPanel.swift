@@ -56,7 +56,8 @@ private struct CommentPanelContent: View {
         }
         .sheet(item: $viewer) { state in PictureViewer(state: state) }
         .onChange(of: model.detail?.video.bvid) { _, _ in routes = [] }
-        .onDisappear { interactions.cancel() }
+        // Likes already sent keep going when the panel hides, so a background tab still
+        // records them; a new video or account rebuilds the panel instead.
     }
 
     @ViewBuilder

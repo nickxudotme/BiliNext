@@ -5,11 +5,25 @@ import Observation
 /// Shared by the list, previews, thread and dialog inside one video's comment panel.
 @MainActor @Observable
 final class CommentInteractionModel {
+    /// Which video and sign-in the panel's comments belong to. Equality leaves out `userID`:
+    /// at launch the profile arrives after comments already fetched with that account's
+    /// cookies, and a real account change always starts a new `accountGeneration`.
     struct Context: Hashable {
         let aid: Int64
         let bvid: String
         let userID: Int64?
         let accountGeneration: UUID
+
+        static func == (lhs: Context, rhs: Context) -> Bool {
+            lhs.aid == rhs.aid && lhs.bvid == rhs.bvid
+                && lhs.accountGeneration == rhs.accountGeneration
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(aid)
+            hasher.combine(bvid)
+            hasher.combine(accountGeneration)
+        }
     }
 
     struct State: Equatable {
@@ -97,7 +111,8 @@ final class CommentInteractionModel {
             cancel()
             return nil
         }
-        guard let context, context.aid > 0, comment.id > 0 else { return nil }
+        // The account may have finished loading after this panel was built.
+        guard let context = currentContext(), context.aid > 0, comment.id > 0 else { return nil }
         guard let userID = context.userID, userID > 0 else {
             requireLogin()
             return nil

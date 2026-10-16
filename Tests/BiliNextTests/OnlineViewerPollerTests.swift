@@ -92,6 +92,32 @@ struct OnlineViewerPollerTests {
         await task.value
     }
 
+    @Test func failureAfterACountKeepsTheLastCount() async throws {
+        let poller = OnlineViewerPoller()
+        let target = try target()
+        var calls = 0
+        var held: CheckedContinuation<Void, Never>?
+        let task = Task {
+            await poller.poll(
+                target,
+                load: { _ in
+                    calls += 1
+                    if calls == 2 { throw APIError(code: -500, message: "fixture") }
+                    return try count("22")
+                },
+                wait: {
+                    // Hold right after the failed second poll.
+                    if calls == 2 { await withCheckedContinuation { held = $0 } }
+                })
+        }
+        try await eventually { held != nil }
+        // The failure leaves the first count in place rather than blanking it.
+        #expect(calls == 2 && poller.count?.total == "22")
+        task.cancel()
+        held?.resume()
+        await task.value
+    }
+
     @Test func cancelledLoadNeverPublishesOrRetries() async throws {
         let poller = OnlineViewerPoller()
         let target = try target()

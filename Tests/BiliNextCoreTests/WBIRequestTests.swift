@@ -62,6 +62,38 @@ struct WBIRequestTests {
         #expect(fixture.requests(to: WBIRequestFixture.navPath).count == 1)
     }
 
+    @Test func liveRequestsGetNoMainSiteWebLocation() async throws {
+        let fixture = WBIRequestFixture { request, _ in
+            request.url?.path == WBIRequestFixture.navPath ? .nav() : .api(0)
+        }
+        defer { fixture.close() }
+
+        _ = try await fixture.api.request("/test/live", signed: true, live: true)
+        let request = try #require(fixture.requests(to: "/test/live").last)
+        #expect(request.url?.host == "api.live.bilibili.com")
+        #expect(query(request)["web_location"] == nil)
+        try expectSignature(request, fresh: false)
+    }
+
+    @Test func cancelledWriteStillReturnsTheServersAnswer() async throws {
+        let fixture = WBIRequestFixture { request, _ in
+            request.url?.path == "/test/write" ? nil : .api(0)
+        }
+        defer { fixture.close() }
+
+        let task = Task {
+            try await fixture.api.request("/test/write", form: ["action": "1"])
+        }
+        try await fixture.waitForRequest(to: "/test/write")
+        task.cancel()
+        try await Task.sleep(for: .milliseconds(50))
+        // The POST was sent; cancelling its caller neither tears it down nor drops the answer.
+        fixture.respond(to: "/test/write", with: .api(0, data: ["value": "applied"]))
+        let result = try await task.value
+        #expect(result["value"] as? String == "applied")
+        #expect(fixture.requests(to: "/test/write").count == 1)
+    }
+
     @Test func leavesUnrelatedErrorsAndUnsignedRequestsAlone() async throws {
         let cases = [
             (signed: false, status: 200, code: -403),

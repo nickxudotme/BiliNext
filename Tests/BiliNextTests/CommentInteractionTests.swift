@@ -144,6 +144,25 @@ struct CommentInteractionTests {
         owner.stopMedia()
     }
 
+    @Test func profileArrivingAfterThePanelStillSignsTheLike() async throws {
+        // At launch comments load before the profile: same account, so no rebuild.
+        let generation = UUID()
+        var current = context(user: nil, generation: generation)
+        var sent: [CommentInteractionModel.Request] = []
+        var logins = 0
+        let model = CommentInteractionModel(
+            context: { current }, send: { sent.append($0) }, requireLogin: { logins += 1 },
+            reportError: { _ in Issue.record("Expected success") })
+        #expect(context(user: nil, generation: generation) == context(generation: generation))
+        current = context(user: 42, generation: generation)
+        await model.toggle(interactionComment())?.value
+        #expect(logins == 0 && sent.map { $0.context.userID } == [42])
+        #expect(model.state(for: interactionComment()) == .init(liked: true, likes: 6))
+        // A new sign-in is a new context and the old panel stops writing.
+        current = context(user: 42, generation: UUID())
+        #expect(model.toggle(interactionComment()) == nil && sent.count == 1)
+    }
+
     @Test func failedLikesKeepTheirPreviousStateAndAllowRetry() async throws {
         let scope = context()
         var calls = 0
