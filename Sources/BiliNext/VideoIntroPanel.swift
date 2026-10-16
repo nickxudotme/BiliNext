@@ -87,7 +87,9 @@ struct VideoIntroPanel: View {
                 }
             }
             .padding(.top, 16).padding(.bottom, 18)
-            IntroDetails(detail: detail, onlineViewerCount: onlineViewers.value(for: onlineTarget))
+            IntroDetails(
+                detail: detail, onlineViewerCount: onlineViewers.value(for: onlineTarget),
+                showsOnlineViewers: onlineTarget != nil)
             VideoActionBar(model: model, video: video).padding(.top, 14)
             Divider().opacity(0.6).padding(.top, 10)
             if !model.viewPoints.isEmpty {
@@ -192,15 +194,19 @@ private struct UploaderCard: View {
 struct IntroDetails: View {
     let detail: VideoDetail
     let onlineViewerCount: OnlineViewerCount?
+    /// Reserves the count's line while it may appear, so its arrival does not push the panel.
+    let showsOnlineViewers: Bool
     @State private var expanded: Bool
     @AppStorage(Preferences.autoExpandIntro) private var autoExpand = false
 
     /// Starts expanded when 设置 asks for it, unless `expanded` is given.
     init(
-        detail: VideoDetail, expanded: Bool? = nil, onlineViewerCount: OnlineViewerCount? = nil
+        detail: VideoDetail, expanded: Bool? = nil, onlineViewerCount: OnlineViewerCount? = nil,
+        showsOnlineViewers: Bool = false
     ) {
         self.detail = detail
         self.onlineViewerCount = onlineViewerCount
+        self.showsOnlineViewers = showsOnlineViewers || onlineViewerCount != nil
         self._expanded = State(
             initialValue: expanded
                 ?? UserDefaults.standard.bool(forKey: Preferences.autoExpandIntro))
@@ -239,10 +245,15 @@ struct IntroDetails: View {
                 .accessibilityLabel(expanded ? "收起简介" : "展开简介")
             }
             stats
-            if let onlineViewerCount {
-                Label("\(onlineViewerCount.total) 人正在看", systemImage: "person.2")
+            if showsOnlineViewers {
+                Label("\(onlineViewerCount?.total ?? "0") 人正在看", systemImage: "person.2")
                     .labelStyle(StatLabelStyle())
                     .font(GlassTheme.captionFont).foregroundStyle(.secondary).monospacedDigit()
+                    // Placeholder text keeps the height until a real count arrives; it is
+                    // never shown, so no count is made up.
+                    .opacity(onlineViewerCount == nil ? 0 : 1)
+                    .accessibilityHidden(onlineViewerCount == nil)
+                    .animation(Motion.quick(reduceMotion), value: onlineViewerCount == nil)
             }
             if !detail.extras.honors.isEmpty {
                 HStack(spacing: 6) {
