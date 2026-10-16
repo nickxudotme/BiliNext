@@ -229,8 +229,19 @@ public actor BilibiliAPI {
             req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
             req.httpBody = Data(WBISigner.query(form).utf8)
         }
-        let (data, response) = try await session.data(for: req)
-        try Task.checkCancellation()
+        let data: Data
+        let response: URLResponse
+        if form == nil {
+            (data, response) = try await session.data(for: req)
+            try Task.checkCancellation()
+        } else {
+            // A sent write may already have taken effect, so a cancelled caller must not tear
+            // it down or drop its answer: it runs to completion in its own task and the
+            // caller decides whether the result is still current.
+            let session = session
+            let request = req
+            (data, response) = try await Task { try await session.data(for: request) }.value
+        }
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw APIError(code: (response as? HTTPURLResponse)?.statusCode ?? -1, message: "请求失败")
         }
