@@ -62,6 +62,19 @@ struct WBIRequestTests {
         #expect(fixture.requests(to: WBIRequestFixture.navPath).count == 1)
     }
 
+    @Test func liveRequestsGetNoMainSiteWebLocation() async throws {
+        let fixture = WBIRequestFixture { request, _ in
+            request.url?.path == WBIRequestFixture.navPath ? .nav() : .api(0)
+        }
+        defer { fixture.close() }
+
+        _ = try await fixture.api.request("/test/live", signed: true, live: true)
+        let request = try #require(fixture.requests(to: "/test/live").last)
+        #expect(request.url?.host == "api.live.bilibili.com")
+        #expect(query(request)["web_location"] == nil)
+        try expectSignature(request, fresh: false)
+    }
+
     @Test func cancelledWriteStillReturnsTheServersAnswer() async throws {
         let fixture = WBIRequestFixture { request, _ in
             request.url?.path == "/test/write" ? nil : .api(0)

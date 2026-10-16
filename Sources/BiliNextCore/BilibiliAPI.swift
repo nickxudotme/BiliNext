@@ -152,7 +152,7 @@ public actor BilibiliAPI {
         expectedUserID: Int64? = nil, live: Bool = false
     ) async throws -> [String: Any] {
         let key = signed ? try await currentSigningKey() : nil
-        let parameters = key.map { signedParameters(params, key: $0) } ?? params
+        let parameters = key.map { signedParameters(params, key: $0, live: live) } ?? params
         do {
             return try await sendRequest(
                 path, params: parameters, passport: passport, allowGuestNav: allowGuestNav,
@@ -162,7 +162,8 @@ public actor BilibiliAPI {
             let refreshedKey = try await currentSigningKey(replacing: key)
             // Only a signed GET can be replayed, and the second failure is returned as-is.
             return try await sendRequest(
-                path, params: signedParameters(params, key: refreshedKey), passport: passport,
+                path, params: signedParameters(params, key: refreshedKey, live: live),
+                passport: passport,
                 allowGuestNav: allowGuestNav, form: nil, expectedUserID: expectedUserID, live: live)
         }
     }
@@ -192,9 +193,12 @@ public actor BilibiliAPI {
         signingKey = refreshedKey
         return refreshedKey
     }
-    private func signedParameters(_ params: [String: String], key: SigningKey) -> [String: String] {
+    private func signedParameters(
+        _ params: [String: String], key: SigningKey, live: Bool
+    ) -> [String: String] {
         var parameters = params
-        if parameters["web_location"] == nil { parameters["web_location"] = "1550101" }
+        // 1550101 is the main site's value; live rooms use their own and sent none before.
+        if !live && parameters["web_location"] == nil { parameters["web_location"] = "1550101" }
         return WBISigner.sign(
             parameters, key: key.value, timestamp: Int(Date().timeIntervalSince1970))
     }
