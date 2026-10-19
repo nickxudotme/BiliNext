@@ -9,7 +9,8 @@ import Testing
 /// The main thread must never wait for the render queue: the queue flushes Core Animation
 /// transactions, so waiting on it from inside a main-thread commit deadlocks the app.
 @MainActor
-@Test func videoLayerNeverBlocksTheMainThreadOnItsRenderQueue() async throws {
+@Test(.enabled(if: ProcessInfo.processInfo.environment["BILINEXT_MPV_TEST"] == "1"))
+func videoLayerNeverBlocksTheMainThreadOnItsRenderQueue() async throws {
     let player = try MPVPlayer()
     let layer = try #require(MPVVideoLayer(handle: player.handle))
     let gate = DispatchSemaphore(value: 0)

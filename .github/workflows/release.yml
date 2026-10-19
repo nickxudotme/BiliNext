@@ -51,7 +51,7 @@ jobs:
       - name: Check format and run offline tests
         run: |
           bash scripts/check-format.sh
-          swift test
+          swift test --no-parallel
 
       - name: Build release archive
         run: |

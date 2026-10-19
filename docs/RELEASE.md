@@ -43,3 +43,7 @@ cask 使用 `postflight_steps`，先显示应用尚未公证的说明、实际�
 - 项目采用 GPL-3.0-only；App 内附 LICENSE 和第三方依赖说明。正式 Release 对应的 tag 保留源码与构建脚本。
 
 尚未发布时不要把模板当作已可安装的 cask，也不要用 ScreenOff 的安装结果替代 BiliNext 的实测。
+
+## CI 测试环境
+
+macOS 托管 runner 没有应用所需的加速 OpenGL 上下文；真实图层与渲染队列回归测试使用 `BILINEXT_MPV_TEST=1` 在具备图形上下文的本机运行。CI 默认测试使用 `swift test --no-parallel`，避免并发的主线程测试相互延迟，影响退出等待等时限断言；不扩大断言的时间阈值。
