@@ -8,7 +8,7 @@
 
 后续开发与发布以本仓库的 SwiftUI + AppKit 应用为准。应用图标位于 `Resources/BiliNext.icns`。
 
-发布流程和 cask 模板已准备；首个 Release 发布并更新 tap 后，安装命令为：
+正式安装包由 [GitHub Releases](https://github.com/nickxudotme/BiliNext/releases) 提供，通过 Homebrew 安装：
 
 ```sh
 brew install --cask nickxudotme/tap/bilinext
