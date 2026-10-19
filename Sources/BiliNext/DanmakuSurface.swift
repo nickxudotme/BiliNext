@@ -114,6 +114,7 @@ struct DanmakuSurface: NSViewRepresentable {
     final class Surface: NSView {
         override var isFlipped: Bool { true }
         var liveClock: (() -> Double)?
+        var hostClock: () -> CFTimeInterval = { CACurrentMediaTime() }
         var player: AVPlayer?
         weak var mpv: MPVPlayer?
         var items: [DanmakuPlacement] = []
@@ -221,7 +222,7 @@ struct DanmakuSurface: NSViewRepresentable {
         }
         func render(time: Double) {
             guard time.isFinite, enabled else { return }
-            let host = CACurrentMediaTime()
+            let host = hostClock()
             let advancing = running && (player == nil || player?.timeControlStatus == .playing)
             let rate: Float = advancing ? Float(mpv?.speed ?? Double(player?.rate ?? 1)) : 0
             let scale = window?.backingScaleFactor ?? 2

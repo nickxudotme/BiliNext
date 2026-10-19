@@ -9,6 +9,8 @@ import Testing
 @MainActor
 @Test func liveDanmakuRetainsTexturesAcrossArrivalAndFreezesWhenPaused() throws {
     let surface = DanmakuSurface.Surface(frame: NSRect(x: 0, y: 0, width: 800, height: 500))
+    var hostTime = 0.0
+    surface.hostClock = { hostTime }
     var timeline = LiveDanmakuTimeline()
     surface.maximumDuration = 8
     surface.fixed = false
@@ -24,12 +26,14 @@ import Testing
         [Danmaku(id: "second", time: 0.01, mode: 1, text: "实时到达")],
         at: 0.01, viewport: 800, lanes: 4, duration: 8
     ) { _ in 120 }
+    hostTime = 0.01
     surface.render(time: 0.01)
     #expect(surface.labels.count == 2)
     #expect(surface.labels["first"] === first)
     #expect(first.position == position)
     #expect(first.animation(forKey: "scroll") != nil)
     surface.running = false
+    hostTime = 1
     surface.render(time: 1)
     let paused = first.position
     #expect(first.animation(forKey: "scroll") == nil)
@@ -38,6 +42,7 @@ import Testing
     surface.running = true
     surface.render(time: 1)
     #expect(first.animation(forKey: "scroll") != nil)
+    hostTime = 9
     surface.render(time: 9)
     #expect(surface.labels.isEmpty)
 }

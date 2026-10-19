@@ -48,6 +48,12 @@ jobs:
       - name: Install build and runtime dependencies
         run: brew install mpv pkgconf
 
+      - name: Cache Swift build products
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: swift-macos26-${{ runner.arch }}-${{ hashFiles('Package.swift', 'Sources/**', 'Tests/**') }}
+
       - name: Check format and run offline tests
         run: |
           bash scripts/check-format.sh
