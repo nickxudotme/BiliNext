@@ -1,0 +1,43 @@
+cask "bilinext" do
+  version "@VERSION@"
+  sha256 "@SHA256@"
+
+  url "https://github.com/nickxudotme/BiliNext/releases/download/v#{version}/BiliNext-#{version}-arm64.zip"
+  name "BiliNext"
+  desc "Native Bilibili client"
+  homepage "https://github.com/nickxudotme/BiliNext"
+
+  depends_on arch: :arm64
+  depends_on formula: "mpv"
+  depends_on macos: :tahoe
+
+  app "BiliNext.app"
+
+  postflight_steps do
+    run "/usr/bin/printf",
+        args:         [
+          "%s\n",
+          "BiliNext is not notarized. Removing its quarantine attribute to allow launching.",
+          "BiliNext 尚未经过 Apple 公证，即将移除该应用的隔离标记以允许启动。",
+          "Command / 即将执行的命令：",
+          'sudo /usr/bin/xattr -dr com.apple.quarantine "{{appdir}}/BiliNext.app"',
+          "If prompted for Password, enter your Mac administrator password (input is hidden).",
+          "如提示 Password，请输入 Mac 管理员密码（输入时不会显示字符）。",
+        ],
+        print_stdout: true
+
+    run "/usr/bin/xattr",
+        args: ["-dr", "com.apple.quarantine", "{{appdir}}/BiliNext.app"],
+        sudo: true
+  end
+
+  zap trash: "~/Library/Preferences/me.nickxu.BiliNext.plist"
+
+  caveats <<~EOS
+    BiliNext's quarantine attribute is removed automatically during installation.
+    安装时已自动移除 BiliNext 的隔离标记，可直接打开应用。
+
+    GitHub:
+      https://github.com/nickxudotme/BiliNext
+  EOS
+end

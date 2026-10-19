@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-BiliNext is a native macOS 26+ Bilibili client (SwiftUI + AppKit, Swift 6 toolchain in Swift 5 language mode, SwiftPM only — no Xcode project). Project docs and UI strings are in Chinese; keep new docs in Chinese to match.
+BiliNext is a native macOS 26+ Bilibili client (SwiftUI + AppKit, Swift 6 toolchain in Swift 5 language mode, SwiftPM only — no Xcode project). Future development and distribution use this Swift app. Project docs and UI strings are in Chinese; keep new docs in Chinese to match.
 
 ## Commands
 
@@ -19,7 +19,7 @@ bash scripts/build-app.sh && open build/BiliNext.app   # signed Debug .app bundl
 BILINEXT_BUILD_CONFIGURATION=release bash scripts/build-app.sh   # signed Release bundle
 ```
 
-- `build-app.sh` needs a persistent code-signing identity in `.signing-identity` (SHA-1 from `security find-identity -v -p codesigning`) or `BILINEXT_SIGNING_IDENTITY`; ad-hoc signing is refused. It copies libmpv + deps into the bundle via `scripts/bundle-mpv.py` (prefers IINA's `libmpv.2.dylib`, override with `BILINEXT_MPV_LIBRARY`; refuses Homebrew libs whose min OS > 26).
+- `build-app.sh` needs a persistent code-signing identity in `.signing-identity` (SHA-1 from `security find-identity -v -p codesigning`) or `BILINEXT_SIGNING_IDENTITY`; ad-hoc signing is refused for normal development builds. `scripts/build-release.sh` explicitly opts into ad-hoc Release distribution and relies on Homebrew mpv instead of bundling libraries. It copies libmpv + deps into the bundle via `scripts/bundle-mpv.py` (prefers IINA's `libmpv.2.dylib`, override with `BILINEXT_MPV_LIBRARY`; refuses Homebrew libs whose min OS > 26).
 - Do not use `swift run` / unsigned builds to validate Keychain or login persistence — the signing identity differs.
 - The full-repo strict format check passes; keep it green. Format-only changes go in separate commits.
 

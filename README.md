@@ -2,9 +2,25 @@
 
 原生 macOS Bilibili 客户端开发版。最低 macOS 26，SwiftUI + AppKit；主播放器使用 libmpv 直接播放 DASH 分离流与 MP4，悬停预览使用 AVPlayer；实现和验证见 [mpv 播放记录](docs/MPV-PLAYBACK.md)，旧方案见 [DASH 播放记录](docs/NATIVE-DASH-PLAYBACK.md)。
 
+源码采用 [GPL-3.0](LICENSE)，第三方组件见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+
+## Homebrew 分发
+
+后续开发与发布以本仓库的 SwiftUI + AppKit 应用为准。应用图标位于 `Resources/BiliNext.icns`。
+
+发布流程和 cask 模板已准备；首个 Release 发布并更新 tap 后，安装命令为：
+
+```sh
+brew install --cask nickxudotme/tap/bilinext
+```
+
+分发版要求 Apple Silicon、macOS 26 或更新版本，由 Homebrew 安装 `mpv` 依赖，ZIP 不内嵌播放库。安装时先打印说明及完整命令，再自动移除该应用的隔离标记，需要时在终端输入管理员密码。应用使用 ad-hoc 签名，尚未获得 Developer ID 签名和 Apple 公证。
+
+Release 登录状态仍保存在钥匙串；升级后可能需要重新授权，同一版本再次启动不应仅因缺少 Apple 证书就必然重复授权。开发版与 Release 的登录存储不同，切换到 Release 时可能需要重新扫码。发布步骤及验证边界见 [发布说明](docs/RELEASE.md)。
+
 ## 构建
 
-需要 Xcode、`brew install mpv pkgconf` 和持久的代码签名证书。运行库打包与 macOS 26 兼容要求见 [mpv 构建说明](docs/MPV-PLAYBACK.md)。在本机运行 `security find-identity -v -p codesigning`，将选定证书的 SHA-1 写入项目根目录 `.signing-identity`，或设置 `BILINEXT_SIGNING_IDENTITY`。该本机配置已加入 `.gitignore`。
+本地开发需要 Xcode、`brew install mpv pkgconf` 和持久的代码签名证书。运行库打包与 macOS 26 兼容要求见 [mpv 构建说明](docs/MPV-PLAYBACK.md)。在本机运行 `security find-identity -v -p codesigning`，将选定证书的 SHA-1 写入项目根目录 `.signing-identity`，或设置 `BILINEXT_SIGNING_IDENTITY`。该本机配置已加入 `.gitignore`。
 
 ```sh
 bash scripts/build-app.sh
