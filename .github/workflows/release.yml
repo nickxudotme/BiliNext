@@ -87,7 +87,7 @@ jobs:
 
       - name: Publish GitHub Release
         run: |
-          printf 'macOS 26+, Apple Silicon. Requires Homebrew mpv.\n\nAd-hoc signed; not notarized. The Homebrew cask prints the quarantine-removal command before running it. Keychain authorization may be needed after upgrading.\n\nSHA-256: `%s`\n' "$SHA256" > release-notes.md
+          printf 'macOS 26+, Apple Silicon. Requires Homebrew mpv.\n\nAd-hoc signed; not notarized. The Homebrew cask displays a quarantine-removal command for you to run manually if needed. Keychain authorization may be needed after upgrading.\n\nSHA-256: `%s`\n' "$SHA256" > release-notes.md
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$ZIP" --clobber
           else

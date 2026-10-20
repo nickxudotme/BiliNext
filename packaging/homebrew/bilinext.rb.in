@@ -13,29 +13,16 @@ cask "bilinext" do
 
   app "BiliNext.app"
 
-  postflight_steps do
-    run "/usr/bin/printf",
-        args:         [
-          "%s\n",
-          "BiliNext is not notarized. Removing its quarantine attribute to allow launching.",
-          "BiliNext 尚未经过 Apple 公证，即将移除该应用的隔离标记以允许启动。",
-          "Command / 即将执行的命令：",
-          'sudo /usr/bin/xattr -dr com.apple.quarantine "{{appdir}}/BiliNext.app"',
-          "If prompted for Password, enter your Mac administrator password (input is hidden).",
-          "如提示 Password，请输入 Mac 管理员密码（输入时不会显示字符）。",
-        ],
-        print_stdout: true
-
-    run "/usr/bin/xattr",
-        args: ["-dr", "com.apple.quarantine", "{{appdir}}/BiliNext.app"],
-        sudo: true
-  end
-
   zap trash: "~/Library/Preferences/me.nickxu.BiliNext.plist"
 
   caveats <<~EOS
-    BiliNext's quarantine attribute is removed automatically during installation.
-    安装时已自动移除 BiliNext 的隔离标记，可直接打开应用。
+    BiliNext is not notarized. Installation does not change its quarantine attribute.
+    BiliNext 尚未经过 Apple 公证，安装过程不会自动移除隔离标记。
+    If macOS blocks launching, review and run this command manually in Terminal:
+    如 macOS 阻止打开，请确认后在终端手动执行以下命令：
+      sudo /usr/bin/xattr -dr com.apple.quarantine "#{appdir}/BiliNext.app"
+    Enter your Mac administrator password if prompted (input is hidden).
+    如提示 Password，请输入 Mac 管理员密码（输入时不会显示字符）。
 
     GitHub:
       https://github.com/nickxudotme/BiliNext
