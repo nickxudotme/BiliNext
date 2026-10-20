@@ -181,6 +181,7 @@ struct ShellView: View {
                 }
             }
             .animation(Motion.standard(reduceMotion), value: model.toast)
+            .overlay(alignment: .topTrailing) { PerformanceHUDOverlay() }
             .sheet(isPresented: $model.downloadsPresented) {
                 DownloadsView(manager: model.downloads, model: model)
             }

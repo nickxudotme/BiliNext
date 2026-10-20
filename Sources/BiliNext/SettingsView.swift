@@ -39,6 +39,7 @@ enum Preferences {
 
 /// The app's 设置 window (⌘,).
 struct SettingsView: View {
+    @AppStorage("developer.performanceHUD") private var performanceHUD = false
     @AppStorage(Preferences.autoExpandIntro) private var autoExpandIntro = false
     @AppStorage(Preferences.expandComments) private var expandComments = false
     @AppStorage(Preferences.hoverPrefetch) private var hoverPrefetch = false
@@ -55,6 +56,18 @@ struct SettingsView: View {
         TabView {
             Tab("通用", systemImage: "gearshape") { general }
             Tab("快捷键", systemImage: "keyboard") { ShortcutList() }
+            Tab("开发者", systemImage: "wrench.and.screwdriver") {
+                Form {
+                    Section("性能诊断") {
+                        Toggle("显示性能监测浮层", isOn: $performanceHUD)
+                        Text("显示近 2 秒的显示回调频率、间隔与迟到情况。每秒更新两次，关闭后停止采样。")
+                        Text("回调频率不是应用实际绘制帧率，也不是视频帧率；超预算次数仅供定位卡顿，不能当作实际丢帧数。精确分析请使用 Instruments。")
+                            .foregroundStyle(.secondary)
+                        Text("监测本身有少量开销，也可能影响系统的自适应刷新策略。请结合关闭监测时的手感对比。")
+                            .foregroundStyle(.secondary)
+                    }
+                }.formStyle(.grouped).frame(height: 340)
+            }
         }
         .navigationTitle("设置")
         .frame(width: 520)
