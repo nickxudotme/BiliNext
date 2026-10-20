@@ -294,6 +294,7 @@ struct CustomPlayerView: View {
             return .handled
         }
         .onAppear {
+            focused = isActive
             scrubTime = model.time
             onControlsVisibility(true)
         }
