@@ -41,6 +41,7 @@ final class CommentPageLoader: ObservableObject {
     private(set) var scope: Scope?
     private(set) var task: Task<Void, Never>?
     private var active = false
+    private var firstPageOnly = false
     private var resumeLoad = false
     private var focus: Comment?
     private var generation = UUID()
@@ -72,7 +73,10 @@ final class CommentPageLoader: ObservableObject {
     deinit { task?.cancel() }
 
     /// Called for both visibility and video/sort changes. Covered pages keep their data.
-    func update(scope newScope: Scope?, active: Bool, focus: Comment? = nil) {
+    func update(
+        scope newScope: Scope?, active: Bool, focus: Comment? = nil, firstPageOnly: Bool = false
+    ) {
+        self.firstPageOnly = firstPageOnly
         if scope != newScope {
             cancel()
             scope = newScope
@@ -93,7 +97,6 @@ final class CommentPageLoader: ObservableObject {
             return
         }
         if page == 0 || resumeLoad || needsFocusPage {
-            resumeLoad = false
             loadNext()
         }
     }
@@ -112,7 +115,11 @@ final class CommentPageLoader: ObservableObject {
     }
 
     func loadNext() {
-        guard active, let scope, !loading, more, error == nil else { return }
+        guard active, let scope, !loading, more, error == nil, !firstPageOnly || page == 0 else {
+            return
+        }
+        // Consume a pending resume only after a request is actually allowed to start.
+        resumeLoad = false
         let request = Request(scope: scope, page: page + 1)
         let token = UUID()
         generation = token
@@ -174,5 +181,24 @@ final class CommentPageLoader: ObservableObject {
         if let pendingFocus, let focus, !comments.contains(where: { $0.id == pendingFocus }) {
             comments.insert(focus, at: 0)
         }
+    }
+}
+
+extension AppModel {
+    /// Data survives panel creation; preloading never builds comment rows or focus responders.
+    func commentListForCurrentContext() -> CommentPageLoader {
+        let context = CommentInteractionModel.context(for: self)
+        if let state = commentListState, state.context == context { return state.loader }
+        commentListState?.loader.deactivate()
+        let loader = CommentPageLoader(api: api)
+        commentListState = (context, loader)
+        return loader
+    }
+
+    func preloadComments() {
+        let loader = commentListForCurrentContext()
+        guard let aid = detail?.video.aid, aid > 0, loader.scope == nil else { return }
+        loader.update(
+            scope: .init(aid: aid, kind: .list(newest: false)), active: true, firstPageOnly: true)
     }
 }

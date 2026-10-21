@@ -190,108 +190,129 @@ struct CustomPlayerView: View {
             }
         }
         .onKeyPress(.space) {
-            model.togglePlayback()
-            revealControls()
-            return .handled
+            return PlayerKeyboardAction.enqueue(model: model) {
+                model.togglePlayback()
+                revealControls()
+            }
         }
         .onKeyPress(.leftArrow) {
-            model.seek(max(0, model.time - PlaybackPreferences.current.seekStep))
-            revealControls()
-            return .handled
+            return PlayerKeyboardAction.enqueue(model: model) {
+                model.seek(max(0, model.time - PlaybackPreferences.current.seekStep))
+                revealControls()
+            }
         }
         .onKeyPress(.rightArrow, phases: [.down, .repeat, .up]) { press in
-            // A tap seeks; a hold temporarily changes speed until released.
-            switch press.phase {
-            case .down:
-                arrowDown = Date()
-            case .repeat:
-                if boostedFrom == nil, let start = arrowDown, Date().timeIntervalSince(start) > 0.35
-                {
-                    withAnimation(Motion.standard(reduceMotion)) {
-                        boostedFrom = model.playbackRate
+            let receivedAt = Date()
+            return PlayerKeyboardAction.enqueue(model: model) {
+                // A tap seeks; a hold temporarily changes speed until released.
+                switch press.phase {
+                case .down:
+                    arrowDown = receivedAt
+                case .repeat:
+                    if boostedFrom == nil, let start = arrowDown,
+                        receivedAt.timeIntervalSince(start) > 0.35
+                    {
+                        withAnimation(Motion.standard(reduceMotion)) {
+                            boostedFrom = model.playbackRate
+                        }
+                        model.setRate(PlaybackPreferences.current.holdRate)
                     }
-                    model.setRate(PlaybackPreferences.current.holdRate)
+                default:
+                    if let previous = boostedFrom {
+                        model.setRate(previous)
+                        withAnimation(Motion.standard(reduceMotion)) { boostedFrom = nil }
+                    } else {
+                        model.seek(
+                            min(model.duration, model.time + PlaybackPreferences.current.seekStep))
+                        revealControls()
+                    }
+                    arrowDown = nil
                 }
-            default:
-                if let previous = boostedFrom {
-                    model.setRate(previous)
-                    withAnimation(Motion.standard(reduceMotion)) { boostedFrom = nil }
-                } else {
-                    model.seek(
-                        min(model.duration, model.time + PlaybackPreferences.current.seekStep))
-                    revealControls()
-                }
-                arrowDown = nil
             }
-            return .handled
         }
         .onKeyPress(.upArrow) {
-            setVolume(model.playerVolume + 0.1)
-            return .handled
+            return PlayerKeyboardAction.enqueue(model: model) {
+                setVolume(model.playerVolume + 0.1)
+            }
         }
         .onKeyPress(.downArrow) {
-            setVolume(model.playerVolume - 0.1)
-            return .handled
+            return PlayerKeyboardAction.enqueue(model: model) {
+                setVolume(model.playerVolume - 0.1)
+            }
         }
         .onKeyPress("q", phases: [.down, .repeat, .up]) { press in
-            // Tap Q likes; hold it for a second for 一键三连, as in the official player.
-            switch press.phase {
-            case .down:
-                likeKeyDown = Date()
-                likeKeyTripled = false
-            case .repeat:
-                if !likeKeyTripled, let start = likeKeyDown, Date().timeIntervalSince(start) > 1 {
-                    likeKeyTripled = true
-                    model.triple()
+            let receivedAt = Date()
+            return PlayerKeyboardAction.enqueue(model: model) {
+                // Tap Q likes; hold it for a second for 一键三连, as in the official player.
+                switch press.phase {
+                case .down:
+                    likeKeyDown = receivedAt
+                    likeKeyTripled = false
+                case .repeat:
+                    if !likeKeyTripled, let start = likeKeyDown,
+                        receivedAt.timeIntervalSince(start) > 1
+                    {
+                        likeKeyTripled = true
+                        model.triple()
+                    }
+                default:
+                    if !likeKeyTripled { model.toggleLike() }
+                    likeKeyDown = nil
                 }
-            default:
-                if !likeKeyTripled { model.toggleLike() }
-                likeKeyDown = nil
             }
-            return .handled
         }
         .onKeyPress(characters: CharacterSet(charactersIn: "!@")) { press in
-            // Shift-1 and Shift-2: back to 1×, or straight to 2×.
-            let rate = press.characters == "!" ? 1.0 : 2.0
-            model.setRate(rate)
-            model.toast = String(format: "%.1fx 播放", rate)
-            return .handled
+            return PlayerKeyboardAction.enqueue(model: model) {
+                // Shift-1 and Shift-2: back to 1×, or straight to 2×.
+                let rate = press.characters == "!" ? 1.0 : 2.0
+                model.setRate(rate)
+                model.toast = String(format: "%.1fx 播放", rate)
+            }
         }
         .onKeyPress("g") {
-            model.followUploader()
-            return .handled
+            return PlayerKeyboardAction.enqueue(model: model) {
+                model.followUploader()
+            }
         }
         .onKeyPress("t") {
-            model.addPlayingToWatchLater()
-            return .handled
+            return PlayerKeyboardAction.enqueue(model: model) {
+                model.addPlayingToWatchLater()
+            }
         }
         .onKeyPress("w") {
-            model.requestCoin()
-            return .handled
+            return PlayerKeyboardAction.enqueue(model: model) {
+                model.requestCoin()
+            }
         }
         .onKeyPress("e") {
-            model.requestFavorite()
-            return .handled
+            return PlayerKeyboardAction.enqueue(model: model) {
+                model.requestFavorite()
+            }
         }
         .onKeyPress("m") {
-            toggleMute()
-            return .handled
+            return PlayerKeyboardAction.enqueue(model: model) {
+                toggleMute()
+            }
         }
         .onKeyPress("[") {
-            if let cid = page(offset: -1) { model.selectPage(cid) }
-            return .handled
+            return PlayerKeyboardAction.enqueue(model: model) {
+                if let cid = page(offset: -1) { model.selectPage(cid) }
+            }
         }
         .onKeyPress("]") {
-            if let cid = page(offset: 1) { model.selectPage(cid) }
-            return .handled
+            return PlayerKeyboardAction.enqueue(model: model) {
+                if let cid = page(offset: 1) { model.selectPage(cid) }
+            }
         }
         .onKeyPress("f") {
-            toggleFullscreen()
-            return .handled
+            return PlayerKeyboardAction.enqueue(model: model) {
+                toggleFullscreen()
+            }
         }
         .onKeyPress("d") {
-            danmaku.enabled.toggle()
-            return .handled
+            return PlayerKeyboardAction.enqueue(model: model) {
+                danmaku.enabled.toggle()
+            }
         }
         .onAppear {
             focused = isActive

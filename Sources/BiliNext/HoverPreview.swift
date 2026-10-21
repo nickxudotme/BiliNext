@@ -70,6 +70,10 @@ final class HoverPreview: ObservableObject {
 
     func stop(ifMatching id: String? = nil) {
         if let id, id != activeID { return }
+        guard
+            task != nil || loader != nil || status != nil || ready || activeID != nil
+                || player.currentItem != nil
+        else { return }
         generation = UUID()
         task?.cancel()
         task = nil
@@ -78,7 +82,7 @@ final class HoverPreview: ObservableObject {
         status = nil
         loader?.invalidate()
         loader = nil
-        ready = false
-        activeID = nil
+        if ready { ready = false }
+        if activeID != nil { activeID = nil }
     }
 }

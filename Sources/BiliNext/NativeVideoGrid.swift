@@ -129,10 +129,15 @@ struct NativeVideoGrid: NSViewRepresentable {
             if !active || (motionChanged && reduceMotion) {
                 cancelVisibleReveals()
             }
-            if !active {
-                interaction.scrolling = false
-                model.hoverPreview.stop()
+            if !active, activityChanged {
+                idleWork?.cancel()
                 scroll?.cancelPullRefresh()
+                // updateNSView must not synchronously publish into the SwiftUI tree.
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, !self.active else { return }
+                    if self.interaction.scrolling { self.interaction.scrolling = false }
+                    self.model.hoverPreview.stop()
+                }
             }
             guard let collection else { return }
             scroll?.updateRefreshState(loading: model.loading)

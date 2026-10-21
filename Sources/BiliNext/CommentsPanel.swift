@@ -7,10 +7,11 @@ import SwiftUI
 struct CommentsPanel: View {
     @ObservedObject var model: AppModel
     var isActive = true
+    var isVisible = true
 
     var body: some View {
         CommentPanelContent(
-            model: model, isActive: isActive,
+            model: model, isActive: isActive, isVisible: isVisible,
             interactions: model.commentInteractionsForCurrentContext()
         )
         // API action flags belong to the account that fetched them.
@@ -21,6 +22,7 @@ struct CommentsPanel: View {
 private struct CommentPanelContent: View {
     @ObservedObject var model: AppModel
     let isActive: Bool
+    let isVisible: Bool
     @State private var routes: [CommentRoute] = []
     @State private var viewer: PictureViewerState?
     let interactions: CommentInteractionModel
@@ -29,8 +31,11 @@ private struct CommentPanelContent: View {
     var body: some View {
         ZStack {
             // Pages sit directly on the panel's glass, so only the top one is shown.
-            CommentListPage(model: model, isActive: isActive && routes.isEmpty, push: push)
-                .opacity(routes.isEmpty ? 1 : 0).allowsHitTesting(routes.isEmpty)
+            CommentListPage(
+                model: model, isActive: isActive && routes.isEmpty,
+                firstPageOnly: !isVisible, push: push
+            )
+            .opacity(routes.isEmpty ? 1 : 0).allowsHitTesting(routes.isEmpty)
             ForEach(Array(routes.enumerated()), id: \.element) { index, route in
                 routePage(route, active: isActive && index == routes.count - 1)
                     .opacity(index == routes.count - 1 ? 1 : 0)
@@ -158,15 +163,20 @@ enum CommentLinks {
 private struct CommentListPage: View {
     @ObservedObject var model: AppModel
     let isActive: Bool
+    let firstPageOnly: Bool
     let push: (CommentRoute) -> Void
     @State private var sort = "hot"
     @StateObject private var loader: CommentPageLoader
 
-    init(model: AppModel, isActive: Bool, push: @escaping (CommentRoute) -> Void) {
+    init(
+        model: AppModel, isActive: Bool, firstPageOnly: Bool,
+        push: @escaping (CommentRoute) -> Void
+    ) {
         self.model = model
         self.isActive = isActive
+        self.firstPageOnly = firstPageOnly
         self.push = push
-        _loader = StateObject(wrappedValue: CommentPageLoader(api: model.api))
+        _loader = StateObject(wrappedValue: model.commentListForCurrentContext())
     }
 
     private var scope: CommentPageLoader.Scope? {
@@ -213,11 +223,14 @@ private struct CommentListPage: View {
         }
         .onChange(of: scope, initial: true) { _, _ in update() }
         .onChange(of: isActive) { _, _ in update() }
+        .onChange(of: firstPageOnly) { _, _ in update() }
         .onAppear(perform: update)
         .onDisappear(perform: loader.deactivate)
     }
 
-    private func update() { loader.update(scope: scope, active: isActive) }
+    private func update() {
+        loader.update(scope: scope, active: isActive, firstPageOnly: firstPageOnly)
+    }
 
     private func openThread(_ comment: Comment, focus: Comment? = nil) {
         guard isActive, let aid = loader.scope?.aid else { return }

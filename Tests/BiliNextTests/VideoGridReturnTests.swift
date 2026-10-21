@@ -1,5 +1,6 @@
 import AppKit
 import BiliNextCore
+import Combine
 import Testing
 
 @testable import BiliNext
@@ -141,4 +142,25 @@ private func makeGridReturnFixture(count: Int = 24) -> GridReturnFixture {
     try await Task.sleep(for: .milliseconds(20))
     await fixture.model.browseTask?.value
     #expect(fixture.requests.pages == [4])
+}
+
+@Test @MainActor func inactiveGridUpdatesDoNotPublishAndDeactivationWaitsForViewUpdate() async {
+    let model = AppModel(api: BilibiliAPI(restoreSession: false))
+    let coordinator = NativeVideoGrid.Coordinator(model: model, active: false)
+    var changes = 0
+    let scrolling = coordinator.interaction.objectWillChange.sink { changes += 1 }
+    let preview = model.hoverPreview.objectWillChange.sink { changes += 1 }
+    for _ in 0..<10 { coordinator.update(active: false, reduceMotion: false) }
+    #expect(changes == 0)
+    coordinator.update(active: true, reduceMotion: false)
+    coordinator.interaction.scrolling = true
+    changes = 0
+    coordinator.update(active: false, reduceMotion: false)
+    #expect(changes == 0)
+    await withCheckedContinuation { continuation in
+        DispatchQueue.main.async { continuation.resume() }
+    }
+    #expect(!coordinator.interaction.scrolling)
+    #expect(changes == 1)
+    withExtendedLifetime((scrolling, preview)) {}
 }

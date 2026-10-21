@@ -9,6 +9,7 @@ final class AppModel: ObservableObject {
     let api: BilibiliAPI
     /// Retained by the video page, independently of the selected details panel.
     var commentInteractionState: CommentInteractionModel?
+    var commentListState: (context: CommentInteractionModel.Context?, loader: CommentPageLoader)?
     var ownedFollowedLives: FollowedLives?
     /// Live status belongs to the account, not to an individual dynamic-feed filter.
     var followedLives: FollowedLives {

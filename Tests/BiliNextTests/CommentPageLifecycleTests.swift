@@ -55,6 +55,91 @@ private func finishCommentLoads(_ loader: CommentPageLoader) async {
 
 @MainActor
 @Suite struct CommentPageLifecycleTests {
+    @Test func hiddenFirstPageModePreservesCancelledPaginationForNextVisit() async {
+        var pages: [Int] = []
+        let loader = CommentPageLoader { request in
+            pages.append(request.page)
+            if pages == [1, 2] { throw CancellationError() }
+            return lifecycleResult([Int64(request.page)])
+        }
+        let scope = CommentPageLoader.Scope(aid: 100, kind: .list(newest: false))
+        loader.update(scope: scope, active: true)
+        await finishCommentLoads(loader)
+        loader.loadNext()
+        await finishCommentLoads(loader)
+        loader.update(scope: scope, active: true, firstPageOnly: true)
+        #expect(pages == [1, 2] && !loader.loading)
+        loader.update(scope: scope, active: true)
+        await finishCommentLoads(loader)
+        #expect(pages == [1, 2, 2])
+        #expect(loader.page == 2 && loader.comments.map(\.id) == [1, 2])
+    }
+
+    @Test func preloadedDataBelongsToVideoAndAccountWithoutCreatingAView() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let model = AppModel(
+            sessionStore: SessionStore(directory: directory), managesPlaybackTabs: false,
+            api: BilibiliAPI(restoreSession: false))
+        defer { model.stopMedia() }
+        model.detail = VideoDetail(
+            video: Video(bvid: "BV1111111111", title: "测试", aid: 100),
+            pages: [], description: "")
+        var requests = 0
+        let loader = CommentPageLoader { _ in
+            requests += 1
+            return lifecycleResult([1])
+        }
+        model.commentListState = (CommentInteractionModel.context(for: model), loader)
+        model.preloadComments()
+        await finishCommentLoads(loader)
+        #expect(loader.comments.map(\.id) == [1])
+        #expect(model.commentListForCurrentContext() === loader)
+        model.preloadComments()
+        #expect(requests == 1)
+        model.accountGeneration = UUID()
+        #expect(model.commentListForCurrentContext() !== loader)
+        let accountLoader = model.commentListForCurrentContext()
+        model.detail = VideoDetail(
+            video: Video(bvid: "BV1222222222", title: "另一个视频", aid: 200),
+            pages: [], description: "")
+        #expect(model.commentListForCurrentContext() !== accountLoader)
+    }
+
+    @Test func preloadsOnlyFirstPageAndReusesItWhenShown() async {
+        var requests: [CommentPageLoader.Request] = []
+        let loader = CommentPageLoader { request in
+            requests.append(request)
+            return lifecycleResult([Int64(request.page)])
+        }
+        let scope = CommentPageLoader.Scope(aid: 100, kind: .list(newest: false))
+        loader.update(scope: scope, active: true, firstPageOnly: true)
+        await finishCommentLoads(loader)
+        #expect(loader.comments.map(\.id) == [1])
+        loader.loadNext()
+        await finishCommentLoads(loader)
+        #expect(requests.map(\.page) == [1])
+
+        loader.update(scope: scope, active: true)
+        await finishCommentLoads(loader)
+        #expect(requests.map(\.page) == [1])
+        loader.loadNext()
+        await finishCommentLoads(loader)
+        #expect(requests.map(\.page) == [1, 2])
+
+        loader.update(scope: scope, active: true, firstPageOnly: true)
+        loader.loadNext()
+        await finishCommentLoads(loader)
+        #expect(requests.map(\.page) == [1, 2])
+        loader.update(
+            scope: .init(aid: 200, kind: .list(newest: false)), active: true,
+            firstPageOnly: true)
+        await finishCommentLoads(loader)
+        #expect(requests.last?.scope.aid == 200)
+        #expect(loader.comments.map(\.id) == [1])
+    }
+
     @Test func coveredThreadCancelsFocusPagingAndResumesTheSamePage() async throws {
         let gate = CommentFetchGate()
         var requests: [CommentPageLoader.Request] = []

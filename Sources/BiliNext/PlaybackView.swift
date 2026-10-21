@@ -38,8 +38,9 @@ struct PlaybackView: View {
     var windowPinned = false
     var isActive = true
     @State private var panel = PlaybackPanel.initial
+    @State private var visitedPanels: Set<PlaybackPanel> = [PlaybackPanel.initial]
     @State private var playerWidth: CGFloat = 0
-    @State private var pointer: NSPoint?
+    @State private var pointer = PlaybackPointerState()
     @State private var hoveringVideo = false
     @State private var hoveringDetails = false
     @State private var idle = false
@@ -77,15 +78,17 @@ struct PlaybackView: View {
                     .allowsHitTesting(detailsToggleVisible)
                     .accessibilityHidden(!detailsToggleVisible)
                 }
-            if !model.theater && !miniPlayer {
-                detailsPanel
-                    .frame(width: panelWidth)
-                    .frame(maxHeight: .infinity)
-                    .floatingGlassPanel()
-                    .overlay(alignment: .leading) { resizeHandle }
-                    .padding(8)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-            }
+            detailsPanel
+                .frame(width: panelWidth)
+                .frame(maxHeight: .infinity)
+                .floatingGlassPanel()
+                .overlay(alignment: .leading) { resizeHandle }
+                .padding(8)
+                .frame(width: detailsVisible ? panelWidth + 16 : 0)
+                .opacity(detailsVisible ? 1 : 0)
+                .allowsHitTesting(detailsVisible)
+                .accessibilityHidden(!detailsVisible)
+                .clipped()
         }
         // The playback page is a dark screening room lit by the video's own cover.
         .background { PlaybackAmbience(cover: model.detail?.video.cover ?? currentCover) }
@@ -93,9 +96,12 @@ struct PlaybackView: View {
         .animation(Motion.emphasized(reduceMotion), value: model.theater)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DrawerPointerTracker(externalWidth: 0, onPosition: trackPointer))
+        .task(id: isActive ? CommentInteractionModel.context(for: model) : nil) {
+            if isActive { model.preloadComments() }
+        }
         .onChange(of: isActive) { _, active in
             idleTask?.cancel()
-            pointer = nil
+            pointer.position = nil
             hoveringVideo = false
             hoveringDetails = false
             if active { NSCursor.setHiddenUntilMouseMoves(false) }
@@ -106,8 +112,8 @@ struct PlaybackView: View {
             updateCursor()
         }
         .onChange(of: navigationOverlayVisible) { _, _ in
-            let current = pointer
-            pointer = nil
+            let current = pointer.position
+            pointer.position = nil
             trackPointer(current)
         }
         .onDisappear {
@@ -130,6 +136,8 @@ struct PlaybackView: View {
             })
     }
 
+    private var detailsVisible: Bool { !model.theater && !miniPlayer }
+
     private var currentCover: URL? {
         model.tabs.first(where: { $0.id == model.selected })?.video.cover
     }
@@ -142,14 +150,34 @@ struct PlaybackView: View {
                     playbackOptions
                 }
             }.padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 4)
-            Group {
-                switch panel {
-                case .info: VideoIntroPanel(model: model, isActive: isActive)
-                case .comments: CommentsPanel(model: model, isActive: isActive).id(model.selected)
-                case .transcript: TranscriptView(model: model)
-                case .danmaku: DanmakuListView(model: model)
+            ZStack(alignment: .topLeading) {
+                ForEach(PlaybackPanel.allCases) { item in
+                    if visitedPanels.contains(item) || panel == item {
+                        Group {
+                            switch item {
+                            case .info:
+                                VideoIntroPanel(
+                                    model: model,
+                                    isActive: isActive && detailsVisible && panel == .info)
+                            case .comments:
+                                // Reuse preloaded data; create rows only on the first visit.
+                                CommentsPanel(
+                                    model: model, isActive: isActive,
+                                    isVisible: detailsVisible && panel == .comments
+                                )
+                                .id(model.selected)
+                            case .transcript: TranscriptView(model: model)
+                            case .danmaku: DanmakuListView(model: model)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .opacity(panel == item ? 1 : 0)
+                        .allowsHitTesting(panel == item)
+                        .accessibilityHidden(panel != item)
+                    }
                 }
-            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+            .onChange(of: panel) { _, selected in visitedPanels.insert(selected) }
         }
     }
 
@@ -206,12 +234,14 @@ struct PlaybackView: View {
     }
 
     private func trackPointer(_ next: NSPoint?) {
-        guard isActive, next != pointer else { return }
-        pointer = next
+        guard isActive, next != pointer.position else { return }
+        pointer.position = next
         let next = navigationOverlayVisible && (next?.x ?? 999) < 224 ? nil : next
-        hoveringVideo = next.map { $0.x >= 0 && $0.x < playerWidth } ?? false
-        hoveringDetails = next.map { $0.x >= playerWidth && !model.theater } ?? false
-        idle = false
+        let video = next.map { $0.x >= 0 && $0.x < playerWidth } ?? false
+        let details = next.map { $0.x >= playerWidth && !model.theater } ?? false
+        if hoveringVideo != video { hoveringVideo = video }
+        if hoveringDetails != details { hoveringDetails = details }
+        if idle { idle = false }
         scheduleIdle()
         updateCursor()
     }
@@ -375,4 +405,10 @@ private struct DanmakuListView: View {
                 }
             }
     }
+}
+
+/// Raw mouse coordinates are imperative input, not rendered state. Publishing each
+/// movement would rebuild the player and retained panels at the mouse event rate.
+private final class PlaybackPointerState {
+    var position: NSPoint?
 }
