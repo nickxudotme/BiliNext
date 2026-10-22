@@ -3,6 +3,7 @@ import SwiftUI
 
 /// UserDefaults keys for preferences shown in 设置.
 enum Preferences {
+    static let appearance = "appearance.theme"
     static let autoExpandIntro = "intro.autoExpand"
     static let expandComments = "comments.alwaysExpand"
     static let hoverPrefetch = "playback.hoverPrefetch"
@@ -39,6 +40,7 @@ enum Preferences {
 
 /// The app's 设置 window (⌘,).
 struct SettingsView: View {
+    @AppStorage(Preferences.appearance) private var appearance = AppAppearance.system.rawValue
     @AppStorage("developer.performanceHUD") private var performanceHUD = false
     @AppStorage(Preferences.autoExpandIntro) private var autoExpandIntro = false
     @AppStorage(Preferences.expandComments) private var expandComments = false
@@ -58,6 +60,9 @@ struct SettingsView: View {
             Tab("快捷键", systemImage: "keyboard") { ShortcutList() }
             Tab("开发者", systemImage: "wrench.and.screwdriver") {
                 Form {
+                    #if DEBUG
+                        DevelopmentFeedbackSettings()
+                    #endif
                     Section("性能诊断") {
                         Toggle("显示性能监测浮层", isOn: $performanceHUD)
                         Text("显示近 2 秒的显示回调频率、间隔与迟到情况。每秒更新两次，关闭后停止采样。")
@@ -66,15 +71,32 @@ struct SettingsView: View {
                         Text("监测本身有少量开销，也可能影响系统的自适应刷新策略。请结合关闭监测时的手感对比。")
                             .foregroundStyle(.secondary)
                     }
-                }.formStyle(.grouped).frame(height: 340)
+                }.formStyle(.grouped).frame(height: developerFormHeight)
             }
         }
         .navigationTitle("设置")
         .frame(width: 520)
     }
 
+    private var developerFormHeight: CGFloat {
+        #if DEBUG
+            500
+        #else
+            340
+        #endif
+    }
+
     private var general: some View {
         Form {
+            Section("外观") {
+                Picker("主题", selection: $appearance) {
+                    ForEach(AppAppearance.allCases) { theme in
+                        Text(theme.title).tag(theme.rawValue)
+                    }
+                }
+                Text("减少透明度跟随 macOS 辅助功能设置。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("播放") {
                 Picker(selection: $defaultQuality) {
                     ForEach(PlaybackPreferences.qualityOptions, id: \.id) {

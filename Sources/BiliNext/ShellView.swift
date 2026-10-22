@@ -29,6 +29,9 @@ struct ShellView: View {
                     let active =
                         model.selected == nil && pageID == model.browsePageID(for: model.menu)
                     BrowseView(model: instance, isActive: active, topInset: BrowseToolbar.height)
+                        .developmentFeedbackTarget(
+                            "browse.\(pageID)", label: "浏览页：\(pageID)", isActive: active
+                        )
                         .id(ObjectIdentifier(instance))
                         .opacity(active ? 1 : 0)
                         .allowsHitTesting(active)
@@ -37,6 +40,7 @@ struct ShellView: View {
             }
             if model.selected == nil {
                 BrowseToolbar(model: model)
+                    .developmentFeedbackTarget("browse.toolbar", label: "浏览工具栏")
                     .frame(maxHeight: .infinity, alignment: .top)
             }
             ForEach(model.tabs) { tab in
@@ -45,6 +49,9 @@ struct ShellView: View {
                         SearchResultsView(
                             model: instance, keyword: keyword, isActive: model.selected == tab.id
                         )
+                        .developmentFeedbackTarget(
+                            "search.\(tab.id)", label: "搜索结果", isActive: model.selected == tab.id
+                        )
                         .opacity(model.selected == tab.id ? 1 : 0)
                         .allowsHitTesting(model.selected == tab.id)
                         .accessibilityHidden(model.selected != tab.id)
@@ -52,11 +59,17 @@ struct ShellView: View {
                         MemberSpaceView(
                             space: space, model: instance, isActive: model.selected == tab.id
                         )
+                        .developmentFeedbackTarget(
+                            "member.\(tab.id)", label: "UP 主空间", isActive: model.selected == tab.id
+                        )
                         .opacity(model.selected == tab.id ? 1 : 0)
                         .allowsHitTesting(model.selected == tab.id)
                         .accessibilityHidden(model.selected != tab.id)
                     } else if let session = instance.liveSession {
                         LiveRoomView(session: session, isActive: model.selected == tab.id)
+                            .developmentFeedbackTarget(
+                                "live.\(tab.id)", label: "直播页", isActive: model.selected == tab.id
+                            )
                             .opacity(model.selected == tab.id ? 1 : 0)
                             .allowsHitTesting(model.selected == tab.id)
                             .accessibilityHidden(model.selected != tab.id)
@@ -65,6 +78,9 @@ struct ShellView: View {
                             model: instance, navigationOverlayVisible: !pinned && revealed,
                             miniPlayer: model.miniPlayer, windowPinned: model.windowPinned,
                             isActive: model.selected == tab.id
+                        )
+                        .developmentFeedbackTarget(
+                            "playback.\(tab.id)", label: "播放页", isActive: model.selected == tab.id
                         )
                         .opacity(model.selected == tab.id ? 1 : 0)
                         .allowsHitTesting(model.selected == tab.id)
@@ -111,6 +127,9 @@ struct ShellView: View {
                 // Keep one view identity through floating/pinned/hidden states.
                 // Pinning changes its geometry in place rather than replacing it.
                 sidebar.frame(width: drawerWidth)
+                    .developmentFeedbackTarget(
+                        "navigation.sidebar", label: "导航侧栏", isActive: pinned || revealed
+                    )
                     // Animate the parent geometry as one group so child controls
                     // travel with the panel instead of adopting its final layout.
                     .geometryGroup()

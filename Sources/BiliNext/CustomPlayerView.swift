@@ -155,6 +155,8 @@ struct CustomPlayerView: View {
                 VStack {
                     Spacer()
                     controlsBar
+                        .developmentFeedbackTarget(
+                            "player.controls", label: "播放器控制栏", isActive: isActive)
                 }.transition(.opacity)
             } else if model.duration > 0 {
                 // A hairline of progress stays visible while the controls are hidden.

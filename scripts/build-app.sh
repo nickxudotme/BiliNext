@@ -68,6 +68,10 @@ PLIST
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $build_number" "$app_dir/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :BiliNextGitCommit string $build_commit" "$app_dir/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :BiliNextGitDirty string $build_dirty" "$app_dir/Contents/Info.plist"
+if [ "$build_configuration" = "debug" ]; then
+    /usr/libexec/PlistBuddy -c "Add :FeedbackGitCommit string $build_commit" "$app_dir/Contents/Info.plist"
+    /usr/libexec/PlistBuddy -c "Add :FeedbackGitDirty string $build_dirty" "$app_dir/Contents/Info.plist"
+fi
 if [ "$bundle_mpv" = "1" ]; then
     python3 scripts/bundle-mpv.py "$app_dir"
     for library in "$app_dir"/Contents/Frameworks/*.dylib; do

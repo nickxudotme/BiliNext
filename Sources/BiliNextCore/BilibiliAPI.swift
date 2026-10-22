@@ -206,6 +206,27 @@ public actor BilibiliAPI {
         _ path: String, params: [String: String], passport: Bool, allowGuestNav: Bool,
         form: [String: String]?, expectedUserID: Int64?, live: Bool
     ) async throws -> [String: Any] {
+        #if DEBUG
+            let diagnosticStart = Date()
+            var diagnosticHTTP = "unavailable"
+            var diagnosticCode = "unavailable"
+            var diagnosticBytes = 0
+            defer {
+                NotificationCenter.default.post(
+                    name: Notification.Name("BiliNext.developmentRequest"), object: nil,
+                    userInfo: [
+                        "path": path, "method": form == nil ? "GET" : "POST",
+                        "host": live
+                            ? "api.live.bilibili.com"
+                            : (passport ? "passport.bilibili.com" : "api.bilibili.com"),
+                        "parameterNames": params.keys.sorted().joined(separator: ","),
+                        "httpStatus": diagnosticHTTP, "apiCode": diagnosticCode,
+                        "responseBytes": String(diagnosticBytes),
+                        "durationMilliseconds": String(
+                            Int(Date().timeIntervalSince(diagnosticStart) * 1000)),
+                    ])
+            }
+        #endif
         try Task.checkCancellation()
         var u = URLComponents(
             string: "https://\(live ? "api.live" : (passport ? "passport" : "api")).bilibili.com"
@@ -246,6 +267,11 @@ public actor BilibiliAPI {
             let request = req
             (data, response) = try await Task { try await session.data(for: request) }.value
         }
+        #if DEBUG
+            diagnosticHTTP =
+                (response as? HTTPURLResponse).map { String($0.statusCode) } ?? "non_http"
+            diagnosticBytes = data.count
+        #endif
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw APIError(code: (response as? HTTPURLResponse)?.statusCode ?? -1, message: "请求失败")
         }
@@ -253,6 +279,9 @@ public actor BilibiliAPI {
             throw APIError(code: -1, message: "返回格式不正确")
         }
         let code = (root["code"] as? NSNumber)?.intValue ?? -1
+        #if DEBUG
+            diagnosticCode = String(code)
+        #endif
         guard code == 0 || (allowGuestNav && code == -101) else {
             throw APIError(code: code, message: root["message"] as? String ?? "接口请求失败")
         }

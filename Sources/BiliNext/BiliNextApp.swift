@@ -1,13 +1,21 @@
 import AppKit
 import SwiftUI
 
+#if DEBUG
+    import SwiftFeedback
+#endif
+
 @main
 struct BiliNextApp: App {
+    @AppStorage(Preferences.appearance) private var appearance = AppAppearance.system.rawValue
     @StateObject private var model = AppModel()
     @NSApplicationDelegateAdaptor(AppTerminationDelegate.self) private var terminationDelegate
     var body: some Scene {
         Window("BiliNext", id: "main") {
             ShellView(model: model)
+                .onChange(of: appearance, initial: true) { _, value in
+                    (AppAppearance(rawValue: value) ?? .system).apply()
+                }
                 .tint(GlassTheme.accent)
                 .frame(
                     minWidth: model.miniPlayer ? 320 : 940, minHeight: model.miniPlayer ? 180 : 600
@@ -15,6 +23,9 @@ struct BiliNextApp: App {
                 .task { await model.start() }
                 .onAppear {
                     terminationDelegate.model = model
+                    #if DEBUG
+                        DevelopmentFeedback.configure(model: model)
+                    #endif
                     NSApp.activate(ignoringOtherApps: true)
                 }
                 .onReceive(
@@ -30,6 +41,9 @@ struct BiliNextApp: App {
                     NSApp.orderFrontStandardAboutPanel(options: [.credits: AppBuildInfo.credits])
                 }
             }
+            #if DEBUG
+                DevelopmentFeedbackCommands()
+            #endif
             CommandGroup(after: .newItem) {
                 Button("下载管理") { model.downloadsPresented = true }.keyboardShortcut("j")
                 Button("搜索视频") { model.navigate(.search) }.keyboardShortcut("l")

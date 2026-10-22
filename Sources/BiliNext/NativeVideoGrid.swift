@@ -435,7 +435,9 @@ final class VideoGridItem: NSCollectionViewItem {
         videoID = video.id
         preview = model.hoverPreview
         host?.rootView = AnyView(
-            HostedVideoCard(video: video, model: model, interaction: interaction, active: active))
+            HostedVideoCard(video: video, model: model, interaction: interaction, active: active)
+                .developmentFeedbackTarget(
+                    "video.card:\(video.id)", label: video.title, isActive: active))
     }
     func stopPreview() {
         if let videoID { preview?.stop(ifMatching: videoID) }

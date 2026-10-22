@@ -394,3 +394,53 @@ BILINEXT_EXIT_HISTORY_TEST=1 BILINEXT_EXIT_BVID=BV15Ypq6REjB BILINEXT_EXIT_MINIM
 ### 2026-10-14 直播画面弹幕
 
 增量滚动轨道与复用 VOD 图层渲染：应用 95 项、核心 34 项测试运行通过，Release 和签名 App 构建通过；34 个修改 Swift 文件严格格式检查通过。已有 mpv macOS 27 链接警告仍在。实时消息与历史列表分离，暂停和隐藏期间不积压画面弹幕；新增共享偏好设置弹窗。详见 `LIVE-PLAYBACK.md` 的画面弹幕验证范围。
+
+## 2026-10-23 SwiftFeedback 产品流程原型
+
+独立包 `Packages/SwiftFeedback` 接入 Debug BiliNext：菜单/可配置快捷键进入原界面工具层，支持点选定位、自由圈画/撤销/重做、可回看操作录制、就地说明卡、本地保存回执和复制给开发助手。AI 追问按宿主可选提供，默认直接保存。具体原版流程对照和未验收边界见 [SWIFT-FEEDBACK-FLOW.md](SWIFT-FEEDBACK-FLOW.md)。
+
+离线：包 37 项通过，涵盖原生画布 hit-test 和指针处理、状态流转、源位置、标注像素方向、窗口变更保留草稿、可选追问取消、原子报告/录制导出。主工程 281 项通过、19 项可选网络/硬件测试跳过；格式、Release、签名 Debug App 和 deep/strict codesign 通过。
+
+真实 App：快捷键打开工具层；卡片关联到 `NativeVideoGrid.swift:439`，报告包含 3390×2022 干净截图和 pin；本地回执可操作。操作录制让出输入后可从动态切到首页，14.25 秒取得 14 帧和 11 条请求/状态/边界事件；预览滑块可回看中间帧。数据只保存在本机；没有执行点赞、投币、收藏或发送等账号写入。
+
+原生画布离线命中与鼠标事件处理已验；由于自动化工具不支持透明无边框窗口的坐标输入，自由圈画尚未完成真实指针端到端验收。单窗口截图也不合成该透明窗口下方的父窗口，不能用其白底外观判断实际整屏合成结果。最小浮窗、多显示器、完整辅助功能矩阵与长时间性能未验。
+
+## 2026-10-23 评论回复预览底部空白
+
+- 反馈 `2026-10-22T16-55-58Z-81DFFA8B`：已读 report/context/events、原图和标注图；无操作录制。报告构建为 `cbb6f68` dirty，当前 HEAD 相同，受影响的 CommentsPanel.swift 在修复前与该提交完全一致；dirty 构建未提供完整源码快照。
+- 根因：PreviewReplyLine 的两行按钮文字在布局放置阶段被压缩，父评论行仍保留两行的测量高度。为文字设置仅垂直 fixedSize，保留当前宽度下的换行高度与两行上限。
+- 新增 CommentRowLayoutTests 像素回归：长正文和三条回复后，最终粉色回复入口到底部间距不得超过 26pt；撤销修复时实测 52pt 并失败，恢复修复后通过。
+- 离线：swift test 共 282 通过、19 可选跳过；严格格式和 git diff --check 通过。此次未改 DEBUG 条件编译，未重复 Release 构建。
+- 真实 UI：重新打包并运行 build/BiliNext.app，deep/strict codesign 通过；打开同一视频 BV1Bxnm6pE2p 的最热评论，定位相同评论，三条预览正常换行，底部空白消失。截图 /tmp/bilinext-comment-gap-fixed.png。视频已暂停；未操作点赞等账号写入按钮。未重复完整播放器/多显示器/辅助功能矩阵。
+
+## 2026-10-23 反馈类型标签
+
+- 出错/建议/疑问改为可选单选标签，再次点击可取消；不修改正文，category 单独写入 context.json 和 report.md。失败后重新标注保留类型，新反馈清空类型；旧报告缺少 category 可正常解码。
+- SwiftFeedback 37 项测试通过，包括标签切换、取消、原文保持、分类落盘；修改文件严格格式检查、git diff --check 通过。
+- 签名 Debug 打包与 deep/strict codesign 通过。真实界面先输入中文，再依次选出错、切换建议、取消建议、选疑问；各步正文保持原样，选中状态正确。已关闭测试草稿。
+
+## 2026-10-23 反馈控件玻璃表面
+
+- 仅呈现层：FeedbackGlass.swift 统一浮动表面；FeedbackEditor.swift 将提示、工具条、反馈卡、圈画说明条和录制条切换为共享玻璃样式，保留绿色标注和选中态。采集、录制、标签和保存逻辑未改。
+- macOS 26+ 使用原生 regular Liquid Glass，14.4–25 使用 regularMaterial；减少透明度时使用实色系统背景，增强对比度时提供轮廓。不提高包部署版本、不依赖宿主样式代码。
+- SwiftFeedback 37 项测试、修改文件严格格式、git diff --check、签名 Debug 打包与 deep/strict codesign 通过。
+- 真实 UI 已打开工具条和就地反馈卡检查深色外观；透明子窗口截图只显示子窗口、缺少下方主窗口合成，不能用作完整背景透视证据。未实机切换浅色/减少透明度系统设置；对应分支已实现，未宣称完成视觉矩阵。
+
+## 2026-10-23 应用主题与反馈外观验证
+
+- 新增设置 → 通用 → 外观：跟随系统 / 浅色 / 深色，UserDefaults 保存 `appearance.theme`，由 NSApp.appearance 统一应用，跟随系统时清除覆盖。未改系统主题。
+- 签名应用实际验证浅色与深色主窗口、反馈玻璃卡、类型选中态、中文输入、关闭草稿；浅色选择重启后仍保留。验证结束在设置中恢复为跟随系统。截图 /tmp/feedback-light.png、/tmp/feedback-dark.png。
+- 系统降低透明度最初为关闭，未成功改变：System Settings 的工具捕获持续报 ScreenCaptureKit -3811，重连/重启系统设置与工具会话后未恢复。已向用户请求显示该系统窗口后继续；不将降低透明度的实机验证标为通过。
+- swift test 282 通过、19 可选跳过；修改文件严格格式、git diff --check、签名构建与 deep/strict codesign 通过。
+
+## 2026-10-23 反馈标签选中态修正
+
+- 解决原生 bordered Button 在 tint + selected accessibility trait 下呈现仅绿色文字、失去可辨底色的问题；三个标签共用 FeedbackCategoryButtonStyle，选中使用绿色实底、白字与勾号。勾号固定占位，避免切换时标签宽度跳动。
+- 签名应用依次选择出错、建议、疑问并取消，AX 单选状态、底色和白字正确，输入原文保留；截图 /tmp/feedback-tag-suggestion-detail.png、/tmp/feedback-tag-question-detail.png。未发送测试草稿。
+- 包内 37 项测试、修改文件严格格式、git diff --check、签名构建及 deep/strict codesign 均通过。仅改标签呈现，未改类别或保存逻辑。
+
+## 2026-10-23 提交前范围验证
+
+- 只提交 SwiftFeedback 包、宿主开发入口、主题切换和评论预览留白修正；空间页网格、收藏预加载和窗口改动留在工作区。
+- 将暂存树导出独立目录后验证：宿主默认测试 275 通过、19 可选跳过；SwiftFeedback 37 通过；宿主和包严格格式检查通过。
+- 降低透明度的实机检查已按用户要求暂缓；系统开关未改动，应用主题已恢复为跟随系统。
