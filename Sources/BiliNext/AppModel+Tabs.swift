@@ -276,10 +276,13 @@ extension AppModel {
         tabSubscriptions.removeValue(forKey: id)
     }
 
+    /// Page-local state is fresh; shared services are inherited before any lazy work starts.
+    private func makePage() -> AppModel {
+        AppModel(scope: .page, services: services)
+    }
+
     private func connectPage(_ instance: AppModel, key: String) {
         instance.tabOwner = self
-        instance.playbackPrefetch = playbackPrefetch
-        instance.profile = profile
         instance.libraryBusy = watchLaterSynchronization.busy
         var subscriptions = Set<AnyCancellable>()
         instance.$loginPresented.dropFirst().sink { [weak self] value in
@@ -332,10 +335,7 @@ extension AppModel {
     func browseInstance(for destination: BrowseDestination) -> AppModel {
         let key = browsePageID(for: destination)
         if let existing = browseInstances[key] { return existing }
-        let instance = AppModel(
-            sessionStore: sessionStore, managesPlaybackTabs: false, downloads: downloads, api: api,
-            hoverPreview: hoverPreview, browsePageLoader: browsePageLoader,
-            profileLoader: profileLoader)
+        let instance = makePage()
         instance.menu = destination
         instance.homeSection = homeSection
         instance.dynamicMode = dynamicMode
@@ -357,10 +357,7 @@ extension AppModel {
 
     func playbackInstance(for tab: SessionTab) -> AppModel {
         if let existing = playbackInstances[tab.id] { return existing }
-        let instance = AppModel(
-            sessionStore: sessionStore, managesPlaybackTabs: false, downloads: downloads, api: api,
-            hoverPreview: hoverPreview, browsePageLoader: browsePageLoader,
-            profileLoader: profileLoader, favoriteFolderLoader: favoriteFolderLoader)
+        let instance = makePage()
         instance.tabs = [tab]
         instance.menu = menu
         connectPage(instance, key: tab.id)
@@ -384,7 +381,6 @@ extension AppModel {
         let instance = playbackInstance(for: tab)
         instance.menu = menu
         selected = id
-        instance.profile = profile
         instance.playbackTabActive = true
         instance.activate(id, force: force, autoplay: autoplay)
     }

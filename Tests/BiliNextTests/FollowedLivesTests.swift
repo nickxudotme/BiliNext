@@ -36,7 +36,7 @@ import Testing
         if calls == 2 { return await withCheckedContinuation { response = $0 } }
         return [LiveRoom(id: Int64(calls), title: "直播", isLive: true)]
     })
-    workspace.ownedFollowedLives = lives
+    workspace.services.loadedFollowedLives = lives
     workspace.dynamicMode = "视频"
     let videos = workspace.browseInstance(for: .dynamic)
     workspace.dynamicMode = "全部"

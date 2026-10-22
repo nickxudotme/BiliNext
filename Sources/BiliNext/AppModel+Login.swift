@@ -15,9 +15,6 @@ extension AppModel {
         guard account == accountGeneration else { return }
         profile = loadedProfile
         historyOutbox.accountChanged()
-        for instance in playbackInstances.values {
-            instance.profile = profile
-        }
         for (pageID, instance) in browseInstances {
             instance.invalidateBrowseCache()
             tabSubscriptions.removeValue(forKey: "browse:" + pageID)

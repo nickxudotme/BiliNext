@@ -6,19 +6,15 @@ import WebKit
 
 @MainActor
 final class AppModel: ObservableObject {
-    let api: BilibiliAPI
+    // Shared dependencies have one identity for the workspace and all retained pages.
+    let services: AppModelServices
+    let scope: AppModelScope
+    var api: BilibiliAPI { services.api }
     /// Retained by the video page, independently of the selected details panel.
     var commentInteractionState: CommentInteractionModel?
     var commentListState: (context: CommentInteractionModel.Context?, loader: CommentPageLoader)?
-    var ownedFollowedLives: FollowedLives?
-    /// Live status belongs to the account, not to an individual dynamic-feed filter.
-    var followedLives: FollowedLives {
-        if let tabOwner { return tabOwner.followedLives }
-        if let ownedFollowedLives { return ownedFollowedLives }
-        let lives = FollowedLives(api: api)
-        ownedFollowedLives = lives
-        return lives
-    }
+    // Account services are shared; page-local playback and comment state stay here.
+    var followedLives: FollowedLives { services.followedLives }
     @Published var liveSession: LiveSession?
     /// The system Now Playing bridge; only the workspace owns one.
     var nowPlaying: NowPlaying?
@@ -32,30 +28,9 @@ final class AppModel: ObservableObject {
         onError: { error in
             NSLog("Watch history sync failed: %@", error.localizedDescription)
         }, account: { [weak self] in self?.profile?.id })
-    private var ownedHistoryOutbox: WatchHistoryOutbox?
-    let historyStoreURL: URL?
-    var historyOutbox: WatchHistoryOutbox {
-        if let tabOwner { return tabOwner.historyOutbox }
-        if let ownedHistoryOutbox { return ownedHistoryOutbox }
-        let outbox = WatchHistoryOutbox(
-            store: historyStoreURL,
-            activeAccount: { [weak self] in self?.profile?.id },
-            send: { [api] entry in
-                try await api.reportWatchProgress(
-                    bvid: entry.progress.bvid, cid: entry.progress.cid,
-                    position: entry.progress.position, expectedUserID: entry.accountID)
-            },
-            onSuccess: { [weak self] in
-                guard let self else { return }
-                for history in self.browseInstances.values where history.menu == .history {
-                    history.cachedLists = [:]
-                    if self.selected == nil && self.menu == .history { history.refresh() }
-                }
-            }, onError: { error in NSLog("Watch history outbox: %@", error.localizedDescription) })
-        ownedHistoryOutbox = outbox
-        return outbox
-    }
-    let hoverPreview: HoverPreview
+    var historyStoreURL: URL? { services.historyStoreURL }
+    var historyOutbox: WatchHistoryOutbox { services.historyOutbox }
+    var hoverPreview: HoverPreview { services.hoverPreview }
     #if DEBUG
         let credentialNotice = "开发版：本机会话文件未加密，仅当前用户可读写"
     #else
@@ -79,12 +54,12 @@ final class AppModel: ObservableObject {
         set { if let mpv { mpv.volume = newValue } else { player.volume = Float(newValue) } }
     }
     let danmaku = DanmakuModel()
-    let downloads: DownloadManager
+    var downloads: DownloadManager { services.downloads }
     @Published var playbackInstances: [String: AppModel] = [:]
     @Published var browseInstances: [String: AppModel] = [:]
     var playbackTabActive = true
     weak var tabOwner: AppModel?
-    let managesPlaybackTabs: Bool
+    var managesPlaybackTabs: Bool { scope == .workspace }
     var tabSubscriptions: [String: Set<AnyCancellable>] = [:]
     @Published var downloadsPresented = false
     @Published var duration = 0.0
@@ -103,21 +78,18 @@ final class AppModel: ObservableObject {
     /// Window shrinks to a floating corner player (小窗) showing only the current video.
     @Published var miniPlayer = false
     var stateBeforeMiniPlayer: (sidebarPinned: Bool, windowPinned: Bool)?
-    @Published var profile: UserProfile? {
-        // Prefetched URLs carry the qualities of the account that requested them. Only the
-        // workspace clears the shared cache; pages receive its profile when they connect.
-        didSet {
-            if managesPlaybackTabs && oldValue?.id != profile?.id { playbackPrefetch.removeAll() }
+    var profile: UserProfile? {
+        get { services.account.profile }
+        set { services.updateProfile(newValue) }
+    }
+    var playbackPrefetch: PlaybackPrefetch { services.playbackPrefetch }
+    var accountGeneration: UUID {
+        get { services.account.generation }
+        set {
+            services.updateAccountGeneration(newValue)
         }
     }
-    /// Shared by the workspace and every page it owns.
-    lazy var playbackPrefetch = PlaybackPrefetch(api: api)
-    var accountGeneration = UUID() {
-        didSet {
-            ownedFollowedLives?.reset()
-            publishWatchLaterBusy()
-        }
-    }
+    private var accountSubscription: AnyCancellable?
     @Published var query = ""
     @Published var homeSection = "推荐"
     @Published var dynamicMode = "视频"
@@ -137,10 +109,12 @@ final class AppModel: ObservableObject {
     var favoriteFoldersTask: Task<Void, Never>?
     var favoriteFoldersAccountID: Int64?
     var favoriteFoldersGeneration = UUID()
-    let favoriteFolderLoader: (Int64) async throws -> [FavoriteFolder]
+    var favoriteFolderLoader: (Int64) async throws -> [FavoriteFolder] {
+        services.favoriteFolderLoader
+    }
     @Published var folderID: Int64 = 0
     @Published var libraryBusy = Set<String>()
-    let watchLaterSynchronization = WatchLaterSynchronization()
+    var watchLaterSynchronization: WatchLaterSynchronization { services.watchLaterSynchronization }
     @Published var removedLater: Video?
     @Published var loginPresented = false
     /// A transient notice. It clears itself after a few seconds, independent of any view.
@@ -168,7 +142,7 @@ final class AppModel: ObservableObject {
     @Published var secondarySubtitleError: String?
     var secondarySubtitleTask: Task<Void, Never>?
     var secondarySubtitleGeneration = UUID()
-    let subtitleLoader: (SubtitleTrack) async throws -> [Cue]
+    var subtitleLoader: (SubtitleTrack) async throws -> [Cue] { services.subtitleLoader }
     @Published var subtitleError: String?
     @Published var subtitleLoading = false
     let smartSubtitles: SmartSubtitleModel
@@ -202,8 +176,10 @@ final class AppModel: ObservableObject {
     var qualitySwitchState: (position: Double, resume: Bool)?
     var playbackIntent = false
     var browseTask: Task<Void, Never>?
-    let browsePageLoader: (BrowsePageRequest) async throws -> BrowsePageResult
-    let profileLoader: () async throws -> UserProfile
+    var browsePageLoader: (BrowsePageRequest) async throws -> BrowsePageResult {
+        services.browsePageLoader
+    }
+    var profileLoader: () async throws -> UserProfile { services.profileLoader }
     var browseLoadAttempted = false
     var browseContext: BrowsePageRequest?
     var browseRequestedOffsets = Set<String>()
@@ -223,11 +199,11 @@ final class AppModel: ObservableObject {
     var history = ["动态:视频"]
     var historyIndex = 0
     var lastSaved = Date.distantPast
-    let sessionStore: SessionStore
+    var sessionStore: SessionStore { services.sessionStore }
 
     // MARK: - Lifecycle
 
-    init(
+    convenience init(
         sessionStore: SessionStore = SessionStore(), managesPlaybackTabs: Bool = true,
         downloads: DownloadManager? = nil, api: BilibiliAPI? = nil,
         hoverPreview: HoverPreview? = nil,
@@ -237,30 +213,25 @@ final class AppModel: ObservableObject {
         subtitleLoader: ((SubtitleTrack) async throws -> [Cue])? = nil,
         subtitlePreferences: UserDefaults = .standard, historyStoreURL: URL? = nil
     ) {
-        #if DEBUG
-            self.api = api ?? BilibiliAPI(credentialStorage: .developmentFile)
-        #else
-            self.api = api ?? BilibiliAPI()
-        #endif
-        // API-injected models (including offline tests) don't touch the user's persistent outbox.
-        self.historyStoreURL =
-            historyStoreURL ?? (api == nil ? WatchHistoryOutbox.defaultStoreURL : nil)
-        self.smartSubtitles = SmartSubtitleModel(defaults: subtitlePreferences)
-        self.subtitleLoader =
-            subtitleLoader ?? { [api = self.api] track in try await api.subtitles(track) }
-        self.browsePageLoader =
-            browsePageLoader ?? { [api = self.api] request in
-                try await Self.loadBrowsePage(request, api: api)
-            }
-        self.profileLoader = profileLoader ?? { [api = self.api] in try await api.profile() }
-        self.favoriteFolderLoader =
-            favoriteFolderLoader ?? { [api = self.api] in try await api.favoriteFolders(mid: $0) }
-        self.hoverPreview = hoverPreview ?? HoverPreview(api: self.api)
-        self.sessionStore = sessionStore
-        self.managesPlaybackTabs = managesPlaybackTabs
-        self.downloads = downloads ?? DownloadManager()
-        if managesPlaybackTabs, let saved = try? sessionStore.read() {
+        let services = AppModelServices(
+            sessionStore: sessionStore, downloads: downloads, api: api,
+            hoverPreview: hoverPreview, browsePageLoader: browsePageLoader,
+            profileLoader: profileLoader, favoriteFolderLoader: favoriteFolderLoader,
+            subtitleLoader: subtitleLoader, subtitlePreferences: subtitlePreferences,
+            historyStoreURL: historyStoreURL)
+        self.init(scope: managesPlaybackTabs ? .workspace : .page, services: services)
+    }
+
+    init(scope: AppModelScope, services: AppModelServices) {
+        self.scope = scope
+        self.services = services
+        self.smartSubtitles = SmartSubtitleModel(defaults: services.subtitlePreferences)
+        if scope == .workspace, let saved = try? services.sessionStore.read() {
             tabs = saved
+        }
+        if services.owner == nil { services.owner = self }
+        accountSubscription = services.account.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
         }
         observer = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.25, preferredTimescale: 600), queue: .main
@@ -316,9 +287,6 @@ final class AppModel: ObservableObject {
         profile = loadedProfile
         preloadFavoriteFolders()
         historyOutbox.accountChanged()
-        for instance in Array(browseInstances.values) + Array(playbackInstances.values) {
-            instance.profile = profile
-        }
         guard selected == nil else { return }
         #if DEBUG
             // Visual checks of the playback page without clicking: opens the first restored
