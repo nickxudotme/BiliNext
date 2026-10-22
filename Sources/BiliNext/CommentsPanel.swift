@@ -820,6 +820,9 @@ private struct PreviewReplyLine: View {
             Button(action: action) {
                 CommentText(comment: reply, prefix: reply.author)
                     .font(GlassTheme.labelFont).lineSpacing(3).lineLimit(2)
+                    // Keep the button label at its wrapped height; otherwise placement can
+                    // compress it after the row has reserved space for two lines.
+                    .fixedSize(horizontal: false, vertical: true)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 6).padding(.vertical, 2)
