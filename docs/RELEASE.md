@@ -30,7 +30,7 @@ brew install --cask nickxudotme/tap/bilinext
 brew upgrade --cask nickxudotme/tap/bilinext
 ```
 
-cask 使用 `postflight_steps`，先显示应用尚未公证的说明、实际安装目录对应的完整 `sudo /usr/bin/xattr -dr com.apple.quarantine "<appdir>/BiliNext.app"` 命令，再自动执行。用户在终端直接输入 sudo 密码；输入不回显。安装、重装、升级都执行同一流程，并支持自定义 `--appdir`。
+cask 通过 `caveats` 显示应用尚未公证的说明，以及实际安装目录对应的完整 `sudo /usr/bin/xattr -dr com.apple.quarantine "<appdir>/BiliNext.app"` 命令；安装、重装和升级均不会自动执行该命令。如果 macOS 阻止打开，用户查看说明后在终端手动执行，需要时直接输入 sudo 密码，输入不回显。提示中的路径支持自定义 `--appdir`。
 
 此操作只删除 BiliNext 的隔离标记，不改变钥匙串授权。Release 继续使用钥匙串保存登录状态；没有稳定的 Developer ID 身份时，升级可能需要重新授权。用户接受这一升级体验，暂不更换登录存储后端。开发版原有文件存储限定在 DEBUG，不进入发行包。
 
@@ -38,7 +38,7 @@ cask 使用 `postflight_steps`，先显示应用尚未公证的说明、实际�
 
 - 离线测试、格式检查、Release 编译与严格签名检查。
 - 解包 ZIP 后核对版本、图标和 Homebrew mpv 链接路径。
-- 安装与升级时确认先显示完整命令，再出现密码提示；完成后无 quarantine 属性。
+- 安装与升级时确认显示实际安装路径和完整手动命令，且安装过程不自动移除隔离标记；需要解除隔离时，手动执行后检查 BiliNext 的 quarantine 属性。
 - 从实际安装位置启动，验证登录、视频播放与升级后的钥匙串行为。
 - 项目采用 GPL-3.0-only；App 内附 LICENSE 和第三方依赖说明。正式 Release 对应的 tag 保留源码与构建脚本。
 
@@ -52,4 +52,6 @@ macOS 托管 runner 没有应用所需的加速 OpenGL 上下文；真实图层�
 
 0.1.2 和 0.1.3 已由 macOS 26 CI 正式发布，tap 已自动更新到 0.1.3。二者采用相同源码，用于真实的旧版安装与新版升级验证。早期 `v0.1.0`、`v0.1.1` 标签仅对应失败的 CI，没有发布安装包。
 
-正式 ZIP 的下载与解包校验已执行；本机 brew 安装、升级、钥匙串授权和真实播放仍待用户启动验收脚本后验证。当前状态详见 [VALIDATION.md](VALIDATION.md)。
+正式 ZIP 的下载与解包校验，以及本机 0.1.2 安装 → 0.1.3 升级均已通过；版本、签名、原始图标、许可证、mpv 链接和隔离标记检查通过，安装后的应用进程已启动。钥匙串跨升级授权体验、登录持久性和真实播放仍待界面确认。当前状态详见 [VALIDATION.md](VALIDATION.md)。
+
+上述安装记录对应首次发布时的自动解除隔离流程。2026-10-20 起仓库中的 cask 模板改为仅提示手动命令；历史验收不能代替新流程的实际安装验收。

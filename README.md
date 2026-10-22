@@ -1,100 +1,100 @@
-# BiliNext
+<p align="center">
+  <img src="docs/images/icon.png" width="128" alt="BiliNext 图标">
+</p>
 
-原生 macOS Bilibili 客户端开发版。最低 macOS 26，SwiftUI + AppKit；主播放器使用 libmpv 直接播放 DASH 分离流与 MP4，悬停预览使用 AVPlayer；实现和验证见 [mpv 播放记录](docs/MPV-PLAYBACK.md)，旧方案见 [DASH 播放记录](docs/NATIVE-DASH-PLAYBACK.md)。
+<h1 align="center">BiliNext</h1>
 
-源码采用 [GPL-3.0](LICENSE)，第三方组件见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+<p align="center">使用 SwiftUI 与 AppKit 构建的原生 macOS 哔哩哔哩客户端。</p>
 
-## Homebrew 分发
+<p align="center">
+  <a href="https://github.com/nickxudotme/BiliNext/releases">下载与更新</a> ·
+  <a href="docs/DEVELOPMENT.md">本地开发</a> ·
+  <a href="LICENSE">GPL-3.0</a>
+</p>
 
-后续开发与发布以本仓库的 SwiftUI + AppKit 应用为准。应用图标位于 `Resources/BiliNext.icns`。
+BiliNext 将视频浏览、播放、弹幕和字幕阅读整合在原生 Mac 窗口中，支持多标签播放、系统媒体控制与本地续播。主播放器采用 libmpv，界面使用 SwiftUI 与 AppKit 实现。
 
-正式安装包由 [GitHub Releases](https://github.com/nickxudotme/BiliNext/releases) 提供，通过 Homebrew 安装：
+本项目是独立开发的第三方客户端，与哔哩哔哩官方无关联。
 
-```sh
-brew install --cask nickxudotme/tap/bilinext
-```
+## 安装
 
-分发版要求 Apple Silicon、macOS 26 或更新版本，由 Homebrew 安装 `mpv` 依赖，ZIP 不内嵌播放库。安装时先打印说明及完整命令，再自动移除该应用的隔离标记，需要时在终端输入管理员密码。应用使用 ad-hoc 签名，尚未获得 Developer ID 签名和 Apple 公证。
-
-Release 登录状态仍保存在钥匙串；升级后可能需要重新授权，同一版本再次启动不应仅因缺少 Apple 证书就必然重复授权。开发版与 Release 的登录存储不同，切换到 Release 时可能需要重新扫码。发布步骤及验证边界见 [发布说明](docs/RELEASE.md)。
-
-## 构建
-
-本地开发需要 Xcode、`brew install mpv pkgconf` 和持久的代码签名证书。运行库打包与 macOS 26 兼容要求见 [mpv 构建说明](docs/MPV-PLAYBACK.md)。在本机运行 `security find-identity -v -p codesigning`，将选定证书的 SHA-1 写入项目根目录 `.signing-identity`，或设置 `BILINEXT_SIGNING_IDENTITY`。该本机配置已加入 `.gitignore`。
+支持 **Apple Silicon（M 系列芯片）**，需要 **macOS 26 或更新版本**，以及 [Homebrew](https://brew.sh/)。
 
 ```sh
-bash scripts/build-app.sh
-open build/BiliNext.app
-swift test
+brew install nickxudotme/tap/bilinext
 ```
 
-默认生成签名 Debug 开发包，沿用下述本机开发会话后端，日常重编译不读取钥匙串。正式包需显式运行 `BILINEXT_BUILD_CONFIGURATION=release bash scripts/build-app.sh`；Release 继续只使用钥匙串，不回退到开发文件。
+Homebrew 会自动识别 cask 并安装 mpv 等依赖。安装完成后，从「应用程序」打开 BiliNext，扫码登录即可使用需要账号的功能。
 
-保持持久证书签名，但不要认为本地自签证书已经解决钥匙串提示：实际排查发现，旧文件型钥匙串还有基于 `cdhash` 的 partition 限制，稳定 designated requirement 并不足够。正式分发仍需处理 Apple 开发／Developer ID 签名与公证。
+应用目前尚未经过 Apple 公证，安装过程不会自动移除下载隔离标记。如果 macOS 阻止打开，请先查看 Homebrew 显示的说明，再在终端手动执行其中针对 BiliNext 的完整命令；如出现 `Password:`，请在终端输入 Mac 管理员密码，输入时不会显示字符。登录状态保存在系统钥匙串中，升级后可能需要重新授权。
 
-开发期间，`DEBUG` 构建将会话存到 `~/Library/Application Support/BiliNext/Development/login-session.json`。目录权限为 0700，文件为 0600，未加密且不在仓库中；这是用户明确选择的开发便利性取舍。首次迁移只静默尝试读取旧钥匙串，拒绝时重新扫码一次。已有开发会话文件时不访问钥匙串；退出写入空记录，防止下次启动重新导入旧登录。旧钥匙串条目保留给正式版。
+[GitHub Releases](https://github.com/nickxudotme/BiliNext/releases) 也提供 ZIP 安装包。当前安装包依赖 Homebrew 的 mpv，不是包含全部运行库的独立安装包；建议通过上述命令安装。
 
-本地会话后端通过 `#if DEBUG` 限定，Release 构建只提供钥匙串后端。开发文件仍是凭据文件，不应复制到仓库或发给他人。
+## 更新与卸载
 
-直接 `swift run` 或 Xcode 的未签名产物具有不同身份，不能用它们代替已签名 App 验证钥匙串持久授权。
+更新：
 
-## 当前功能
+```sh
+brew update
+brew upgrade nickxudotme/tap/bilinext
+```
 
-- 已确认的 220pt 导航侧边栏：固定、悬浮呼出、4pt 浮层外边距；没有拖拽调宽。
-- 二维码登录、会话恢复、退出；开发版使用本机会话文件，Release 使用钥匙串；默认进入关注动态。
-- 首页推荐、热门、排行榜；关键词搜索、排序、BV/链接打开、分页。
-- 动态可切换视频／全部，展示文字、图片、转发摘要与视频，原图和完整动态可打开。
-- 番剧、国创、纪录片、电影、电视剧索引及分集列表；有权限且接口提供单段 MP4 的正片接入播放器。
-- 收藏夹选择、新建、重命名、删除、搜索、排序及视频分页；云端历史游标分页与搜索；稍后再看列表。
-- 评论最热／最新、树状楼中楼与分页、从预览定位回复、长评论展开；相关推荐。
-- UP 主个人页作为侧栏标签打开：资料、置顶、投稿排序与搜索、合集和系列、关注。
-- 视频收藏夹选择、视频及评论点赞／取消、投币入口；账号写操作仅由用户按钮触发。
-- 卡片右键加入／移除稍后再看；移除后的撤销是重新加入，顺序可能变化。
-- 视频标签、Command 后台打开、关闭与撤销、重启恢复、本地续播；每个标签保留就地换视频的前进／后退历史；重启恢复保持暂停。
-- 接入系统「正在播放」：控制中心与菜单栏显示标题、UP 主、封面和进度；媒体键、耳机按键播放暂停，拖动进度，前后 10 秒，上一个／下一个切换分 P。
-- 自定义播放器控件：进度、倍速、音量、剧场／全屏、清晰度切换并保留位置；libmpv 作为主媒体引擎，直接处理视频／音频、CDN 请求头、缓存和硬解。
-- 看点章节与进度条缩略图、分 P／合集自动连播、视频编码与无损音轨偏好；原生播放可设置默认清晰度、默认倍速、方向键步长与长按倍速，快捷键说明同步更新。
-- 简介显示当前分 P 的在线观看人数；仅前台当前简介定时刷新，接口不可用时隐藏。
-- 动态页关注直播入口、直播画面与实时弹幕列表、滚动画面弹幕、暂停及重连；与点播共用标签和播放器布局。
-- 分段弹幕：滚动、顶部、底部；暂停与跳转同步；字号、透明度、区域、速度、关键词屏蔽；固定和滚动弹幕分区以避免重叠。
-- 下载当前分 P 的单段 MP4：进度、取消、重试、文件打开、Finder 定位、下载记录；退出应用后需重新下载未完成任务。
-- Transcript 选轨、逐句／段落、搜索、时间跳转、跟随与暂停跟随、复制时间引用。
-- [双语字幕](docs/BILINGUAL-SUBTITLES.md)：同时选择两条现有字幕轨，各自按时间显示；默认保留源字幕换行，可选去掉字幕内强制换行。字幕脚本可一键复制当前分 P 的完整主字幕。
-- [智能字幕](docs/SMART-SUBTITLES.md)：本机检测画面硬字幕，重复时自动隐藏软字幕；语言差异规则、UP 主偏好、视频分 P 例外、重新检测和手动恢复。
+卸载：
 
-## 验证与边界
+```sh
+brew uninstall nickxudotme/tap/bilinext
+```
 
-当前验收入口见 [当前验证状态](docs/VALIDATION.md)，按离线检查、网络集成和实际界面分别记录；日期表示该项最近验证时间。历史验收记录见 [项目整理](docs/PROJECT-CLEANUP.md)、[渲染优化](docs/RENDERING-PERFORMANCE.md)及各功能专题，不能作为本轮全部功能已复测的证明。
+## 功能
 
-默认 `swift test` 不访问真实账号。公开网络测试用 `BILINEXT_LIVE_TEST=1 swift test`；账号只读测试用 `BILINEXT_AUTH_TEST=1 swift test`。Debug 账号测试复用已授权的开发会话文件，不访问钥匙串。
+### 浏览与收藏
 
-功能覆盖及待办见 [PiliPlus 迁移清单](docs/PILIPLUS-MIGRATION.md)和[参考项目研究清单](docs/REFERENCE-STUDY-2026-10.md)。**没有完成全部 PiliPlus 功能**：私信、投稿／发动态、评论回复与弹幕发送、原生动态评论／文章详情、HDR／杜比画面、DASH 分轨下载合并、下载断点续传、DLNA、WebDAV、订阅收藏夹、官方核心及番剧历史上报、标签拖动排序与每个标签独立的字幕阅读状态、AI 与 MCP 等仍待实现。
+- 首页推荐、热门、排行榜，关键词与 BV／视频链接搜索。
+- 关注动态、关注直播，番剧、国创、纪录片、电影和电视剧索引。
+- UP 主个人页、投稿、合集、系列及关注操作。
+- 收藏夹管理、稍后再看、云端历史，以及视频和评论点赞、投币入口。
+- 评论最热／最新排序、树状回复、分页与回复定位。
 
-原生清晰度选项依据实际下发的兼容视频流；默认请求 1080P，4K 可在有源且有权限时选择。MP4 回退以实际返回档位显示并提示。番剧权限由官方接口决定，不绕过付费、地区或账号限制。收藏中非普通视频资源暂不展示；动态转发目前为摘要。已登录账号的原生普通视频播放会更新云端历史；失败进度按账号隔离保存并重试，退出时最多等待 2 秒。官方核心和番剧历史上报尚未覆盖。
+### 播放与弹幕
 
-## 参考
+- 多标签播放、后台打开、关闭撤销、标签恢复与本地续播。
+- 清晰度、倍速、音量、视频编码与音轨偏好，支持分 P／合集自动连播。
+- 剧场与全屏模式，可调整或隐藏的播放信息栏。
+- 接入系统「正在播放」，支持媒体键、耳机按键和系统播放进度控制。
+- 滚动、顶部与底部弹幕，支持字号、透明度、显示区域、速度和关键词过滤。
+- 直播播放、实时聊天弹幕、暂停与重连。
+- 当前分 P 的单段 MP4 下载、进度显示、取消与重试。
 
-接口实现对照工作区中的 PiliPlus（`lib/http/user.dart`、`fav.dart`、`utils/wbi_sign.dart`）、BBHouse（`app/core/PlayerApi.cpp`）和 bilibili-api。界面继承 `../prototypes/SidebarStudy/SidebarStudy.swift` 的用户确认版本。参考项目独立保留；发布前需完成源码来源与许可证审查。
+### 字幕阅读
 
-## 本机官方客户端播放器核心
+- 字幕脚本搜索、逐句／段落阅读、跟随播放、点击跳转与全文复制。
+- [双语字幕](docs/BILINGUAL-SUBTITLES.md)：同时显示两条现有字幕轨，各自按时间同步，默认保留源字幕换行。
+- [智能字幕](docs/SMART-SUBTITLES.md)：本机识别画面硬字幕，在重复时自动隐藏软字幕，并支持手动调整。
 
-标题栏播放选项菜单中的“使用本机官方核心”在当前播放区域运行本机哔哩哔哩客户端内置的 nano 播放器。它从 `/Applications/哔哩哔哩.app/Contents/Resources/app.asar` 只读获取 `render/assets/lib/core.js`，不加载官网视频页面，也不使用官方外链播放器。需要保留本机已安装的兼容官方客户端；播放器代码不打包进 BiliNext。媒体引擎宿主是 WKWebView，官方播放器界面和弹幕由核心提供，Swift 接入字幕时间、跳转、暂停及进度保存。
+## 当前限制
 
-已验证 TED、Spark 两条 UGC 的真实播放画面、播放/暂停、时间前进、官方弹幕、Transcript 跳转和切回原播放器保留位置。AV1 开关已按硬件能力启用（该官方核心的 AV1 尚未单独实测），HEVC 开关仍关闭；PGC、高密度弹幕、全屏及发送等功能仍需逐项验收。来源与接口分析见 `docs/OFFICIAL-CLIENT-PLAYER.md`。
+BiliNext 仍在持续开发，尚未覆盖官方客户端的全部功能。
 
+- 清晰度和番剧播放受实际视频源、账号权限及地区限制影响。默认请求 1080P，有源且有权限时可选择 4K。
+- 已登录账号的原生普通视频播放支持云端历史同步；番剧和可选官方播放器核心的历史上报尚未覆盖。
+- 暂不支持私信、投稿、发布动态、评论回复与弹幕发送。
+- 暂不支持 HDR／杜比画面、DASH 分轨下载合并、下载断点续传、DLNA 和 WebDAV。
+- 可选的本机官方播放器核心需要已安装兼容的哔哩哔哩官方客户端，其代码不包含在 BiliNext 中。详见 [官方播放器说明](docs/OFFICIAL-CLIENT-PLAYER.md)。
 
-## 主窗口沉浸播放页（2026-10-05）
+更完整的功能覆盖与待办见 [功能清单](docs/PILIPLUS-MIGRATION.md)，已完成的检查与实测范围见 [当前验证状态](docs/VALIDATION.md)。
 
-播放页保留主窗口左侧导航和已打开的视频标签。中部播放器占满剩余高度，右侧使用原生分段选择器切换简介、评论、推荐、字幕、弹幕；原生分栏可调整宽度，信息栏可单独隐藏。简介承载作者、标题、收藏等操作和分 P。原生播放器与本机官方核心共用这一布局。
+## 开发与贡献
 
-评论使用接口的 `parent` / `root` 关系构建树，支持多层缩进、分支折叠、完整回复分页和文本复制。父评论尚未加载时保留回复，分页补齐后重新挂到父节点；异常循环不会造成无限递归。评论目前只读，尚未接入发表和回复。
+后续开发与发布以本仓库的 Swift 应用为准。欢迎通过 [Issues](https://github.com/nickxudotme/BiliNext/issues) 反馈问题或提出建议；报告播放问题时，请提供系统版本、应用版本、视频 BV 号及复现步骤，避免提交 Cookie、登录凭据或其他账号敏感信息。
 
-2026-10-05 历史界面验收已验证主窗口三栏、评论完整分支加载与折叠、字幕和弹幕时间跳转。弹幕列表当前按 6 分钟分段加载，搜索范围为当前分段。
+- [本地构建与测试](docs/DEVELOPMENT.md)
+- [贡献约定](CONTRIBUTING.md)
+- [发布流程](docs/RELEASE.md)
+- [libmpv 播放内核](docs/MPV-PLAYBACK.md)
+- [渲染与性能](docs/RENDERING-PERFORMANCE.md)
 
-## 项目维护
+接口与功能实现参考了 [PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus)、[bilibili-api](https://github.com/Nemo2011/bilibili-api) 和 BBHouse 等项目；研究记录见 [参考项目清单](docs/REFERENCE-STUDY-2026-10.md)。
 
-开发和验证约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。本目录是独立 Git 仓库；上层目录用于组织参考资料与原型。标签记录仍保存到 `~/Library/Application Support/BiliNext/session.json`，由应用内部 `SessionStore` 负责读写。
+## 许可证
 
-## 渲染优化
-
-2026-10-10：隔离播放时间通知，避免评论和外壳跟随计时器刷新；弹幕使用缓存文字位图与系统图层动画。改动、验证和性能测量边界见 [渲染优化记录](docs/RENDERING-PERFORMANCE.md)。
+BiliNext 源码采用 [GNU GPL v3](LICENSE)。第三方组件及其许可证说明见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
