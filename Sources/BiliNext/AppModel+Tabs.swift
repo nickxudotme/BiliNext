@@ -12,6 +12,13 @@ extension AppModel {
             tabOwner.open(video, background: background)
             return
         }
+        #if DEBUG
+            DevelopmentFeedback.record(
+                "navigation.openVideo",
+                fields: [
+                    "videoID": video.id, "background": String(background),
+                ])
+        #endif
         if !tabs.contains(where: { $0.id == video.id }) {
             tabs.append(
                 SessionTab(
@@ -353,7 +360,7 @@ extension AppModel {
         let instance = AppModel(
             sessionStore: sessionStore, managesPlaybackTabs: false, downloads: downloads, api: api,
             hoverPreview: hoverPreview, browsePageLoader: browsePageLoader,
-            profileLoader: profileLoader)
+            profileLoader: profileLoader, favoriteFolderLoader: favoriteFolderLoader)
         instance.tabs = [tab]
         instance.menu = menu
         connectPage(instance, key: tab.id)
@@ -363,6 +370,13 @@ extension AppModel {
 
     func activatePlaybackTab(_ id: String, force: Bool, autoplay: Bool) {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
+        #if DEBUG
+            DevelopmentFeedback.record(
+                "navigation.activateTab",
+                fields: [
+                    "from": selected ?? menu.rawValue, "to": id, "autoplay": String(autoplay),
+                ])
+        #endif
         hoverPreview.stop()
         saveSession()
         suspendPlaybackTabs(except: id)

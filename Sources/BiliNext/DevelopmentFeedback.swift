@@ -8,6 +8,15 @@ import SwiftUI
     enum DevelopmentFeedback {
         private static var requestObserver: NSObjectProtocol?
 
+        static func record(
+            _ name: String, fields: [String: String], file: String = #fileID, line: UInt = #line
+        ) {
+            var fields = fields
+            fields["source.file"] = file
+            fields["source.line"] = String(line)
+            FeedbackRecorder.shared.record(name, fields: fields)
+        }
+
         static func configure(model: AppModel) {
             FeedbackCenter.shared.configure { [weak model] in model?.feedbackContext() ?? [:] }
             if requestObserver == nil {

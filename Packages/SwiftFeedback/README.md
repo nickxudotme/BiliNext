@@ -269,3 +269,11 @@ swift test
 产品交互参考 [makethisbetter-js](https://github.com/makethisbetter/makethisbetter-js) v1.30.1，使用流程对照见 [原生流程说明](../../docs/SWIFT-FEEDBACK-FLOW.md)。原项目以 MIT 发布，保留其 [许可文本](UPSTREAM-LICENSE)；这里使用原生 SwiftUI/AppKit 实现，不在宿主中嵌入 JavaScript SDK。
 
 反馈卡片中的「出错 / 建议 / 疑问」为可选的单选类型标签，再次点击可取消；切换类型不会修改说明。类型单独写入 context.json 的 category（bug / suggestion / question）与 report.md。
+
+## 语义事件与统一时间线
+
+BiliNext 在 Debug 中记录浏览导航、打开视频、激活标签、请求跳转进度，以及清晰度请求/装载/失败事件。`Requested` 只表示操作意图；`qualityApplied` 表示播放器接受了新源，不保证已经渲染首帧，实际播放状态仍需结合状态采样和画面。语义事件不记录搜索文本、凭据或请求正文。
+
+原生录制预览增加可点击事件列表，按实际秒数选择此前最近画面。导出的 replay.html 提供事件分类筛选、事件详情、状态前后值和该时刻的应用状态；将采集到的录制时段日志合并进 recording.json 的 timeline，原始 events.json、logs.json 仍独立保留。日志可能缺失或延迟，状态是最多每秒一次的采样，不代表所有中间状态。
+
+播放按帧时间戳推进，缺帧时保留上一帧。没有更早画面时显示第一帧并明确显示画面时间；完全无画面时仍可查看事件和诊断。回放不执行原始业务操作，不发起远程请求。旧报告需要重新导出才能使用新回放界面。

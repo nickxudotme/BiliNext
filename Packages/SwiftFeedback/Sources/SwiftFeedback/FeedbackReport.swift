@@ -91,13 +91,26 @@ enum FeedbackReportWriter {
                     try frame.jpeg.write(to: framesDirectory.appendingPathComponent(name))
                     frameIndex.append(["offsetSeconds": frame.offset, "file": "recording/" + name])
                 }
+                let logEvents = logs.filter {
+                    $0.timestamp >= recording.startedAt
+                        && $0.timestamp
+                            <= recording.startedAt.addingTimeInterval(recording.duration)
+                }.map {
+                    FeedbackEvent(
+                        timestamp: $0.timestamp, name: "log." + $0.level,
+                        fields: [
+                            "message": $0.message, "category": $0.category,
+                            "subsystem": $0.subsystem,
+                        ])
+                }
+                let timeline = (events + logEvents).sorted { $0.timestamp < $1.timestamp }
                 let recordingMetadata: [String: Any] = [
                     "format": "window-frame-sequence-v1",
                     "startedAt": formatter.string(from: recording.startedAt),
                     "durationSeconds": recording.duration, "sampleRateLimit": "1 frame/second",
                     "frames": frameIndex, "diagnostics": recording.diagnostics,
                     "eventsFile": "events.json", "audio": false,
-                    "timeline": events.map { event -> [String: Any] in
+                    "timeline": timeline.map { event -> [String: Any] in
                         [
                             "offsetSeconds": event.timestamp.timeIntervalSince(recording.startedAt),
                             "name": event.name, "fields": event.fields,
@@ -110,7 +123,7 @@ enum FeedbackReportWriter {
                 .write(to: staging.appendingPathComponent("recording.json"))
                 let manifest = try JSONSerialization.data(
                     withJSONObject: recordingMetadata, options: [.sortedKeys])
-                let html = Self.replayHTML.replacingOccurrences(
+                let html = FeedbackReplayHTML.content.replacingOccurrences(
                     of: "__MANIFEST__", with: manifest.base64EncodedString())
                 try Data(html.utf8).write(to: staging.appendingPathComponent("replay.html"))
             }
@@ -226,11 +239,4 @@ enum FeedbackReportWriter {
         canvas.stroke(rect.insetBy(dx: 1, dy: 1))
         return canvas.makeImage() ?? image
     }
-    private static let replayHTML = """
-        <!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>操作录制</title>
-        <style>body{margin:0;background:#17191b;color:#eee;font:14px system-ui;padding:24px}main{max-width:1080px;margin:auto}img{width:100%;max-height:75vh;object-fit:contain;background:#000}input{width:100%;accent-color:#059669}p{color:#aaa}header{display:flex;justify-content:space-between}button{padding:7px 14px}pre{white-space:pre-wrap}</style>
-        <main><header><h2>操作录制</h2><button id="play">播放</button></header><img id="frame" alt="录制的窗口画面"><input id="time" type="range" min="0" step="1" value="0" aria-label="录制时间线"><p id="label"></p><pre id="events"></pre><p>每秒最多一帧窗口画面，不包含音频。真实操作事件见 events.json。</p></main>
-        <script>const m=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob('__MANIFEST__'),c=>c.charCodeAt(0))));const t=document.getElementById('time'),f=document.getElementById('frame'),l=document.getElementById('label'),b=document.getElementById('play');t.max=Math.max(0,m.frames.length-1);function show(){const x=m.frames[+t.value];if(x){f.src=x.file;l.textContent=x.offsetSeconds.toFixed(1)+' / '+m.durationSeconds.toFixed(1)+' 秒';document.getElementById('events').textContent=(m.timeline||[]).filter(e=>e.offsetSeconds<=x.offsetSeconds).slice(-5).map(e=>e.offsetSeconds.toFixed(2)+'s '+e.name+' '+JSON.stringify(e.fields)).join('\\n')}else{l.textContent='未取得窗口画面，操作事件仍已保存。'}}t.oninput=show;let timer;b.onclick=()=>{if(timer){clearInterval(timer);timer=null;b.textContent='播放';return}b.textContent='暂停';timer=setInterval(()=>{if(+t.value>=+t.max){clearInterval(timer);timer=null;b.textContent='播放';return}t.value=+t.value+1;show()},1000)};show();</script></html>
-        """
-
 }

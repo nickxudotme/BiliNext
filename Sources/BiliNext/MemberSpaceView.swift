@@ -9,98 +9,113 @@ struct MemberSpaceView: View {
     /// The tab's page model, used to open videos and drive hover previews.
     @ObservedObject var model: AppModel
     var isActive = true
-    @State private var headerHeight: CGFloat = 0
-    @State private var barPinned = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private static let gridColumns = [
-        GridItem(
-            .adaptive(minimum: VideoGridMetrics.minimumCardWidth),
-            spacing: VideoGridMetrics.columnSpacing, alignment: .top)
-    ]
-
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                    SpaceHeader(space: space, model: model).id("top")
-                        .onGeometryChange(for: CGFloat.self) {
-                            $0.size.height
-                        } action: {
-                            headerHeight = $0
-                        }
-                    Section {
-                        content.padding(.horizontal, GlassTheme.contentInset)
-                            .padding(.top, 8).padding(.bottom, 40)
-                    } header: {
-                        SpaceSectionBar(space: space, pinned: barPinned)
-                    }
+        NativeMemberSpaceGrid(
+            model: model, entries: entries, contextID: contextID, isActive: isActive,
+            loading: loading, hasMore: more && error == nil, loadMore: loadMore,
+            header: AnyView(SpaceHeader(space: space, model: model)),
+            bar: { AnyView(SpaceSectionBar(space: space, pinned: $0)) },
+            leading: AnyView(leadingContent),
+            footer: AnyView(footer(loading: loading, error: error, retry: loadMore)),
+            card: { entry in
+                switch entry {
+                case .video(let video):
+                    AnyView(
+                        VideoCardView(
+                            video: video, model: model, preview: model.hoverPreview,
+                            isActive: isActive, showsAuthor: false))
+                case .collection(let collection):
+                    AnyView(CollectionCard(collection: collection) { space.open(collection) })
                 }
             }
-            // The bar's soft edge only appears once content scrolls beneath it.
-            .onScrollGeometryChange(for: Bool.self) { geometry in
-                headerHeight > 0 && geometry.contentOffset.y >= headerHeight - 1
-            } action: { _, pinned in
-                barPinned = pinned
-            }
-            // Signing in from the prompt retries the order or search that needed it.
-            .onChange(of: model.profile?.id) { _, id in
-                if id != nil && space.uploadsNeedLogin { space.loadUploads() }
-            }
-            .onChange(of: space.openCollection?.id) { _, _ in
-                withAnimation(Motion.standard(reduceMotion)) { proxy.scrollTo("top") }
-            }
-        }
+        )
         .background(GlassTheme.canvas)
+        .onChange(of: model.profile?.id) { _, id in
+            if id != nil && space.uploadsNeedLogin { space.loadUploads() }
+        }
+        .onChange(of: space.section) { _, section in
+            if section == .collections { space.loadCollectionsIfNeeded() }
+        }
+        .onAppear {
+            if space.section == .collections { space.loadCollectionsIfNeeded() }
+        }
     }
 
-    @ViewBuilder private var content: some View {
-        if let collection = space.openCollection {
-            collectionDetail(collection)
+    private var contextID: String {
+        "\(space.mid):\(space.section.rawValue):\(space.openCollection?.id ?? ""):\(space.order):\(space.searched)"
+    }
+    private var entries: [MemberSpaceGridEntry] {
+        if space.openCollection != nil {
+            return space.collectionVideos.map(MemberSpaceGridEntry.video)
+        }
+        if space.section == .collections {
+            return space.collections.map(MemberSpaceGridEntry.collection)
+        }
+        return space.uploads.map(MemberSpaceGridEntry.video)
+    }
+    private var loading: Bool {
+        if space.openCollection != nil { return space.collectionLoading }
+        return space.section == .collections ? space.collectionsLoading : space.uploadsLoading
+    }
+    private var more: Bool {
+        if space.openCollection != nil { return space.collectionMore }
+        return space.section == .collections ? space.collectionsMore : space.uploadsMore
+    }
+    private var error: String? {
+        if space.openCollection != nil { return space.collectionError }
+        return space.section == .collections ? space.collectionsError : space.uploadsError
+    }
+    private func loadMore() {
+        if space.openCollection != nil {
+            space.loadCollectionVideos(more: !space.collectionVideos.isEmpty)
+        } else if space.section == .collections {
+            space.loadCollections(more: !space.collections.isEmpty)
         } else {
-            switch space.section {
-            case .uploads: uploads
-            case .collections: collections
-            }
+            space.loadUploads(more: !space.uploads.isEmpty)
         }
     }
 
-    // MARK: 投稿
-
-    @ViewBuilder private var uploads: some View {
+    @ViewBuilder private var leadingContent: some View {
         VStack(alignment: .leading, spacing: 20) {
-            if !space.searched.isEmpty {
-                HStack(spacing: 8) {
-                    Text("「\(space.searched)」的投稿").font(GlassTheme.sectionTitleFont)
-                    Button("清除搜索") { space.clearSearch() }
-                        .buttonStyle(.plain).font(GlassTheme.labelFont)
-                        .foregroundStyle(.secondary)
+            if let collection = space.openCollection {
+                HStack(alignment: .center, spacing: 18) {
+                    ThumbnailView(url: collection.cover, pixels: 480) {
+                        Color.primary.opacity(0.06)
+                    }
+                    .frame(width: 176, height: 99)
+                    .clipShape(RoundedRectangle(cornerRadius: GlassTheme.artworkRadius))
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(collection.title).font(GlassTheme.sheetTitleFont).lineLimit(2)
+                        Text(Self.collectionSummary(collection))
+                            .font(GlassTheme.metadataFont).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
                 }
-            } else if space.order == "pubdate", let pinned = space.pinned {
-                PinnedVideoRow(video: pinned, model: model)
+            } else if space.section == .uploads {
+                if !space.searched.isEmpty {
+                    HStack(spacing: 8) {
+                        Text("「\(space.searched)」的投稿").font(GlassTheme.sectionTitleFont)
+                        Button("清除搜索") { space.clearSearch() }
+                            .buttonStyle(.plain).font(GlassTheme.labelFont).foregroundStyle(
+                                .secondary)
+                    }
+                } else if space.order == "pubdate", let pinned = space.pinned {
+                    PinnedVideoRow(video: pinned, model: model)
+                }
+                if space.uploadsNeedLogin {
+                    loginPrompt
+                } else if space.uploads.isEmpty && !loading && error == nil {
+                    ContentUnavailableView(
+                        space.searched.isEmpty ? "还没有投稿" : "没有找到相关投稿",
+                        systemImage: "play.rectangle"
+                    )
+                    .frame(maxWidth: .infinity).padding(.top, 40)
+                }
+            } else if space.collections.isEmpty && space.collectionsLoaded {
+                ContentUnavailableView("还没有合集和系列", systemImage: "square.stack")
+                    .frame(maxWidth: .infinity).padding(.top, 40)
             }
-            if space.uploadsNeedLogin {
-                loginPrompt
-            } else if let error = space.uploadsError, space.uploads.isEmpty {
-                ErrorBanner(message: error) { space.loadUploads() }
-            } else if space.uploads.isEmpty && space.uploadsLoading {
-                SkeletonVideoGrid().padding(.horizontal, -GlassTheme.contentInset)
-                    .frame(height: 640, alignment: .top)
-            } else if space.uploads.isEmpty {
-                ContentUnavailableView(
-                    space.searched.isEmpty ? "还没有投稿" : "没有找到相关投稿",
-                    systemImage: "play.rectangle"
-                )
-                .frame(maxWidth: .infinity).padding(.top, 40)
-            } else {
-                videoGrid(space.uploads, more: space.uploadsMore) {
-                    space.loadUploads(more: true)
-                }
-                footer(loading: space.uploadsLoading, error: space.uploadsError) {
-                    space.loadUploads(more: true)
-                }
-            }
-        }
+        }.padding(.top, 8)
     }
 
     /// Signed out, play-count order and search are refused by Bilibili's risk control.
@@ -117,59 +132,6 @@ struct MemberSpaceView: View {
         .frame(maxWidth: .infinity).padding(.top, 24)
     }
 
-    // MARK: 合集和系列
-
-    @ViewBuilder private var collections: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            if let error = space.collectionsError, space.collections.isEmpty {
-                ErrorBanner(message: error) { space.loadCollections() }
-            } else if space.collections.isEmpty && space.collectionsLoaded {
-                ContentUnavailableView("还没有合集和系列", systemImage: "square.stack")
-                    .frame(maxWidth: .infinity).padding(.top, 40)
-            }
-            LazyVGrid(columns: Self.gridColumns, alignment: .leading, spacing: 24) {
-                ForEach(space.collections) { collection in
-                    CollectionCard(collection: collection) { space.open(collection) }
-                        .onAppear {
-                            if collection.id == space.collections.last?.id {
-                                space.loadCollections(more: true)
-                            }
-                        }
-                }
-            }
-            footer(loading: space.collectionsLoading, error: nil) {}
-        }
-        .onAppear { space.loadCollectionsIfNeeded() }
-    }
-
-    @ViewBuilder private func collectionDetail(_ collection: MemberCollection) -> some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack(alignment: .center, spacing: 18) {
-                ThumbnailView(url: collection.cover, pixels: 480) { Color.primary.opacity(0.06) }
-                    .frame(width: 176, height: 99)
-                    .clipShape(RoundedRectangle(cornerRadius: GlassTheme.artworkRadius))
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(collection.title).font(GlassTheme.sheetTitleFont).lineLimit(2)
-                    Text(Self.collectionSummary(collection))
-                        .font(GlassTheme.metadataFont).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-            }
-            if let error = space.collectionError, space.collectionVideos.isEmpty {
-                ErrorBanner(message: error) { space.loadCollectionVideos() }
-            }
-            if space.collectionVideos.isEmpty && space.collectionLoading {
-                SkeletonVideoGrid().padding(.horizontal, -GlassTheme.contentInset)
-                    .frame(height: 640, alignment: .top)
-            } else {
-                videoGrid(space.collectionVideos, more: space.collectionMore) {
-                    space.loadCollectionVideos(more: true)
-                }
-                footer(loading: space.collectionLoading, error: nil) {}
-            }
-        }
-    }
-
     static func collectionSummary(_ collection: MemberCollection) -> String {
         var parts = [collection.kind == .season ? "合集" : "系列", "\(collection.count) 个视频"]
         if let date = collection.updated { parts.append(DisplayFormat.relativeDate(date) + "更新") }
@@ -177,20 +139,6 @@ struct MemberSpaceView: View {
     }
 
     // MARK: Shared
-
-    private func videoGrid(_ videos: [Video], more: Bool, loadMore: @escaping () -> Void)
-        -> some View
-    {
-        LazyVGrid(columns: Self.gridColumns, alignment: .leading, spacing: 20) {
-            ForEach(videos) { video in
-                VideoCardView(
-                    video: video, model: model, preview: model.hoverPreview, isActive: isActive,
-                    showsAuthor: false
-                )
-                .onAppear { if more && video.id == videos.last?.id { loadMore() } }
-            }
-        }
-    }
 
     @ViewBuilder private func footer(loading: Bool, error: String?, retry: @escaping () -> Void)
         -> some View

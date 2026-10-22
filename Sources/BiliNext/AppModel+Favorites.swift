@@ -15,6 +15,8 @@ extension AppModel {
             return
         }
         guard profile?.id == accountID else { return }
+        resetFavoriteFolderPreload()
+        favoriteFoldersAccountID = accountID
         // Opening the 收藏到 picker reads the folders too. When that finds them as every
         // favorites page already has them, nothing changed, and stopping those pages' loads
         // would only interrupt them.

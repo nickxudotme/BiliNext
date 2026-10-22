@@ -189,13 +189,25 @@ final class FeedbackReportTests: XCTestCase {
                 diagnostics: [], events: [event])
             let destination = try FeedbackReportWriter.write(
                 directory: directory, context: context, events: recording.events, image: nil,
-                recording: recording)
+                logs: [
+                    FeedbackLogEntry(
+                        timestamp: context.capturedAt.addingTimeInterval(0.5),
+                        level: "error", subsystem: "test", category: "playback", message: "播放失败"),
+                    FeedbackLogEntry(
+                        timestamp: context.capturedAt.addingTimeInterval(-3),
+                        level: "info", subsystem: "test", category: "old", message: "录制前日志"),
+                ], recording: recording)
             let manifest = try XCTUnwrap(
                 JSONSerialization.jsonObject(
                     with: Data(contentsOf: destination.appendingPathComponent("recording.json")))
                     as? [String: Any])
             XCTAssertEqual(manifest["durationSeconds"] as? Double, 1.2)
             XCTAssertEqual(manifest["audio"] as? Bool, false)
+            let timeline = try XCTUnwrap(manifest["timeline"] as? [[String: Any]])
+            XCTAssertEqual(timeline.count, 2)
+            XCTAssertEqual(timeline.last?["name"] as? String, "log.error")
+            XCTAssertEqual(timeline.last?["offsetSeconds"] as? Double, 0.5)
+            XCTAssertEqual((timeline.last?["fields"] as? [String: String])?["message"], "播放失败")
             let frames = try XCTUnwrap(manifest["frames"] as? [[String: Any]])
             XCTAssertEqual(frames.count, 2)
             XCTAssertEqual(frames.last?["offsetSeconds"] as? Double, 1)
@@ -208,8 +220,40 @@ final class FeedbackReportTests: XCTestCase {
             XCTAssertFalse(player.contains("__MANIFEST__"))
             XCTAssertFalse(player.contains("fetch("))
             XCTAssertTrue(player.contains("atob("))
+            XCTAssertTrue(player.contains("aria-label=\"操作事件列表\""))
+            XCTAssertFalse(player.contains("innerHTML"))
+            if let preview = ProcessInfo.processInfo.environment["SWIFT_FEEDBACK_REPLAY_PREVIEW"] {
+                try FileManager.default.copyItem(at: destination, to: URL(fileURLWithPath: preview))
+            }
             let events: [FeedbackEvent] = try decode("events.json", in: destination)
             XCTAssertEqual(events.first?.fields["workspace.menu"], "首页")
+        }
+    }
+
+    func testReplayWithoutFramesRetainsTimeline() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let context = makeContext()
+        let recording = FeedbackRecording(
+            startedAt: context.capturedAt, duration: 2,
+            frames: [], diagnostics: ["测试：画面采集失败"],
+            events: [
+                FeedbackEvent(
+                    timestamp: context.capturedAt.addingTimeInterval(1.5),
+                    name: "playback.seekRequested", fields: ["to": "25"])
+            ])
+        let url = try FeedbackReportWriter.write(
+            directory: directory, context: context,
+            events: recording.events, image: nil, recording: recording)
+        let data = try Data(contentsOf: url.appendingPathComponent("recording.json"))
+        let manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual((manifest["frames"] as? [Any])?.count, 0)
+        XCTAssertEqual((manifest["timeline"] as? [Any])?.count, 1)
+        if let preview = ProcessInfo.processInfo.environment["SWIFT_FEEDBACK_REPLAY_PREVIEW"] {
+            try FileManager.default.copyItem(
+                at: url,
+                to: URL(fileURLWithPath: preview).appendingPathComponent("empty"))
         }
     }
 

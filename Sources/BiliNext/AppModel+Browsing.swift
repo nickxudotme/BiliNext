@@ -58,6 +58,13 @@ extension AppModel {
             tabOwner.navigate(destination)
             return
         }
+        #if DEBUG
+            DevelopmentFeedback.record(
+                "navigation.browse",
+                fields: [
+                    "from": selected ?? menu.rawValue, "to": destination.rawValue,
+                ])
+        #endif
         hoverPreview.stop()
         suspendPlaybackTabs()
         if miniPlayer { toggleMiniPlayer() }
@@ -279,7 +286,10 @@ extension AppModel {
                     {
                         return
                     }
-                    if let available = result.folders { folders = available }
+                    if let available = result.folders {
+                        folders = available
+                        tabOwner?.acceptFavoriteFolders(available)
+                    }
                     if let actualFolder = result.folderID {
                         folderID = actualFolder
                         request.folderID = actualFolder

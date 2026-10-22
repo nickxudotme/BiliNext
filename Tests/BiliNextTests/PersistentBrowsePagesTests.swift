@@ -40,7 +40,7 @@ private func persistentWorkspace(
             directory: FileManager.default.temporaryDirectory.appendingPathComponent(
                 UUID().uuidString)),
         api: BilibiliAPI(restoreSession: false), browsePageLoader: loader,
-        profileLoader: profileLoader)
+        profileLoader: profileLoader, favoriteFolderLoader: { _ in [] })
 }
 
 private func persistentPage(_ request: BrowsePageRequest) -> BrowsePageResult {

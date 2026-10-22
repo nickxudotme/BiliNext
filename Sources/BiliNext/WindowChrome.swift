@@ -64,8 +64,13 @@ struct WindowChrome: NSViewRepresentable {
         }
 
         private var buttonsVisible = true
+        private var requestedButtonsVisible = true
 
         func setButtonsVisible(_ visible: Bool) {
+            requestedButtonsVisible = visible
+            // The fullscreen titlebar owns its buttons, independent of our sidebar.
+            let visible =
+                visible || (reportedFullScreen ?? window?.styleMask.contains(.fullScreen) == true)
             guard let window, visible != buttonsVisible else { return }
             buttonsVisible = visible
             let buttons = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
@@ -167,6 +172,7 @@ struct WindowChrome: NSViewRepresentable {
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
             window.styleMask.insert(.fullSizeContentView)
+            setButtonsVisible(requestedButtonsVisible)
             if buttonObservers.isEmpty { observeWindowButtons(window) }
             positionWindowButtons()
             DispatchQueue.main.async { [weak self] in self?.positionWindowButtons() }
@@ -223,9 +229,9 @@ struct DrawerPointerTracker: NSViewRepresentable {
                 .mouseMoved, .leftMouseDragged, .leftMouseDown,
             ]) { [weak self] event in
                 guard let self else { return event }
-                self.report(
-                    event.window === self.window
-                        ? self.convert(event.locationInWindow, from: nil) : nil)
+                // Popovers have their own event window. Use the same screen position as
+                // the timer so the two sources cannot alternate between inside and nil.
+                self.samplePointer()
                 return event
             }
         }
@@ -255,13 +261,13 @@ struct DrawerPointerTracker: NSViewRepresentable {
             area = next
         }
         override func mouseEntered(with event: NSEvent) {
-            report(convert(event.locationInWindow, from: nil))
+            samplePointer()
         }
         override func mouseMoved(with event: NSEvent) {
-            report(convert(event.locationInWindow, from: nil))
+            samplePointer()
         }
         override func mouseExited(with event: NSEvent) {
-            report(convert(event.locationInWindow, from: nil))
+            samplePointer()
         }
         private func report(_ point: NSPoint?) {
             guard let point else {

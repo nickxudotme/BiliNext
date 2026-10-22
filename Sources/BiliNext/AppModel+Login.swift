@@ -9,6 +9,7 @@ extension AppModel {
 
     func loggedIn() async {
         accountGeneration = UUID()
+        resetFavoriteFolderPreload()
         let account = accountGeneration
         let loadedProfile = try? await api.profile()
         guard account == accountGeneration else { return }
@@ -25,6 +26,7 @@ extension AppModel {
         cachedLists.removeAll()
         folders = []
         folderID = 0
+        preloadFavoriteFolders()
         loginPresented = false
         refresh()
     }
@@ -32,6 +34,7 @@ extension AppModel {
         do {
             try await api.logout()
             accountGeneration = UUID()
+            resetFavoriteFolderPreload()
             profile = nil
             historyOutbox.accountChanged()
             for (pageID, instance) in browseInstances {

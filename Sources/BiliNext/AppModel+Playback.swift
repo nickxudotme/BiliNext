@@ -396,6 +396,14 @@ extension AppModel {
         guard let id = mediaID, let cid = pageID, value != qualityID || videoLoading else {
             return
         }
+        #if DEBUG
+            DevelopmentFeedback.record(
+                "playback.qualityRequested",
+                fields: [
+                    "videoID": id, "from": String(qualityID), "to": String(value),
+                    "position": String(time),
+                ])
+        #endif
         let recovering = playbackRecovery?.recovering == true
         qualityTask?.cancel()
         cancelPlaybackRecovery()
@@ -430,10 +438,27 @@ extension AppModel {
                 try beginPlaybackRecovery(
                     source, requestedQuality: value, position: position, core: core)
                 qualitySwitchState = nil
+                #if DEBUG
+                    DevelopmentFeedback.record(
+                        "playback.qualityApplied",
+                        fields: [
+                            "videoID": id, "requested": String(value),
+                            "actual": String(source.qualityID),
+                        ])
+                #endif
                 return
             } catch {
                 if !Task.isCancelled, generation == videoGeneration, request == qualityGeneration {
                     playerError = error.localizedDescription
+                    #if DEBUG
+                        DevelopmentFeedback.record(
+                            "playback.qualityFailed",
+                            fields: [
+                                "videoID": id, "requested": String(value),
+                                "errorDomain": (error as NSError).domain,
+                                "errorCode": String((error as NSError).code),
+                            ])
+                    #endif
                 }
             }
             if !Task.isCancelled, generation == videoGeneration, request == qualityGeneration {
@@ -444,6 +469,14 @@ extension AppModel {
     }
     func seek(_ seconds: Double) {
         guard seconds.isFinite else { return }
+        #if DEBUG
+            DevelopmentFeedback.record(
+                "playback.seekRequested",
+                fields: [
+                    "videoID": mediaID ?? "", "from": String(time), "to": String(max(0, seconds)),
+                    "engine": officialCore ? "official" : (mpv == nil ? "avplayer" : "mpv"),
+                ])
+        #endif
         smartSubtitles.resetAfterSeek()
         if officialCore {
             if seconds.isFinite {

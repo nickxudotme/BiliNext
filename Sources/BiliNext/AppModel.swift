@@ -132,6 +132,12 @@ final class AppModel: ObservableObject {
     @Published var browseError: String?
     @Published var hasMore = false
     @Published var folders: [FavoriteFolder] = []
+    @Published var favoriteFoldersLoading = false
+    @Published var favoriteFoldersError: String?
+    var favoriteFoldersTask: Task<Void, Never>?
+    var favoriteFoldersAccountID: Int64?
+    var favoriteFoldersGeneration = UUID()
+    let favoriteFolderLoader: (Int64) async throws -> [FavoriteFolder]
     @Published var folderID: Int64 = 0
     @Published var libraryBusy = Set<String>()
     let watchLaterSynchronization = WatchLaterSynchronization()
@@ -227,6 +233,7 @@ final class AppModel: ObservableObject {
         hoverPreview: HoverPreview? = nil,
         browsePageLoader: ((BrowsePageRequest) async throws -> BrowsePageResult)? = nil,
         profileLoader: (() async throws -> UserProfile)? = nil,
+        favoriteFolderLoader: ((Int64) async throws -> [FavoriteFolder])? = nil,
         subtitleLoader: ((SubtitleTrack) async throws -> [Cue])? = nil,
         subtitlePreferences: UserDefaults = .standard, historyStoreURL: URL? = nil
     ) {
@@ -246,6 +253,8 @@ final class AppModel: ObservableObject {
                 try await Self.loadBrowsePage(request, api: api)
             }
         self.profileLoader = profileLoader ?? { [api = self.api] in try await api.profile() }
+        self.favoriteFolderLoader =
+            favoriteFolderLoader ?? { [api = self.api] in try await api.favoriteFolders(mid: $0) }
         self.hoverPreview = hoverPreview ?? HoverPreview(api: self.api)
         self.sessionStore = sessionStore
         self.managesPlaybackTabs = managesPlaybackTabs
@@ -305,6 +314,7 @@ final class AppModel: ObservableObject {
         let loadedProfile = try? await profileLoader()
         guard account == accountGeneration else { return }
         profile = loadedProfile
+        preloadFavoriteFolders()
         historyOutbox.accountChanged()
         for instance in Array(browseInstances.values) + Array(playbackInstances.values) {
             instance.profile = profile

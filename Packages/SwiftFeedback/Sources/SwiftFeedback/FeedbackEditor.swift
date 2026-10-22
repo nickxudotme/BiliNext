@@ -403,7 +403,10 @@ struct FeedbackRecordingBar: View {
 private struct FeedbackReplayView: View {
     let recording: FeedbackRecording
     @Environment(\.dismiss) private var dismiss
-    @State private var index: Double = 0
+    @State private var position: Double = 0
+    private var frame: FeedbackRecording.Frame? {
+        recording.frames.last(where: { $0.offset <= position }) ?? recording.frames.first
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
@@ -411,25 +414,56 @@ private struct FeedbackReplayView: View {
                 Spacer()
                 Button("完成") { dismiss() }.keyboardShortcut(.cancelAction)
             }
-            if let frame = recording.frames.indices.contains(Int(index))
-                ? recording.frames[Int(index)] : nil,
-                let image = NSImage(data: frame.jpeg)
-            {
-                Image(nsImage: image).resizable().scaledToFit().frame(
-                    maxWidth: .infinity, maxHeight: .infinity)
-                Slider(value: $index, in: 0...Double(max(1, recording.frames.count - 1)), step: 1)
-                    .disabled(recording.frames.count < 2).accessibilityLabel("录制时间线")
-                Text(
-                    "\(String(format: "%.1f", frame.offset)) / \(String(format: "%.1f", recording.duration)) 秒"
-                )
-                .font(.caption.monospaced()).foregroundStyle(.secondary)
-            } else {
-                ContentUnavailableView(
-                    "没有获取到窗口画面", systemImage: "photo.badge.exclamationmark",
-                    description: Text("操作事件仍会随报告保存。"))
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 12) {
+                    if let frame, let image = NSImage(data: frame.jpeg) {
+                        Image(nsImage: image).resizable().scaledToFit().frame(
+                            maxWidth: .infinity, maxHeight: .infinity)
+                        Slider(value: $position, in: 0...max(0.01, recording.duration))
+                            .disabled(recording.duration <= 0).accessibilityLabel("录制时间线")
+                        Text(
+                            "\(String(format: "%.2f", position)) / \(String(format: "%.2f", recording.duration)) 秒 · 画面 \(String(format: "%.2f", frame.offset)) 秒"
+                        )
+                        .font(.caption.monospaced()).foregroundStyle(.secondary)
+                    } else {
+                        ContentUnavailableView(
+                            "没有获取到窗口画面", systemImage: "photo.badge.exclamationmark",
+                            description: Text("操作事件仍会随报告保存。"))
+                    }
+                }
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(recording.events.enumerated()), id: \.offset) { _, event in
+                            Button {
+                                position = min(
+                                    recording.duration,
+                                    max(0, event.timestamp.timeIntervalSince(recording.startedAt)))
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(
+                                        String(
+                                            format: "%.2fs · %@",
+                                            event.timestamp.timeIntervalSince(recording.startedAt),
+                                            event.name)
+                                    )
+                                    .font(.caption.weight(.medium))
+                                    Text(
+                                        event.fields.keys.sorted().map {
+                                            "\($0): \(event.fields[$0] ?? "")"
+                                        }.joined(separator: " · ")
+                                    )
+                                    .font(.caption2).foregroundStyle(.secondary)
+                                }.frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(8).background(
+                                        .primary.opacity(0.05),
+                                        in: RoundedRectangle(cornerRadius: 8))
+                            }.buttonStyle(.plain)
+                        }
+                    }
+                }.frame(width: 250)
             }
-            Text("每秒最多一帧窗口画面，附带真实操作事件；不包含音频。")
+            Text("每秒最多一帧窗口画面；点击事件定位到此前最近画面，无更早画面时显示第一帧。不包含音频。")
                 .font(.caption).foregroundStyle(.secondary)
-        }.padding(20).frame(width: 660, height: 480).tint(FeedbackStyle.green)
+        }.padding(20).frame(width: 900, height: 540).tint(FeedbackStyle.green)
     }
 }

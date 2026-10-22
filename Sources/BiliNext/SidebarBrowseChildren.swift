@@ -12,15 +12,30 @@ struct SidebarBrowseChildren: View {
         VStack(spacing: 2) {
             if destination == .favorites {
                 ForEach(page.folders) { folder in
-                    child(folder.title, count: folder.count, selected: page.folderID == folder.id) {
+                    child(
+                        folder.title, count: folder.count,
+                        selected: (owner.loadedBrowseInstance(for: .favorites)?.folderID
+                            ?? page.folderID) == folder.id
+                    ) {
                         owner.selectFavoriteFolder(folder.id)
                     }
                 }
                 if page.folders.isEmpty {
-                    Text(page.profile == nil ? "登录后查看收藏夹" : page.loading ? "加载收藏夹…" : "暂无收藏夹")
+                    if page.favoriteFoldersError != nil {
+                        Button("收藏夹加载失败，重试") { owner.preloadFavoriteFolders() }
+                            .buttonStyle(.plain)
+                            .font(GlassTheme.captionFont).foregroundStyle(.secondary)
+                            .padding(.leading, 34).padding(.vertical, 6)
+                    } else {
+                        Text(
+                            page.profile == nil
+                                ? "登录后查看收藏夹"
+                                : page.favoriteFoldersLoading ? "加载收藏夹…" : "暂无收藏夹"
+                        )
                         .font(GlassTheme.captionFont).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 34)
                         .padding(.vertical, 6)
+                    }
                 }
             } else {
                 ForEach(destination == .home ? homeDestinations : dynamicDestinations, id: \.self) {
@@ -52,7 +67,7 @@ struct SidebarBrowsePlaceholder: View {
     let select: (String) -> Void
     var body: some View {
         if destination == .favorites {
-            SidebarChildRow(title: "查看收藏夹", selected: false) { select("") }
+            Text("加载收藏夹…").font(GlassTheme.captionFont).foregroundStyle(.secondary)
         } else {
             ForEach(destination == .home ? homeDestinations : dynamicDestinations, id: \.self) {
                 title in

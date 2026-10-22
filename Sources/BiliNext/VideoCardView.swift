@@ -117,7 +117,7 @@ struct VideoCardView: View {
             hovered = inside
             prefetchTask?.cancel()
             // A short dwell keeps the pointer passing over a grid from requesting every card.
-            if inside, prefetchEnabled, isActive, video.episodeID == nil,
+            if inside, !scrolling, prefetchEnabled, isActive, video.episodeID == nil,
                 video.bvid.hasPrefix("BV"), let cid = video.playableCID
             {
                 prefetchTask = Task {
@@ -138,6 +138,7 @@ struct VideoCardView: View {
         ) { previewing = $0 }
         .onChange(of: scrolling) { _, moving in
             if moving {
+                prefetchTask?.cancel()
                 preview.stop(ifMatching: video.id)
             } else if hovered && isActive && previewEnabled {
                 preview.request(video)

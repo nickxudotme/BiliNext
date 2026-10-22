@@ -1,0 +1,25 @@
+/// Self-contained replay: no remote assets, scripts, requests or HTML from captured content.
+enum FeedbackReplayHTML {
+    static let content = #"""
+        <!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>反馈时间线</title>
+        <style>
+        :root{color-scheme:light dark;font:14px system-ui}body{margin:0;padding:24px;background:Canvas;color:CanvasText}main{max-width:1440px;margin:auto}header,.controls{display:flex;align-items:center;gap:12px}header h1{flex:1;font-size:20px}.layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px}img{width:100%;height:55vh;object-fit:contain;background:#151515;border-radius:12px}input{flex:1;min-width:0;accent-color:#047857}.controls{margin:12px 0}button,select{font:inherit;padding:8px;border-radius:7px}#events{height:55vh;overflow:auto;display:flex;flex-direction:column;gap:6px}.event{text-align:left;border:1px solid #8886;background:transparent}.event[aria-pressed=true]{border-color:#059669;background:#05966925}small{display:block;opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#8881;padding:12px;border-radius:8px;max-height:220px;overflow:auto}.note{opacity:.7}#state{max-height:180px}@media(max-width:850px){.layout{grid-template-columns:1fr}#events{height:240px}}
+        </style>
+        <main><header><h1>反馈时间线</h1><label>事件 <select id="filter"><option value="all">全部</option><option value="navigation">导航</option><option value="playback">播放</option><option value="api">请求</option><option value="recording.state">状态变化</option><option value="log">日志</option><option value="ui">鼠标与按键</option></select></label></header>
+        <div class="layout"><section><img id="frame" alt="录制的窗口画面"><div class="controls"><button id="play">播放</button><input id="time" type="range" min="0" step="0.01" value="0" aria-label="录制时间线"></div><p id="label"></p><p class="note">画面每秒最多一帧，事件时间独立记录。点击事件查看该时刻之前最近的画面；无更早画面时显示第一帧。不包含音频。</p><h2>选中事件</h2><pre id="detail">点击右侧事件查看字段、状态前后值。</pre><h2>此刻应用状态</h2><pre id="state"></pre><p id="diagnostics" class="note"></p></section><aside><div id="events" aria-label="操作事件列表"></div></aside></div></main>
+        <script>
+        const m=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob('__MANIFEST__'),c=>c.charCodeAt(0))));
+        const t=document.getElementById('time'),f=document.getElementById('frame'),l=document.getElementById('label'),b=document.getElementById('play'),filter=document.getElementById('filter'),list=document.getElementById('events');
+        const frames=m.frames||[],events=m.timeline||[];let selected=-1,timer=null,started=0,origin=0,cursor=0;
+        t.max=Math.max(0,m.durationSeconds||0);t.disabled=+t.max===0;
+        function stateAt(time,end=events.length){const state={};events.slice(0,end).forEach(e=>{if(e.offsetSeconds<=time&&e.name==='recording.state')Object.entries(e.fields).forEach(([k,v])=>{if(v==='[removed]')delete state[k];else state[k]=v})});return state}
+        function show(){const time=cursor;let index=frames.findLastIndex(x=>x.offsetSeconds<=time);if(index<0&&frames.length)index=0;const x=frames[index];if(x){f.src=x.file;f.hidden=false}else f.hidden=true;l.textContent=time.toFixed(2)+' / '+(+t.max).toFixed(2)+' 秒'+(x?' · 画面 '+x.offsetSeconds.toFixed(2)+' 秒':' · 没有窗口画面');document.getElementById('state').textContent=JSON.stringify(stateAt(time),null,2);list.querySelectorAll('button').forEach(btn=>btn.setAttribute('aria-pressed',String(+btn.dataset.index===selected)))}
+        function choose(index){selected=index;const e=events[index];cursor=Math.max(0,Math.min(+t.max,e.offsetSeconds));t.value=cursor;const detail={time:e.offsetSeconds,event:e.name,fields:e.fields};if(e.name==='recording.state'){const before=stateAt(e.offsetSeconds,index);detail.changes=Object.fromEntries(Object.entries(e.fields).map(([k,v])=>[k,{before:before[k]??null,after:v==='[removed]'?null:v}]))}document.getElementById('detail').textContent=JSON.stringify(detail,null,2);show()}
+        function render(){list.replaceChildren();events.forEach((e,index)=>{if(filter.value!=='all'&&!e.name.startsWith(filter.value))return;const btn=document.createElement('button');btn.className='event';btn.dataset.index=index;btn.textContent=e.offsetSeconds.toFixed(2)+'s · '+e.name;const sub=document.createElement('small');sub.textContent=JSON.stringify(e.fields);btn.append(sub);btn.onclick=()=>{pause();choose(index)};list.append(btn)});show()}
+        function pause(){if(timer)clearInterval(timer);timer=null;b.textContent='播放'}
+        t.oninput=()=>{pause();cursor=+t.value;selected=-1;document.getElementById('detail').textContent='点击事件查看详情。';show()};filter.onchange=render;
+        b.onclick=()=>{if(timer){pause();return}if(cursor>=+t.max)cursor=0;origin=cursor;started=performance.now();b.textContent='暂停';timer=setInterval(()=>{cursor=Math.min(+t.max,origin+(performance.now()-started)/1000);t.value=cursor;show();if(cursor>=+t.max)pause()},50)};
+        document.getElementById('diagnostics').textContent=(m.diagnostics||[]).join('\n');render();
+        </script></html>
+        """#
+}

@@ -297,7 +297,9 @@ struct ShellView: View {
                         }
                         .fontWeight(active ? .semibold : .regular)
                         if hasChildren && expandedMenus.contains(item) {
-                            if let page = model.loadedBrowseInstance(for: item) {
+                            if item == .favorites {
+                                SidebarBrowseChildren(page: model, owner: model, destination: item)
+                            } else if let page = model.loadedBrowseInstance(for: item) {
                                 SidebarBrowseChildren(page: page, owner: model, destination: item)
                             } else {
                                 SidebarBrowsePlaceholder(destination: item) { title in
