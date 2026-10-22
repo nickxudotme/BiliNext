@@ -113,7 +113,10 @@ final class AppModel: ObservableObject {
     /// Shared by the workspace and every page it owns.
     lazy var playbackPrefetch = PlaybackPrefetch(api: api)
     var accountGeneration = UUID() {
-        didSet { ownedFollowedLives?.reset() }
+        didSet {
+            ownedFollowedLives?.reset()
+            publishWatchLaterBusy()
+        }
     }
     @Published var query = ""
     @Published var homeSection = "推荐"
@@ -131,6 +134,7 @@ final class AppModel: ObservableObject {
     @Published var folders: [FavoriteFolder] = []
     @Published var folderID: Int64 = 0
     @Published var libraryBusy = Set<String>()
+    let watchLaterSynchronization = WatchLaterSynchronization()
     @Published var removedLater: Video?
     @Published var loginPresented = false
     /// A transient notice. It clears itself after a few seconds, independent of any view.

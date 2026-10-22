@@ -41,7 +41,14 @@ struct ShellView: View {
             }
             ForEach(model.tabs) { tab in
                 if let instance = model.playbackInstances[tab.id] {
-                    if let space = instance.memberSpace {
+                    if let keyword = SearchResultsTab.keyword(tab.id) {
+                        SearchResultsView(
+                            model: instance, keyword: keyword, isActive: model.selected == tab.id
+                        )
+                        .opacity(model.selected == tab.id ? 1 : 0)
+                        .allowsHitTesting(model.selected == tab.id)
+                        .accessibilityHidden(model.selected != tab.id)
+                    } else if let space = instance.memberSpace {
                         MemberSpaceView(
                             space: space, model: instance, isActive: model.selected == tab.id
                         )
@@ -123,7 +130,7 @@ struct ShellView: View {
             .overlayPreferenceValue(TabRowAnchorKey.self) { anchors in
                 GeometryReader { proxy in
                     if let id = tabPreview.tabID, id != model.selected, !model.miniPlayer,
-                        MemberSpace.mid(id) == nil,
+                        MemberSpace.mid(id) == nil, SearchResultsTab.keyword(id) == nil,
                         pinned || revealed, let anchor = anchors[id],
                         let tab = model.tabs.first(where: { $0.id == id })
                     {

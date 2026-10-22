@@ -127,9 +127,13 @@ extension AppModel {
             tabOwner.search(keyword)
             return
         }
-        browseInstance(for: .search).query = keyword
-        navigate(.search)
-        browseInstance(for: .search).refresh()
+        let keyword = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !keyword.isEmpty else { return }
+        if let bvid = Video.extractBVID(keyword) {
+            open(Video(bvid: bvid, title: bvid))
+            return
+        }
+        open(Video(bvid: SearchResultsTab.id(keyword), title: "搜索：" + keyword))
     }
 
     func selectFavoriteFolder(_ id: Int64) {
@@ -201,6 +205,17 @@ extension AppModel {
             request.page = request.usesCursor ? page + 1 : (offset.flatMap(Int.init) ?? page + 1)
             request.offset = offset
         }
+        let watchLaterContext =
+            request.destination == .watchLater ? watchLaterReadContext() : nil
+        let watchLaterState = (tabOwner ?? self).watchLaterSynchronization
+        if more, request.destination == .watchLater,
+            watchLaterState.needsPaginationRestart(self)
+        {
+            // Page-number boundaries move after membership changes. Re-read from the start,
+            // merging into the retained list, so deleting earlier items cannot skip a page.
+            request.page = 1
+            request.offset = nil
+        }
         if !more {
             if menu == .dynamic, profile != nil { followedLives.refresh() }
             page = 0
@@ -259,6 +274,11 @@ extension AppModel {
                     }
                     let result = try await browsePageLoader(request)
                     guard !Task.isCancelled, generation == browseGeneration else { return }
+                    if let watchLaterContext,
+                        !matchesWatchLaterAccount(watchLaterContext)
+                    {
+                        return
+                    }
                     if let available = result.folders { folders = available }
                     if let actualFolder = result.folderID {
                         folderID = actualFolder
@@ -267,9 +287,14 @@ extension AppModel {
                     let replacing = !more && index == 0
                     let previousCount = replacing ? 0 : videos.count
                     var seen = Set<String>()
-                    videos = ((replacing ? [] : videos) + result.videos).filter {
+                    var updated = ((replacing ? [] : videos) + result.videos).filter {
                         seen.insert($0.id).inserted
                     }
+                    if let watchLaterContext {
+                        updated = watchLaterState.reconcile(updated, since: watchLaterContext)
+                        watchLaterState.acceptedRead(self, context: watchLaterContext)
+                    }
+                    videos = updated
                     if replacing { browseRevision += 1 }
                     cachedLists[request.cacheKey] = videos
                     browseContext = request
@@ -286,7 +311,20 @@ extension AppModel {
                         advances
                         && (request.usesFeedContinuation
                             || (!result.videos.isEmpty && videos.count > previousCount))
+                    if let watchLaterContext,
+                        watchLaterReadContext()?.revision != watchLaterContext.revision,
+                        watchLaterState.needsPaginationRestart(self)
+                    {
+                        // The old last-page response cannot close the load-more entry point:
+                        // its boundary predates a confirmed membership change.
+                        hasMore = true
+                    }
                     browseRetryMore = true
+                    if let watchLaterContext,
+                        watchLaterReadContext()?.revision != watchLaterContext.revision
+                    {
+                        break
+                    }
                     guard hasMore, let next else { break }
                     request.page =
                         request.usesCursor ? request.page + 1 : (Int(next) ?? request.page + 1)
@@ -295,6 +333,7 @@ extension AppModel {
                 }
             } catch {
                 guard !Task.isCancelled, generation == browseGeneration else { return }
+                if let watchLaterContext, !matchesWatchLaterAccount(watchLaterContext) { return }
                 browseError = error.localizedDescription
             }
         }
@@ -370,31 +409,40 @@ extension AppModel {
         folderID = id
         refresh()
     }
-    func changeWatchLater(_ video: Video, remove: Bool = false) {
-        guard profile != nil else {
+    @discardableResult
+    func changeWatchLater(_ video: Video, remove: Bool = false) -> Task<Void, Never>? {
+        let owner = tabOwner ?? self
+        guard let context = watchLaterReadContext() else {
             loginPresented = true
-            return
+            return nil
         }
-        guard !libraryBusy.contains(video.id) else { return }
-        libraryBusy.insert(video.id)
-        Task {
-            defer { libraryBusy.remove(video.id) }
+        let state = owner.watchLaterSynchronization
+        guard let token = state.begin(video.id) else { return nil }
+        owner.publishWatchLaterBusy()
+        return Task {
+            defer {
+                state.finish(video.id, token: token)
+                owner.publishWatchLaterBusy()
+            }
+            guard matchesWatchLaterAccount(context) else { return }
             do {
                 if remove {
                     guard let aid = video.aid else {
                         throw APIError(code: -1, message: "无法识别视频编号，请刷新列表")
                     }
-                    try await api.removeFromWatchLater(aid: aid)
-                    removedLater = video
-                    toast = "已从稍后再看移除"
+                    try await api.removeFromWatchLater(
+                        aid: aid, expectedUserID: context.accountID)
                 } else {
-                    try await api.addToWatchLater(bvid: video.bvid)
-                    if removedLater?.id == video.id { removedLater = nil }
-                    toast = "已加入稍后再看"
+                    try await api.addToWatchLater(
+                        bvid: video.bvid, expectedUserID: context.accountID)
                 }
-                cachedLists.removeValue(forKey: BrowseDestination.watchLater.rawValue)
-                if menu == .watchLater && selected == nil { refresh() }
-            } catch { toast = error.localizedDescription }
+                guard matchesWatchLaterAccount(context) else { return }
+                owner.watchLaterDidChange(video, remove: remove)
+                toast = remove ? "已从稍后再看移除" : "已加入稍后再看"
+            } catch {
+                guard matchesWatchLaterAccount(context) else { return }
+                toast = error.localizedDescription
+            }
         }
     }
 

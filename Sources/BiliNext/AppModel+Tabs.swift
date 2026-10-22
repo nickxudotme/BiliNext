@@ -101,7 +101,9 @@ extension AppModel {
             stateBeforeMiniPlayer = nil
         } else {
             // 小窗 only shows media; a space page has none.
-            guard let selected, MemberSpace.mid(selected) == nil else { return }
+            guard let selected, MemberSpace.mid(selected) == nil,
+                SearchResultsTab.keyword(selected) == nil
+            else { return }
             stateBeforeMiniPlayer = (sidebarPinned, windowPinned)
             sidebarPinned = false
             windowPinned = true
@@ -256,6 +258,7 @@ extension AppModel {
     }
 
     func releasePlaybackTab(_ id: String) {
+        playbackInstances[id]?.browseTask?.cancel()
         playbackInstances[id]?.officialWebView?.evaluateJavaScript("window.biliPlayer?.pause()")
         playbackInstances[id]?.stopMedia()
         if let instance = playbackInstances[id], let observer = instance.observer {
@@ -270,6 +273,7 @@ extension AppModel {
         instance.tabOwner = self
         instance.playbackPrefetch = playbackPrefetch
         instance.profile = profile
+        instance.libraryBusy = watchLaterSynchronization.busy
         var subscriptions = Set<AnyCancellable>()
         instance.$loginPresented.dropFirst().sink { [weak self] value in
             if value { self?.loginPresented = true }
@@ -348,7 +352,8 @@ extension AppModel {
         if let existing = playbackInstances[tab.id] { return existing }
         let instance = AppModel(
             sessionStore: sessionStore, managesPlaybackTabs: false, downloads: downloads, api: api,
-            hoverPreview: hoverPreview)
+            hoverPreview: hoverPreview, browsePageLoader: browsePageLoader,
+            profileLoader: profileLoader)
         instance.tabs = [tab]
         instance.menu = menu
         connectPage(instance, key: tab.id)

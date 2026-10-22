@@ -142,18 +142,48 @@ struct NativeVideoGrid: NSViewRepresentable {
             guard let collection else { return }
             scroll?.updateRefreshState(loading: model.loading)
             let old = videos
-            videos = model.videos
+            let updated = model.videos
             let refreshed = revealState.begin(revision: model.browseRevision)
-            let dataChanged = refreshed || old != videos
+            let dataChanged = refreshed || old != updated
+            let appended =
+                !refreshed && updated.count > old.count && Array(updated.prefix(old.count)) == old
+            let origin = scroll?.contentView.bounds.origin
+            let anchor =
+                dataChanged && !refreshed && !appended
+                ? visibleAnchor(keeping: Set(updated.map(\.id))) : nil
+            videos = updated
             updateLayout()
             if dataChanged {
-                if !refreshed, videos.count > old.count && Array(videos.prefix(old.count)) == old {
+                if appended {
                     collection.insertItems(
                         at: Set((old.count..<videos.count).map { IndexPath(item: $0, section: 0) }))
                 } else {
                     collection.reloadData()
                     if let scroll {
-                        scroll.contentView.scroll(to: NSPoint(x: 0, y: -scroll.contentInsets.top))
+                        collection.layoutSubtreeIfNeeded()
+                        var position = NSPoint(x: 0, y: -scroll.contentInsets.top)
+                        if !refreshed, let origin {
+                            position = origin
+                            if let anchor,
+                                let index = videos.firstIndex(where: { $0.id == anchor.id }),
+                                let frame = collection.collectionViewLayout?
+                                    .layoutAttributesForItem(
+                                        at: IndexPath(item: index, section: 0))?.frame
+                            {
+                                position.y = frame.minY - anchor.offset
+                            }
+                        }
+                        // The document view can still have its old height immediately after
+                        // reloadData; constrain against the new layout, not that stale frame.
+                        let height =
+                            collection.collectionViewLayout?.collectionViewContentSize.height ?? 0
+                        let minimum = -scroll.contentInsets.top
+                        let maximum = max(
+                            minimum,
+                            height - scroll.contentView.bounds.height + scroll.contentInsets.bottom)
+                        position.y = min(maximum, max(minimum, position.y))
+                        scroll.contentView.scroll(to: position)
+                        scroll.reflectScrolledClipView(scroll.contentView)
                     }
                 }
             }
@@ -177,6 +207,28 @@ struct NativeVideoGrid: NSViewRepresentable {
             if dataChanged || (!activityChanged && finishedLoading) {
                 scheduleBottomCheck()
             }
+        }
+
+        /// Keep a surviving visible card at the same height when membership changes.
+        /// A new browse revision still represents an explicit refresh and starts at the top.
+        private func visibleAnchor(keeping identifiers: Set<String>) -> (
+            id: String, offset: CGFloat
+        )? {
+            guard let scroll, let layout = collection?.collectionViewLayout else { return nil }
+            let viewport = scroll.contentView.bounds
+            let attributes = layout.layoutAttributesForElements(in: viewport).sorted {
+                $0.frame.minY == $1.frame.minY
+                    ? $0.frame.minX < $1.frame.minX : $0.frame.minY < $1.frame.minY
+            }
+            for item in attributes where item.representedElementCategory == .item {
+                guard let index = item.indexPath?.item, videos.indices.contains(index),
+                    identifiers.contains(videos[index].id)
+                else {
+                    continue
+                }
+                return (videos[index].id, item.frame.minY - viewport.minY)
+            }
+            return nil
         }
 
         func updateLayout() {

@@ -69,11 +69,14 @@ final class MPVPlayer {
     /// Read-ahead grows with playing time, as in the official player: a short target at the
     /// start keeps deep read-ahead from competing with the first video and audio requests.
     static let readAheadStages: [Double] = [20, 40, 70]
+    private enum BufferPolicy { case onDemand, live }
+    private var bufferPolicy = BufferPolicy.onDemand
     private(set) var bufferStage = 0
     private var playingSince: Date?
 
     /// Moves to the read-ahead stage for `seconds` of playing time (5 s and 20 s steps).
     func updateBufferStage(playing seconds: TimeInterval) {
+        guard bufferPolicy == .onDemand else { return }
         let stage = seconds >= 20 ? 2 : seconds >= 5 ? 1 : 0
         guard stage != bufferStage else { return }
         bufferStage = stage
@@ -81,6 +84,14 @@ final class MPVPlayer {
     }
 
     private func applyBufferPolicy() {
+        if bufferPolicy == .live {
+            // Live streams retain a short target, including after rate changes and reconnects.
+            set("cache-secs", "5")
+            set("demuxer-readahead-secs", "5")
+            set("cache-pause-wait", "1")
+            set("demuxer-max-bytes", String(128 * 1024 * 1024))
+            return
+        }
         // mpv measures media seconds, so preserve a useful wall-clock margin at higher rates.
         let multiplier = max(1, min(3, speed.isFinite ? speed : 1))
         let seconds = Self.readAheadStages[bufferStage]
@@ -102,20 +113,18 @@ final class MPVPlayer {
         try loadSource(
             videoURL ?? playback.videoStream?.urls.first ?? playback.url,
             audio: audioURL ?? playback.audioStream?.urls.first, position: position,
-            autoplay: autoplay, diagnostics: diagnostics)
+            autoplay: autoplay, bufferPolicy: .onDemand, diagnostics: diagnostics)
     }
 
     func loadLive(_ url: URL, autoplay: Bool) throws {
         set("referrer", "https://live.bilibili.com/")
-        set("cache-secs", "5")
-        set("demuxer-readahead-secs", "5")
-        set("cache-pause-wait", "1")
-        try loadSource(url, audio: nil, position: 0, autoplay: autoplay, diagnostics: nil)
+        try loadSource(
+            url, audio: nil, position: 0, autoplay: autoplay, bufferPolicy: .live, diagnostics: nil)
     }
 
     private func loadSource(
         _ source: URL, audio: URL?, position: Double, autoplay: Bool,
-        diagnostics: PlaybackDiagnosticContext?
+        bufferPolicy: BufferPolicy, diagnostics: PlaybackDiagnosticContext?
     ) throws {
         while let event = mpv_wait_event(handle, 0), event.pointee.event_id != MPV_EVENT_NONE {}
         failure = nil
@@ -129,6 +138,7 @@ final class MPVPlayer {
         loaded = false
         playingSince = nil
         bufferStage = 0
+        self.bufferPolicy = bufferPolicy
         applyBufferPolicy()
         playbackActivity.setActive(false)
         set("pause", autoplay ? "no" : "yes")

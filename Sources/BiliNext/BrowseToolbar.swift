@@ -277,7 +277,7 @@ private struct SearchPageField: View {
                     .foregroundStyle(.secondary)
                 TextField("搜索视频，或粘贴 BV 号 / 视频链接", text: $page.query)
                     .textFieldStyle(.plain).font(GlassTheme.labelFont)
-                    .focused($focused).onSubmit { page.refresh() }
+                    .focused($focused).onSubmit { page.search(page.query) }
                 if !page.query.isEmpty {
                     Button {
                         page.query = ""

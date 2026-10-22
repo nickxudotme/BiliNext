@@ -42,6 +42,13 @@ extension AppModel {
             return
         }
         guard tabs.contains(where: { $0.id == id }) else { return }
+        if let keyword = SearchResultsTab.keyword(id) {
+            menu = .search
+            selected = nil
+            query = keyword
+            if force { refresh() } else { loadBrowseIfNeeded() }
+            return
+        }
         if let roomID = LiveSession.roomID(id) {
             activateLive(roomID, force: force, autoplay: autoplay)
             return
@@ -409,7 +416,9 @@ extension AppModel {
         qualityTask = Task { [self] in
             do {
                 let source = try await api.playback(
-                    bvid: id, cid: cid, quality: value, episodeID: detail?.video.episodeID)
+                    bvid: id, cid: cid, quality: value, episodeID: detail?.video.episodeID,
+                    codecs: Preferences.codecOrder, losslessAudio: Preferences.losslessAudio
+                ).preferringMirror(Preferences.mirrorHost)
                 guard !Task.isCancelled, generation == videoGeneration,
                     request == qualityGeneration
                 else { return }

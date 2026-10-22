@@ -670,11 +670,14 @@ public actor BilibiliAPI {
             (data["has_more"] as? Bool) ?? (!parsed.videos.isEmpty && parsed.videos.count >= 20)
         return Feed(videos: parsed.videos, next: count ? String(page + 1) : nil)
     }
-    public func addToWatchLater(bvid: String) async throws {
-        _ = try await request("/x/v2/history/toview/add", form: ["bvid": bvid])
+    public func addToWatchLater(bvid: String, expectedUserID: Int64? = nil) async throws {
+        _ = try await request(
+            "/x/v2/history/toview/add", form: ["bvid": bvid], expectedUserID: expectedUserID)
     }
-    public func removeFromWatchLater(aid: Int64) async throws {
-        _ = try await request("/x/v2/history/toview/v2/dels", form: ["resources": String(aid)])
+    public func removeFromWatchLater(aid: Int64, expectedUserID: Int64? = nil) async throws {
+        _ = try await request(
+            "/x/v2/history/toview/v2/dels", form: ["resources": String(aid)],
+            expectedUserID: expectedUserID)
     }
     public func danmaku(cid: Int64, segment: Int) async throws -> [Danmaku] {
         var url = URLComponents(string: "https://api.bilibili.com/x/v2/dm/web/seg.so")!
