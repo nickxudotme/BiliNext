@@ -25,6 +25,11 @@ struct BiliNextApp: App {
         .defaultSize(width: 1220, height: 780)
         .windowStyle(.hiddenTitleBar)
         .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("关于 BiliNext") {
+                    NSApp.orderFrontStandardAboutPanel(options: [.credits: AppBuildInfo.credits])
+                }
+            }
             CommandGroup(after: .newItem) {
                 Button("下载管理") { model.downloadsPresented = true }.keyboardShortcut("j")
                 Button("搜索视频") { model.navigate(.search) }.keyboardShortcut("l")

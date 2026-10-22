@@ -34,6 +34,9 @@ if [ "${BILINEXT_DISTRIBUTION:-0}" = "1" ] && [ "$build_configuration" != "relea
     printf '%s\n' 'Distribution builds must use Release configuration.' >&2
     exit 1
 fi
+build_commit="$(git rev-parse HEAD 2>/dev/null || printf unknown)"
+build_dirty="clean"
+if [ -n "$(git status --porcelain 2>/dev/null)" ]; then build_dirty="dirty"; fi
 swift build -c "$build_configuration"
 bin_dir="$(swift build -c "$build_configuration" --show-bin-path)"
 app_dir="$PWD/build/BiliNext.app"
@@ -63,6 +66,8 @@ cat > "$app_dir/Contents/Info.plist" <<'PLIST'
 PLIST
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" "$app_dir/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $build_number" "$app_dir/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :BiliNextGitCommit string $build_commit" "$app_dir/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :BiliNextGitDirty string $build_dirty" "$app_dir/Contents/Info.plist"
 if [ "$bundle_mpv" = "1" ]; then
     python3 scripts/bundle-mpv.py "$app_dir"
     for library in "$app_dir"/Contents/Frameworks/*.dylib; do
