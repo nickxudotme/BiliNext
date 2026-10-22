@@ -101,7 +101,6 @@ struct NativeVideoGrid: NSViewRepresentable {
         weak var collection: VideoGridCollectionView?
         weak var scroll: VideoGridScrollView?
         var boundsObserver: NSObjectProtocol?
-        var idleWork: DispatchWorkItem?
         var checkScheduled = false
         var revealScheduled = false
         var revealState = VideoGridRevealState()
@@ -130,12 +129,12 @@ struct NativeVideoGrid: NSViewRepresentable {
                 cancelVisibleReveals()
             }
             if !active, activityChanged {
-                idleWork?.cancel()
+                interaction.cancelIdle()
                 scroll?.cancelPullRefresh()
                 // updateNSView must not synchronously publish into the SwiftUI tree.
                 DispatchQueue.main.async { [weak self] in
                     guard let self, !self.active else { return }
-                    if self.interaction.scrolling { self.interaction.scrolling = false }
+                    self.interaction.finishScrolling()
                     self.model.hoverPreview.stop()
                 }
             }
@@ -309,14 +308,7 @@ struct NativeVideoGrid: NSViewRepresentable {
 
         func beginScrolling() {
             guard active else { return }
-            if !interaction.scrolling {
-                interaction.scrolling = true
-                model.hoverPreview.stop()
-            }
-            idleWork?.cancel()
-            let work = DispatchWorkItem { [weak self] in self?.interaction.scrolling = false }
-            idleWork = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+            interaction.beginScrolling { model.hoverPreview.stop() }
         }
 
         func scheduleBottomCheck() {
@@ -340,7 +332,7 @@ struct NativeVideoGrid: NSViewRepresentable {
             active = false
             prefetchGeneration += 1
             checkScheduled = false
-            idleWork?.cancel()
+            interaction.cancelIdle()
             cancelVisibleReveals()
             scroll?.cancelPullRefresh()
             if let boundsObserver { NotificationCenter.default.removeObserver(boundsObserver) }
@@ -393,10 +385,6 @@ struct NativeVideoGrid: NSViewRepresentable {
             return footer
         }
     }
-}
-
-@MainActor final class VideoGridInteraction: ObservableObject {
-    @Published var scrolling = false
 }
 
 private struct HostedVideoCard: View {

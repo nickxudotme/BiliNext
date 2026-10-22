@@ -101,8 +101,8 @@ final class LiveSession: ObservableObject {
                 candidateIndex = 0
                 if player == nil {
                     let core = try MPVPlayer()
-                    core.onUpdate = { [weak self] _, _, playing, buffering in
-                        self?.update(playing: playing, buffering: buffering)
+                    core.onUpdate = { [weak session = self] _, _, playing, buffering in
+                        session?.update(playing: playing, buffering: buffering)
                     }
                     player = core
                 }

@@ -54,7 +54,6 @@ struct NativeMemberSpaceGrid: NSViewRepresentable {
         private var heights: [CGFloat] = [440, 0, 0]
         private var cards: [Int: NSHostingView<AnyView>] = [:]
         private var pool: [NSHostingView<AnyView>] = []
-        private var idle: DispatchWorkItem?
         private var layoutScheduled = false
         private var paginationScheduled = false
         private var pinned = false
@@ -106,10 +105,10 @@ struct NativeMemberSpaceGrid: NSViewRepresentable {
             if replaced || cardsChanged { recycleAll() }
             value = next
             if !next.isActive, activityChanged {
-                idle?.cancel()
+                interaction.cancelIdle()
                 DispatchQueue.main.async { [weak self] in
                     guard let self, !self.stopped, !self.value.isActive else { return }
-                    if self.interaction.scrolling { self.interaction.scrolling = false }
+                    self.interaction.finishScrolling()
                     self.value.model.hoverPreview.stop()
                 }
             }
@@ -221,14 +220,7 @@ struct NativeMemberSpaceGrid: NSViewRepresentable {
 
         private func beginScrolling() {
             guard value.isActive else { return }
-            if !interaction.scrolling {
-                interaction.scrolling = true
-                value.model.hoverPreview.stop()
-            }
-            idle?.cancel()
-            let work = DispatchWorkItem { [weak self] in self?.interaction.scrolling = false }
-            idle = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+            interaction.beginScrolling { value.model.hoverPreview.stop() }
         }
 
         private func recycle(_ index: Int) {
@@ -246,7 +238,7 @@ struct NativeMemberSpaceGrid: NSViewRepresentable {
 
         func stop() {
             stopped = true
-            idle?.cancel()
+            interaction.cancelIdle()
             if let observer { NotificationCenter.default.removeObserver(observer) }
             scroll?.didScroll = nil
             document?.resized = nil

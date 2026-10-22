@@ -146,8 +146,8 @@ struct FavoriteFolderManagementView: View {
             let result = try await model.api.favoriteFolders(mid: accountID)
             guard !Task.isCancelled, model.profile?.id == accountID else { return }
             if let change, change.accountID == accountID,
-                change.preferredID.map { id in !result.contains { $0.id == id } } == true
-                    || change.deletedID.map { id in result.contains { $0.id == id } } == true
+                change.preferredID.map({ id in !result.contains { $0.id == id } }) == true
+                    || change.deletedID.map({ id in result.contains { $0.id == id } }) == true
             {
                 error = "\(change.notice)，列表尚未更新，请重试读取"
                 loading = false
