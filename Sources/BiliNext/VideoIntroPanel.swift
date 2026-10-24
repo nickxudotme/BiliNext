@@ -3,7 +3,7 @@ import BiliNextCore
 import SwiftUI
 
 /// The 简介 panel in the official client's order, in one scroll: UP, title and stats with a
-/// collapsible description, actions, the 合集 or 分P list, then related videos.
+/// collapsible description, actions, the 合集 with its 分P (or a standalone 分P list), then related videos.
 struct VideoIntroPanel: View {
     @ObservedObject var model: AppModel
     var isActive = true
@@ -97,7 +97,7 @@ struct VideoIntroPanel: View {
                     .padding(.top, 18)
             }
             if let season = detail.extras.season {
-                SeasonList(model: model, season: season, current: video.bvid)
+                SeasonList(model: model, season: season, current: video.bvid, pages: detail.pages)
                     .padding(.top, 18)
             } else if detail.pages.count > 1 {
                 PageList(model: model, pages: detail.pages).padding(.top, 18)
@@ -484,6 +484,7 @@ private struct EpisodeRow: View {
     let title: String
     let duration: Double
     let current: Bool
+    var expanded: Bool? = nil
     let action: () -> Void
 
     var body: some View {
@@ -498,6 +499,10 @@ private struct EpisodeRow: View {
                 if duration > 0 {
                     Text(timestamp(duration)).font(GlassTheme.captionFont).monospacedDigit()
                         .foregroundStyle(.secondary)
+                }
+                if let expanded {
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                        .font(GlassTheme.smallIconFont).foregroundStyle(.secondary)
                 }
             }
             .font(GlassTheme.labelFont.weight(current ? .semibold : .regular))
@@ -517,7 +522,9 @@ private struct SeasonList: View {
     @ObservedObject var model: AppModel
     let season: VideoSeason
     let current: String
+    let pages: [VideoPage]
     @State private var sectionID: Int64?
+    @State private var partsExpanded = true
 
     private var episodes: [VideoSeason.Episode] { season.sections.flatMap(\.episodes) }
     private var position: Int? { episodes.firstIndex { $0.bvid == current }.map { $0 + 1 } }
@@ -525,6 +532,12 @@ private struct SeasonList: View {
         season.sections.first { $0.id == sectionID }
             ?? season.sections.first { $0.episodes.contains { $0.bvid == current } }
             ?? season.sections.first
+    }
+    private var currentRow: String {
+        if partsExpanded, pages.count > 1, let cid = model.pageID {
+            return "page:\(cid)"
+        }
+        return current
     }
 
     var body: some View {
@@ -569,19 +582,38 @@ private struct SeasonList: View {
             }
             if let section {
                 EpisodeScroll(
-                    ids: section.episodes.map(\.bvid), current: current,
+                    ids: section.episodes.map(\.bvid), current: currentRow,
                     maxHeight: season.sections.count > 1 ? 180 : 216
                 ) { _ in
                     ForEach(section.episodes) { episode in
                         EpisodeRow(
                             title: episode.title, duration: episode.duration,
-                            current: episode.bvid == current
-                        ) { play(episode) }
+                            current: episode.bvid == current && (!partsExpanded || pages.count < 2),
+                            expanded: episode.bvid == current && pages.count > 1
+                                ? partsExpanded : nil
+                        ) {
+                            if episode.bvid == current, pages.count > 1 {
+                                partsExpanded.toggle()
+                            } else {
+                                play(episode)
+                            }
+                        }
                         .id(episode.bvid)
+                        if episode.bvid == current, pages.count > 1, partsExpanded {
+                            ForEach(pages) { page in
+                                EpisodeRow(
+                                    title: page.title.isEmpty ? "P\(page.number)" : page.title,
+                                    duration: page.duration, current: page.cid == model.pageID
+                                ) { model.selectPage(page.cid) }
+                                .padding(.leading, 16)
+                                .id("page:\(page.cid)")
+                            }
+                        }
                     }
                 }
             }
         }
+        .onChange(of: current) { _, _ in partsExpanded = true }
     }
 
     /// Episodes play in this tab, like moving through a series; ⌘ opens a background tab.
