@@ -14,10 +14,12 @@ struct PlaybackPreferences {
     let rate: Double
     let seekStep: Double
     let holdRate: Double
+    let autoplayOnTabSelection: Bool
 
     static var current: PlaybackPreferences { PlaybackPreferences() }
 
     init(defaults: UserDefaults = .standard) {
+        autoplayOnTabSelection = defaults.bool(forKey: Preferences.autoplayOnTabSelection)
         let storedQuality = defaults.integer(forKey: Preferences.defaultQuality)
         quality = Self.qualityOptions.contains { $0.id == storedQuality } ? storedQuality : 80
         func choice(_ key: String, in options: [Double], fallback: Double) -> Double {

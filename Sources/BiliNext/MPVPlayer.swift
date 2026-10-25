@@ -3,16 +3,92 @@ import BiliNextCore
 import CMPV
 import OpenGL.GL3
 import SwiftUI
+import os
 
 /// One libmpv instance per retained playback tab; preview remains a separate muted AVPlayer.
 @MainActor
 final class MPVPlayer {
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "me.nickxu.BiliNext",
+        category: "PlaybackRecovery")
     let handle: OpaquePointer
     private var poll: Timer?
+    private(set) var pollInterval = 0.0
+    var isForeground = true {
+        didSet { if oldValue != isForeground { updatePolling() } }
+    }
+    private struct Snapshot: Equatable {
+        let time: Double
+        let duration: Double
+        let playing: Bool
+        let buffering: Bool
+        let loaded: Bool
+        let ended: Bool
+        let failure: String?
+    }
+    private var lastUpdate: Snapshot?
+    private enum SourceTrack: String { case video, audio }
+    private var trackSources: [SourceTrack: URL] = [:]
+    private var trackDurations: [SourceTrack: Double] = [:]
+    private var durationProbe: Task<Void, Never>?
+    private var probedTracks = Set<SourceTrack>()
+    private var sourceGeneration = UUID()
+    struct CacheSnapshot {
+        let eof: Bool
+        let end: Double?
+        let videoEnd: Double?
+        let audioEnd: Double?
+    }
+
+    /// This node property does not implement slash-delimited subproperties.
+    var cacheSnapshot: CacheSnapshot? {
+        var root = mpv_node()
+        guard mpv_get_property(handle, "demuxer-cache-state", MPV_FORMAT_NODE, &root) >= 0 else {
+            return nil
+        }
+        defer { mpv_free_node_contents(&root) }
+        func field(_ node: mpv_node, _ key: String) -> mpv_node? {
+            guard node.format == MPV_FORMAT_NODE_MAP, let list = node.u.list else { return nil }
+            for index in 0..<Int(list.pointee.num) {
+                if let name = list.pointee.keys[index], String(cString: name) == key {
+                    return list.pointee.values[index]
+                }
+            }
+            return nil
+        }
+        func number(_ node: mpv_node?) -> Double? {
+            guard let node, node.format == MPV_FORMAT_DOUBLE, node.u.double_.isFinite else {
+                return nil
+            }
+            return node.u.double_
+        }
+        var videoEnd: Double?
+        var audioEnd: Double?
+        if let streams = field(root, "ts-per-stream"), streams.format == MPV_FORMAT_NODE_ARRAY,
+            let list = streams.u.list
+        {
+            for index in 0..<Int(list.pointee.num) {
+                let stream = list.pointee.values[index]
+                guard let type = field(stream, "type"), type.format == MPV_FORMAT_STRING,
+                    let name = type.u.string
+                else { continue }
+                switch String(cString: name) {
+                case "video": videoEnd = number(field(stream, "cache-end"))
+                case "audio": audioEnd = number(field(stream, "cache-end"))
+                default: break
+                }
+            }
+        }
+        let eof = field(root, "eof-cached")
+        return CacheSnapshot(
+            eof: eof?.format == MPV_FORMAT_FLAG && eof?.u.flag != 0,
+            end: number(field(root, "cache-end")), videoEnd: videoEnd, audioEnd: audioEnd)
+    }
     private let playbackActivity = PlaybackActivity()
     private(set) var loaded = false
     private(set) var failure: String?
     private(set) var failureCode: Int32?
+    private(set) var prematureEnd = false
     private(set) var diagnosticContext: PlaybackDiagnosticContext?
     private var commandSequence: UInt64 = 0
     private var loadCommandID: UInt64 = 0
@@ -26,7 +102,9 @@ final class MPVPlayer {
     var duration: Double { number("duration") }
     var playing: Bool { loaded && failure == nil && !flag("pause") && !flag("eof-reached") }
     /// Playback reached the end; keep-open holds the last frame.
-    var ended: Bool { loaded && failure == nil && flag("eof-reached") }
+    var ended: Bool {
+        loaded && failure == nil && durationProbe == nil && flag("eof-reached")
+    }
     var volume: Double {
         get { number("volume") / 100 }
         set { set("volume", String(max(0, min(1, newValue)) * 100)) }
@@ -62,7 +140,17 @@ final class MPVPlayer {
             mpv_terminate_destroy(core)
             throw MPVError(message: String(cString: mpv_error_string(result)))
         }
-        poll = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+        updatePolling()
+    }
+
+    private func updatePolling() {
+        // Keep loading responsive. A ready, paused background core continues
+        // buffering/decoding independently of this UI status timer.
+        let interval = isForeground || !loaded ? 0.25 : 1.0
+        guard pollInterval != interval else { return }
+        poll?.invalidate()
+        pollInterval = interval
+        poll = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.update() }
         }
     }
@@ -102,6 +190,7 @@ final class MPVPlayer {
     }
 
     deinit {
+        durationProbe?.cancel()
         poll?.invalidate()
         mpv_terminate_destroy(handle)
     }
@@ -126,9 +215,12 @@ final class MPVPlayer {
         _ source: URL, audio: URL?, position: Double, autoplay: Bool,
         bufferPolicy: BufferPolicy, diagnostics: PlaybackDiagnosticContext?
     ) throws {
+        resetDurationProbe()
+        trackSources = audio.map { [.video: source, .audio: $0] } ?? [:]
         while let event = mpv_wait_event(handle, 0), event.pointee.event_id != MPV_EVENT_NONE {}
         failure = nil
         failureCode = nil
+        prematureEnd = false
         entryID = nil
         waitingForStart = true
         diagnosticContext = diagnostics
@@ -136,6 +228,8 @@ final class MPVPlayer {
         reported = false
         wasCachePaused = false
         loaded = false
+        lastUpdate = nil
+        updatePolling()
         playingSince = nil
         bufferStage = 0
         self.bufferPolicy = bufferPolicy
@@ -171,6 +265,7 @@ final class MPVPlayer {
     }
 
     func stop() {
+        resetDurationProbe()
         waitingForStart = true
         loadCommandID = 0
         try? command(["stop"])
@@ -236,6 +331,7 @@ final class MPVPlayer {
             default: break
             }
         }
+        detectPrematureEnd()
         if loaded && time > 0 && !reported {
             reported = true
             NSLog(
@@ -258,7 +354,109 @@ final class MPVPlayer {
             if playingSince == nil { playingSince = Date() }
             updateBufferStage(playing: Date().timeIntervalSince(playingSince!))
         }
-        onUpdate?(time, duration, playing, cachePaused || (!loaded && failure == nil))
+        updatePolling()
+        let snapshot = Snapshot(
+            time: time, duration: duration, playing: playing,
+            buffering: cachePaused || (!loaded && failure == nil), loaded: loaded,
+            ended: ended, failure: failure)
+        // Foreground callbacks also drive periodic persistence; failures drive
+        // recovery transitions even when mpv's properties have not changed.
+        guard isForeground || snapshot.failure != nil || snapshot != lastUpdate else { return }
+        lastUpdate = snapshot
+        onUpdate?(snapshot.time, snapshot.duration, snapshot.playing, snapshot.buffering)
+    }
+
+    private func detectPrematureEnd() {
+        guard loaded, failure == nil, bufferPolicy == .onDemand, !flag("seeking") else { return }
+        let length = duration
+        guard length > 0 else { return }
+        let reachedEnd = flag("eof-reached")
+        guard reachedEnd || flag("demuxer-cache-idle") else { return }
+        let cache = cacheSnapshot
+        guard reachedEnd || cache?.eof == true else { return }
+        if trackSources.isEmpty {
+            let selected = (0..<Int(number("track-list/count"))).compactMap { index -> String? in
+                let type = text("track-list/\(index)/type")
+                return flag("track-list/\(index)/selected") && ["video", "audio"].contains(type)
+                    ? type : nil
+            }
+            if selected.count == 1 {
+                if reachedEnd {
+                    reportPrematureEnd(at: time, duration: length)
+                } else if let end = cache?.videoEnd ?? cache?.audioEnd ?? cache?.end {
+                    reportPrematureEnd(at: end, duration: length)
+                }
+            } else if reachedEnd, let cache, cache.eof {
+                // mpv can stop at the shorter video track. A longer complete
+                // audio track is valid; require every selected track to be short.
+                let ends = selected.compactMap { $0 == "video" ? cache.videoEnd : cache.audioEnd }
+                if ends.count == selected.count, let end = ends.max() {
+                    reportPrematureEnd(at: end, duration: length)
+                }
+            }
+            return
+        }
+        guard let cache else { return }
+        let ends: [SourceTrack: Double?] = [.video: cache.videoEnd, .audio: cache.audioEnd]
+        let candidates = ends.compactMapValues { $0 }.filter {
+            Self.endedPrematurely(at: $0.value, duration: length)
+        }
+        for (track, end) in candidates {
+            if let declared = trackDurations[track],
+                Self.endedPrematurely(at: end, duration: declared)
+            {
+                reportPrematureEnd(at: end, duration: declared)
+                return
+            }
+        }
+        guard durationProbe == nil else { return }
+        let sources = trackSources.filter {
+            candidates[$0.key] != nil && !probedTracks.contains($0.key)
+        }
+        guard !sources.isEmpty else { return }
+        probedTracks.formUnion(sources.keys)
+        let request = sourceGeneration
+        durationProbe = Task { [weak self] in
+            let durations = await withTaskGroup(of: (SourceTrack, Double?).self) { group in
+                for (track, url) in sources {
+                    group.addTask { (track, await MediaSourceDuration.load(url)) }
+                }
+                var result: [SourceTrack: Double] = [:]
+                for await (track, length) in group {
+                    if let length { result[track] = length }
+                }
+                return result
+            }
+            guard let self, !Task.isCancelled, self.sourceGeneration == request else { return }
+            self.trackDurations.merge(durations) { _, new in new }
+            self.durationProbe = nil
+            self.update()
+        }
+    }
+
+    private func resetDurationProbe() {
+        sourceGeneration = UUID()
+        durationProbe?.cancel()
+        durationProbe = nil
+        probedTracks = []
+        trackSources = [:]
+        trackDurations = [:]
+    }
+
+    private func reportPrematureEnd(at cutoff: Double, duration length: Double) {
+        guard Self.endedPrematurely(at: cutoff, duration: length) else { return }
+        prematureEnd = true
+        failureCode = -13
+        failure = "视频流提前结束"
+        pause()
+        Self.logger.notice(
+            "Premature EOF: session=\(self.diagnosticContext?.session.uuidString ?? "none", privacy: .public) position=\(self.time, privacy: .public) cutoff=\(cutoff, privacy: .public) duration=\(length, privacy: .public)"
+        )
+    }
+
+    nonisolated static func endedPrematurely(at position: Double, duration: Double) -> Bool {
+        position.isFinite && duration.isFinite && position >= 0 && duration > 0
+            && duration - position > max(3, min(10, duration * 0.01))
     }
 
     var diagnosticSummary: String {

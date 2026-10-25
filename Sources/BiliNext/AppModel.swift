@@ -57,10 +57,16 @@ final class AppModel: ObservableObject {
     var downloads: DownloadManager { services.downloads }
     @Published var playbackInstances: [String: AppModel] = [:]
     @Published var browseInstances: [String: AppModel] = [:]
-    var playbackTabActive = true
+    var playbackTabActive = true {
+        didSet { mpv?.isForeground = playbackTabActive }
+    }
     weak var tabOwner: AppModel?
     var managesPlaybackTabs: Bool { scope == .workspace }
     var tabSubscriptions: [String: Set<AnyCancellable>] = [:]
+    var tabLoadStarted = false
+    var tabPreloadsEnabled = false
+    var tabPreloadQueue: [String] = []
+    var tabPreloadJobs: [String: TabPreloadJob] = [:]
     @Published var downloadsPresented = false
     @Published var duration = 0.0
     @Published var buffering = false
@@ -211,14 +217,15 @@ final class AppModel: ObservableObject {
         profileLoader: (() async throws -> UserProfile)? = nil,
         favoriteFolderLoader: ((Int64) async throws -> [FavoriteFolder])? = nil,
         subtitleLoader: ((SubtitleTrack) async throws -> [Cue])? = nil,
-        subtitlePreferences: UserDefaults = .standard, historyStoreURL: URL? = nil
+        subtitlePreferences: UserDefaults = .standard, historyStoreURL: URL? = nil,
+        playerFactory: (() throws -> MPVPlayer)? = nil
     ) {
         let services = AppModelServices(
             sessionStore: sessionStore, downloads: downloads, api: api,
             hoverPreview: hoverPreview, browsePageLoader: browsePageLoader,
             profileLoader: profileLoader, favoriteFolderLoader: favoriteFolderLoader,
             subtitleLoader: subtitleLoader, subtitlePreferences: subtitlePreferences,
-            historyStoreURL: historyStoreURL)
+            historyStoreURL: historyStoreURL, playerFactory: playerFactory)
         self.init(scope: managesPlaybackTabs ? .workspace : .page, services: services)
     }
 
@@ -287,6 +294,7 @@ final class AppModel: ObservableObject {
         profile = loadedProfile
         preloadFavoriteFolders()
         historyOutbox.accountChanged()
+        startTabPreloads()
         guard selected == nil else { return }
         #if DEBUG
             // Visual checks of the playback page without clicking: opens the first restored

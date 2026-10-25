@@ -14,6 +14,7 @@ private func preferenceStore() throws -> (UserDefaults, String) {
     let preferences = PlaybackPreferences(defaults: defaults)
     #expect(preferences.quality == 80 && preferences.rate == 1)
     #expect(preferences.seekStep == 5 && preferences.holdRate == 2)
+    #expect(!preferences.autoplayOnTabSelection)
 }
 
 @Test func playbackDefaultsPersistAndKeepQualityPrefetchesSeparate() throws {
@@ -23,9 +24,11 @@ private func preferenceStore() throws -> (UserDefaults, String) {
     defaults.set(1.5, forKey: Preferences.defaultRate)
     defaults.set(15, forKey: Preferences.seekStep)
     defaults.set(3, forKey: Preferences.holdRate)
+    defaults.set(true, forKey: Preferences.autoplayOnTabSelection)
     let first = PlaybackPreferences(defaults: defaults)
     #expect(first.quality == 120 && first.rate == 1.5)
     #expect(first.seekStep == 15 && first.holdRate == 3)
+    #expect(first.autoplayOnTabSelection)
     defaults.set(64, forKey: Preferences.defaultQuality)
     let second = PlaybackPreferences(defaults: try #require(UserDefaults(suiteName: name)))
     #expect(second.quality == 64)

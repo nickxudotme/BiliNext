@@ -4,9 +4,11 @@ import SwiftUI
 /// UserDefaults keys for preferences shown in 设置.
 enum Preferences {
     static let appearance = "appearance.theme"
+    static let sidebarVideoThumbnails = "sidebar.videoThumbnails"
     static let autoExpandIntro = "intro.autoExpand"
     static let expandComments = "comments.alwaysExpand"
     static let hoverPrefetch = "playback.hoverPrefetch"
+    static let autoplayOnTabSelection = "playback.autoplayOnTabSelection"
     static let cdnMirror = "playback.cdnMirror"
     static let preferredCodec = "playback.preferredCodec"
     static let prefersLossless = "playback.losslessAudio"
@@ -41,10 +43,12 @@ enum Preferences {
 /// The app's 设置 window (⌘,).
 struct SettingsView: View {
     @AppStorage(Preferences.appearance) private var appearance = AppAppearance.system.rawValue
+    @AppStorage(Preferences.sidebarVideoThumbnails) private var sidebarVideoThumbnails = true
     @AppStorage("developer.performanceHUD") private var performanceHUD = false
     @AppStorage(Preferences.autoExpandIntro) private var autoExpandIntro = false
     @AppStorage(Preferences.expandComments) private var expandComments = false
     @AppStorage(Preferences.hoverPrefetch) private var hoverPrefetch = false
+    @AppStorage(Preferences.autoplayOnTabSelection) private var autoplayOnTabSelection = false
     @AppStorage(Preferences.cdnMirror) private var cdnMirror = "ali"
     @AppStorage(Preferences.preferredCodec) private var preferredCodec = "av1"
     @AppStorage(Preferences.prefersLossless) private var losslessAudio = true
@@ -96,8 +100,18 @@ struct SettingsView: View {
                 }
                 Text("减少透明度跟随 macOS 辅助功能设置。")
                     .font(.caption).foregroundStyle(.secondary)
+                Toggle(isOn: $sidebarVideoThumbnails) {
+                    Text("显示侧边栏视频缩略图")
+                    Text("关闭后隐藏标签行中的视频封面，鼠标悬停时仍显示预览。")
+                }
+                .accessibilityLabel("显示侧边栏视频缩略图")
             }
             Section("播放") {
+                Toggle(isOn: $autoplayOnTabSelection) {
+                    Text("切换标签时自动播放")
+                    Text("关闭后，点击侧栏或用快捷键切换视频标签时保持暂停，预加载仍会完成。")
+                }
+                .accessibilityLabel("切换标签时自动播放")
                 Picker(selection: $defaultQuality) {
                     ForEach(PlaybackPreferences.qualityOptions, id: \.id) {
                         Text($0.title).tag($0.id)

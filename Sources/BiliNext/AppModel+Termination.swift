@@ -2,6 +2,7 @@ import Foundation
 
 extension AppModel {
     func prepareForTermination(timeout: TimeInterval = 2) async {
+        cancelAllTabPreloads()
         saveSession()
         let instances = Array(playbackInstances.values) + [self]
         for instance in instances {

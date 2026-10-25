@@ -37,6 +37,7 @@ struct PlaybackView: View {
     var miniPlayer = false
     var windowPinned = false
     var isActive = true
+    var onExitCommand: () -> Void = {}
     @State private var panel = PlaybackPanel.initial
     @State private var visitedPanels: Set<PlaybackPanel> = [PlaybackPanel.initial]
     @State private var playerWidth: CGFloat = 0
@@ -93,9 +94,16 @@ struct PlaybackView: View {
         // The playback page is a dark screening room lit by the video's own cover.
         .background { PlaybackAmbience(cover: model.detail?.video.cover ?? currentCover) }
         .environment(\.colorScheme, .dark)
+        .onExitCommand {
+            // This page has its own hosting root; forward the shell command
+            // across that boundary after SwiftUI finishes handling the key.
+            DispatchQueue.main.async(execute: onExitCommand)
+        }
         .animation(Motion.emphasized(reduceMotion), value: model.theater)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(DrawerPointerTracker(externalWidth: 0, onPosition: trackPointer))
+        .background(
+            DrawerPointerTracker(externalWidth: 0, enabled: isActive, onPosition: trackPointer)
+        )
         .task(id: isActive ? CommentInteractionModel.context(for: model) : nil) {
             if isActive { model.preloadComments() }
         }

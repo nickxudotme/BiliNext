@@ -42,6 +42,7 @@ extension AppModel {
             return
         }
         guard tabs.contains(where: { $0.id == id }) else { return }
+        tabLoadStarted = true
         if let keyword = SearchResultsTab.keyword(id) {
             menu = .search
             selected = nil
@@ -80,6 +81,7 @@ extension AppModel {
         mpv?.pause()
         player.pause()
         playing = false
+        playbackIntent = autoplay && playbackTabActive
         videoTask?.cancel()
         subtitleTask?.cancel()
         qualityTask?.cancel()
@@ -129,6 +131,7 @@ extension AppModel {
                 guard !Task.isCancelled, generation == videoGeneration else { return }
                 startup?.mark("detail", "\(loaded.video.title) · \(loaded.video.author)")
                 detail = loaded
+                preloadComments()
                 loadRelation(for: loaded.video.bvid)
                 if let index = tabs.firstIndex(where: { $0.id == id }) {
                     tabs[index].video = loaded.video
@@ -143,8 +146,7 @@ extension AppModel {
                 let resume = saved?.position ?? 0
                 let position = page.duration > 0 && resume > page.duration - 5 ? 0 : resume
                 await loadMedia(
-                    id: id, cid: page.cid, position: position, generation: generation,
-                    autoplay: autoplay)
+                    id: id, cid: page.cid, position: position, generation: generation)
             } catch {
                 guard !Task.isCancelled, generation == videoGeneration else { return }
                 playerError = error.localizedDescription
@@ -173,6 +175,7 @@ extension AppModel {
         pageID = cid
         time = 0
         playing = false
+        playbackIntent = autoplay && playbackTabActive
         resetSecondarySubtitles()
         cues = []
         tracks = []
@@ -184,11 +187,11 @@ extension AppModel {
         }
         videoTask = Task {
             await loadMedia(
-                id: id, cid: cid, position: 0, generation: generation, autoplay: autoplay)
+                id: id, cid: cid, position: 0, generation: generation)
         }
     }
     private func loadMedia(
-        id: String, cid: Int64, position: Double, generation: UUID, autoplay: Bool = false
+        id: String, cid: Int64, position: Double, generation: UUID
     ) async {
         let qualityRequest = qualityGeneration
         let requestedQuality = PlaybackPreferences.current.quality
@@ -262,7 +265,6 @@ extension AppModel {
             qualityID = source.qualityID
             playbackCodec = "mpv · " + (source.videoStream?.codec ?? "MP4")
             qualities = source.qualities
-            playbackIntent = autoplay && playbackTabActive
             core.speed = playbackRate
             try beginPlaybackRecovery(
                 source, requestedQuality: requestedQuality, position: position, core: core)
@@ -276,13 +278,15 @@ extension AppModel {
 
     private func ensureMPV() throws -> MPVPlayer {
         if let mpv { return mpv }
-        let core = try MPVPlayer()
+        let core = try services.playerFactory()
+        core.isForeground = playbackTabActive
         core.muted = player.isMuted || CommandLine.arguments.contains("--mute")
         core.volume = Double(player.volume)
         core.onUpdate = { [weak self, weak core] time, duration, playing, buffering in
             guard let self, let core, !self.officialCore else { return }
             if let failure = core.failure {
-                self.playbackRecovery?.failed(code: core.failureCode, message: failure)
+                self.playbackRecovery?.failed(
+                    code: core.failureCode, message: failure, refreshFirst: core.prematureEnd)
                 let recovering = self.playbackRecovery?.recovering == true
                 self.startup?.mark("mpv failure", "\(core.failureCode ?? 0) \(failure)")
                 if !recovering { self.startup?.finish("failed: \(failure)") }
@@ -554,6 +558,7 @@ extension AppModel {
         return id == mediaID && playing
     }
     func stopMedia() {
+        commentListState?.loader.deactivate()
         liveSession?.stop()
         liveSession = nil
         cancelPlaybackRecovery()

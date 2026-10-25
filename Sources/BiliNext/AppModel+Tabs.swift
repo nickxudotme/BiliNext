@@ -26,6 +26,7 @@ extension AppModel {
         }
         if background {
             if selected != video.id { unseenTabs.insert(video.id) }
+            preloadBackgroundTabs()
             if !sidebarPinned { toast = "已在后台打开「\(video.title)」" }
             saveSession()
         } else {
@@ -54,13 +55,13 @@ extension AppModel {
         saveSession()
         if let selected, tabs.contains(where: { $0.id == selected }) {
             closed = tabs.filter { $0.id != selected }
-            for tab in closed { releasePlaybackTab(tab.id) }
             tabs.removeAll { $0.id != selected }
+            for tab in closed { releasePlaybackTab(tab.id) }
             saveSession()
         } else {
             closed = tabs
-            for tab in closed { releasePlaybackTab(tab.id) }
             tabs = []
+            for tab in closed { releasePlaybackTab(tab.id) }
             selected = nil
             stopMedia()
             saveSession()
@@ -76,11 +77,11 @@ extension AppModel {
         }.map(\.element)
         guard !closing.isEmpty else { return }
         closed = closing
+        tabs.removeAll { tab in closing.contains { $0.id == tab.id } }
         for tab in closing {
             releasePlaybackTab(tab.id)
             unseenTabs.remove(tab.id)
         }
-        tabs.removeAll { tab in closing.contains { $0.id == tab.id } }
         if let selected, !tabs.contains(where: { $0.id == selected }) { activate(id) }
         saveSession()
     }
@@ -168,8 +169,15 @@ extension AppModel {
         if wasSelected {
             selected = nil
             activate(tab.id, autoplay: true)
+        } else {
+            preloadBackgroundTabs()
         }
         saveSession()
+    }
+
+    /// User selection reuses a preload; opening a new video has its own play intent.
+    func selectTab(_ id: String) {
+        activate(id, autoplay: PlaybackPreferences.current.autoplayOnTabSelection)
     }
 
     /// ⌘1–8 pick a tab by position and ⌘9 the last one, as in browsers.
@@ -177,7 +185,7 @@ extension AppModel {
         guard !tabs.isEmpty else { return }
         let index = number == 9 ? tabs.count - 1 : number - 1
         guard tabs.indices.contains(index) else { return }
-        activate(tabs[index].id, autoplay: true)
+        selectTab(tabs[index].id)
     }
 
     /// ⌃Tab and ⌃⇧Tab step through tabs, wrapping, starting from browsing when none is open.
@@ -185,7 +193,7 @@ extension AppModel {
         guard !tabs.isEmpty else { return }
         let current = selected.flatMap { id in tabs.firstIndex { $0.id == id } }
         let next = Self.tabIndex(after: current, count: tabs.count, delta: delta)
-        activate(tabs[next].id, autoplay: true)
+        selectTab(tabs[next].id)
     }
 
     nonisolated static func tabIndex(after current: Int?, count: Int, delta: Int) -> Int {
@@ -196,6 +204,7 @@ extension AppModel {
     func undoClose() {
         for tab in closed where !tabs.contains(where: { $0.id == tab.id }) { tabs.append(tab) }
         closed = []
+        preloadBackgroundTabs()
         saveSession()
     }
     func saveSession(updateTabs: Bool = true) {
@@ -230,16 +239,18 @@ extension AppModel {
             }
             // A forced reload reads the retained page's own record. Keep it current,
             // while periodic saves continue avoiding published tab changes.
-            if updateTabs, let localIndex { instance.tabs[localIndex] = snapshot[index] }
+            if updateTabs, let localIndex, instance.tabs[localIndex] != snapshot[index] {
+                instance.tabs[localIndex] = snapshot[index]
+            }
         }
-        if updateTabs { tabs = snapshot }
+        if updateTabs, tabs != snapshot { tabs = snapshot }
         if officialCore || mpv?.loaded == true || player.currentItem?.status == .readyToPlay,
             let index = snapshot.firstIndex(where: { $0.id == mediaID })
         {
             let seconds = officialCore ? time : (mpv?.time ?? player.currentTime().seconds)
             if seconds.isFinite { snapshot[index].position = max(0, seconds) }
             snapshot[index].cid = pageID
-            if updateTabs { tabs = snapshot }
+            if updateTabs, tabs != snapshot { tabs = snapshot }
         }
         do {
             try sessionStore.write(snapshot)
@@ -250,6 +261,11 @@ extension AppModel {
 
     func suspendPlaybackTabs(except id: String? = nil) {
         for (key, instance) in playbackInstances where key != id {
+            // Paused preloads have never owned playback. Re-pausing every retained
+            // core blocks the main thread and publishes unchanged state across pages.
+            guard instance.playbackTabActive || instance.playbackIntent || instance.playing else {
+                continue
+            }
             instance.watchHistoryReporter.flush()
             instance.playbackTabActive = false
             if let state = instance.qualitySwitchState {
@@ -260,11 +276,12 @@ extension AppModel {
             instance.liveSession?.suspend()
             instance.officialWebView?.evaluateJavaScript("window.biliPlayer?.pause()")
             instance.playbackIntent = false
-            instance.playing = false
+            if instance.playing { instance.playing = false }
         }
     }
 
     func releasePlaybackTab(_ id: String) {
+        cancelTabPreload(id)
         playbackInstances[id]?.browseTask?.cancel()
         playbackInstances[id]?.officialWebView?.evaluateJavaScript("window.biliPlayer?.pause()")
         playbackInstances[id]?.stopMedia()
@@ -294,7 +311,7 @@ extension AppModel {
         instance.$toast.dropFirst().sink { [weak self] value in
             if let value { self?.toast = value }
         }.store(in: &subscriptions)
-        instance.$playing.dropFirst().sink { [weak self] _ in
+        instance.$playing.removeDuplicates().dropFirst().sink { [weak self] _ in
             self?.objectWillChange.send()
         }.store(in: &subscriptions)
         instance.$liveSession.dropFirst().sink { [weak self] _ in
@@ -382,7 +399,9 @@ extension AppModel {
         instance.menu = menu
         selected = id
         instance.playbackTabActive = true
-        instance.activate(id, force: force, autoplay: autoplay)
+        instance.activate(
+            id, force: force || (instance.playerError != nil && !instance.videoLoading),
+            autoplay: autoplay)
     }
 
 }

@@ -196,11 +196,13 @@ struct WindowBackdrop: NSViewRepresentable {
 // events also cover child controls, where SwiftUI hover regions can lose events.
 struct DrawerPointerTracker: NSViewRepresentable {
     var externalWidth: CGFloat
+    var enabled = true
     var onPosition: (NSPoint?) -> Void
     func makeNSView(context: Context) -> Tracker { Tracker(onPosition: onPosition) }
     func updateNSView(_ view: Tracker, context: Context) {
         view.onPosition = onPosition
         view.externalWidth = externalWidth
+        view.enabled = enabled
     }
     static func dismantleNSView(_ view: Tracker, coordinator: ()) { view.stop() }
     final class Tracker: NSView {
@@ -209,6 +211,13 @@ struct DrawerPointerTracker: NSViewRepresentable {
         private var monitor: Any?
         private var area: NSTrackingArea?
         private var timer: Timer?
+        var enabled = true {
+            didSet {
+                guard enabled != oldValue else { return }
+                updateMonitoring()
+                updateTrackingAreas()
+            }
+        }
         init(onPosition: @escaping (NSPoint?) -> Void) {
             self.onPosition = onPosition
             super.init(frame: .zero)
@@ -217,8 +226,11 @@ struct DrawerPointerTracker: NSViewRepresentable {
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            updateMonitoring()
+        }
+        private func updateMonitoring() {
             stop()
-            guard let window else { return }
+            guard enabled, let window else { return }
             window.acceptsMouseMovedEvents = true
             let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
                 self?.samplePointer()
@@ -244,6 +256,7 @@ struct DrawerPointerTracker: NSViewRepresentable {
         // Sampling also observes the position just outside the window, where
         // AppKit no longer delivers mouseMoved to this window.
         private func samplePointer() {
+            guard enabled else { return }
             guard let window, window.isKeyWindow, NSApp.isActive else {
                 onPosition(nil)
                 return
@@ -253,6 +266,8 @@ struct DrawerPointerTracker: NSViewRepresentable {
         override func updateTrackingAreas() {
             super.updateTrackingAreas()
             if let area { removeTrackingArea(area) }
+            area = nil
+            guard enabled else { return }
             let next = NSTrackingArea(
                 rect: .zero,
                 options: [.activeInKeyWindow, .inVisibleRect, .mouseEnteredAndExited, .mouseMoved],

@@ -22,6 +22,54 @@ private func recoveryFixture(
 }
 
 @MainActor
+@Test func prematureEndRefreshesBeforeOldBackupsAndCanReopenTheSameURL() async throws {
+    let fixture = try recoveryFixture()
+    var loads: [String] = []
+    var phases: [String] = []
+    var requests = 0
+    let recovery = PlaybackRecovery(
+        playback: fixture,
+        fetch: { options in
+            requests += 1
+            #expect(options.allowAV1 && options.allowHEVC && options.preferDASH)
+            return fixture
+        },
+        load: { source, _, phase in
+            loads.append(source.video.host ?? "")
+            phases.append(phase)
+        }, onState: { _, _ in }, delay: { _ in })
+    try recovery.start()
+    recovery.loaded()
+    recovery.failed(code: -13, message: "premature EOF", refreshFirst: true)
+    recovery.failed(code: -13, message: "duplicate polling", refreshFirst: true)
+    await recovery.waitForRecovery()
+    #expect(requests == 1)
+    #expect(loads == ["primary.example", "primary.example"])
+    #expect(phases == ["initial", "refresh-after-eof"])
+}
+
+@MainActor
+@Test func repeatedPrematureEndsRemainBounded() async throws {
+    let fixture = try recoveryFixture()
+    var requests = 0
+    var errors = 0
+    let recovery = PlaybackRecovery(
+        playback: fixture, limit: 3,
+        fetch: { _ in
+            requests += 1
+            return fixture
+        }, load: { _, _, _ in },
+        onState: { _, error in if error != nil { errors += 1 } }, delay: { _ in })
+    try recovery.start()
+    for _ in 0..<10 {
+        recovery.loaded()
+        recovery.failed(code: -13, message: "premature EOF", refreshFirst: true)
+        await recovery.waitForRecovery()
+    }
+    #expect(recovery.attempts == 3 && requests == 2 && errors == 1 && recovery.cancelled)
+}
+
+@MainActor
 @Test func recoveryDeduplicatesFailureAndRotatesSources() async throws {
     var loads: [String] = []
     var requests = 0

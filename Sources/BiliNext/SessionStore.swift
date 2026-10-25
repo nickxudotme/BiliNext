@@ -1,7 +1,7 @@
 import BiliNextCore
 import Foundation
 
-struct SessionTab: Identifiable, Codable {
+struct SessionTab: Identifiable, Codable, Equatable {
     var id: String { video.bvid }
     var video: Video
     var cid: Int64?

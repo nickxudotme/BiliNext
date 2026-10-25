@@ -17,6 +17,7 @@ final class AppModelServices {
     let subtitleLoader: (SubtitleTrack) async throws -> [Cue]
     let subtitlePreferences: UserDefaults
     let historyStoreURL: URL?
+    let playerFactory: () throws -> MPVPlayer
 
     /// Weak callbacks keep account identity and history refresh tied to the owning workspace.
     weak var owner: AppModel?
@@ -63,7 +64,8 @@ final class AppModelServices {
         profileLoader: (() async throws -> UserProfile)?,
         favoriteFolderLoader: ((Int64) async throws -> [FavoriteFolder])?,
         subtitleLoader: ((SubtitleTrack) async throws -> [Cue])?,
-        subtitlePreferences: UserDefaults, historyStoreURL: URL?
+        subtitlePreferences: UserDefaults, historyStoreURL: URL?,
+        playerFactory: (() throws -> MPVPlayer)? = nil
     ) {
         #if DEBUG
             let resolvedAPI = api ?? BilibiliAPI(credentialStorage: .developmentFile)
@@ -71,6 +73,7 @@ final class AppModelServices {
             let resolvedAPI = api ?? BilibiliAPI()
         #endif
         self.api = resolvedAPI
+        self.playerFactory = playerFactory ?? { try MPVPlayer() }
         self.sessionStore = sessionStore
         self.downloads = downloads ?? DownloadManager()
         self.hoverPreview = hoverPreview ?? HoverPreview(api: resolvedAPI)

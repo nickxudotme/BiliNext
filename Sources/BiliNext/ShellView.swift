@@ -74,10 +74,10 @@ struct ShellView: View {
                             .allowsHitTesting(model.selected == tab.id)
                             .accessibilityHidden(model.selected != tab.id)
                     } else {
-                        PlaybackView(
+                        PlaybackTabHost(
                             model: instance, navigationOverlayVisible: !pinned && revealed,
                             miniPlayer: model.miniPlayer, windowPinned: model.windowPinned,
-                            isActive: model.selected == tab.id
+                            isActive: model.selected == tab.id, onExitCommand: exitPlayback
                         )
                         .developmentFeedbackTarget(
                             "playback.\(tab.id)", label: "播放页", isActive: model.selected == tab.id
@@ -148,21 +148,23 @@ struct ShellView: View {
             }
             .overlayPreferenceValue(TabRowAnchorKey.self) { anchors in
                 GeometryReader { proxy in
-                    if let id = tabPreview.tabID, id != model.selected, !model.miniPlayer,
+                    if let id = tabPreview.tabID, !model.miniPlayer,
                         MemberSpace.mid(id) == nil, SearchResultsTab.keyword(id) == nil,
                         pinned || revealed, let anchor = anchors[id],
                         let tab = model.tabs.first(where: { $0.id == id })
                     {
                         let row = proxy[anchor]
                         let height = TabPreviewCard.width * 9 / 16 + 86
-                        TabPreviewCard(tab: tab)
-                            .position(
-                                x: row.maxX + 14 + TabPreviewCard.width / 2,
-                                y: min(
-                                    max(row.midY, height / 2 + 12),
-                                    proxy.size.height - height / 2 - 12)
-                            )
-                            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                        TabPreviewCard(
+                            tab: tab, preparedCover: tabPreview.cover(for: tab.video.cover)
+                        )
+                        .position(
+                            x: row.maxX + 14 + TabPreviewCard.width / 2,
+                            y: min(
+                                max(row.midY, height / 2 + 12),
+                                proxy.size.height - height / 2 - 12)
+                        )
+                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
                     }
                 }
                 .animation(Motion.quick(reduceMotion), value: tabPreview.tabID)
@@ -181,15 +183,7 @@ struct ShellView: View {
                 revealed = false
                 pointerZone = -1
             }
-            .onExitCommand {
-                if model.miniPlayer {
-                    model.toggleMiniPlayer()
-                    return
-                }
-                revealTask?.cancel()
-                hideTask?.cancel()
-                if !pinned { revealed = false }
-            }
+            .onExitCommand(perform: exitPlayback)
             .onDisappear {
                 revealTask?.cancel()
                 hideTask?.cancel()
@@ -212,6 +206,16 @@ struct ShellView: View {
                 DownloadsView(manager: model.downloads, model: model)
             }
             .sheet(isPresented: $model.loginPresented) { LoginView(model: model) }
+    }
+
+    private func exitPlayback() {
+        if model.miniPlayer {
+            model.toggleMiniPlayer()
+            return
+        }
+        revealTask?.cancel()
+        hideTask?.cancel()
+        if !pinned { revealed = false }
     }
 
     private var sidebar: some View {

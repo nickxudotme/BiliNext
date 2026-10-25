@@ -8,7 +8,11 @@ extension AppModel {
     // MARK: - Login
 
     func loggedIn() async {
+        saveSession()
+        let resumePreloads = tabPreloadsEnabled
+        cancelAllTabPreloads()
         accountGeneration = UUID()
+        for id in Array(playbackInstances.keys) { releasePlaybackTab(id) }
         resetFavoriteFolderPreload()
         let account = accountGeneration
         let loadedProfile = try? await api.profile()
@@ -26,10 +30,14 @@ extension AppModel {
         preloadFavoriteFolders()
         loginPresented = false
         refresh()
+        if resumePreloads { startTabPreloads() }
     }
     func logout() async {
         do {
             try await api.logout()
+            saveSession()
+            let resumePreloads = tabPreloadsEnabled
+            cancelAllTabPreloads()
             accountGeneration = UUID()
             resetFavoriteFolderPreload()
             profile = nil
@@ -48,6 +56,7 @@ extension AppModel {
             stopMedia()
             selected = nil
             refresh()
+            if resumePreloads { startTabPreloads() }
         } catch { browseError = error.localizedDescription }
     }
 }

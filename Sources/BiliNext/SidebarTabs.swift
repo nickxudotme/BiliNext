@@ -10,7 +10,14 @@ struct SidebarTabList: View {
     /// The pointer is over the sidebar, which reveals the clear action.
     let sidebarHovered: Bool
     let preview: TabHoverPreview
+    @AppStorage(Preferences.sidebarVideoThumbnails) private var showVideoThumbnails = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var previewCoverURLs: [URL] {
+        model.tabs.filter {
+            MemberSpace.mid($0.id) == nil && SearchResultsTab.keyword($0.id) == nil
+        }.compactMap(\.video.cover)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -39,7 +46,7 @@ struct SidebarTabList: View {
                             tab: tab, selected: model.selected == tab.id,
                             playing: model.isPlaying(tab.id),
                             unseen: model.unseenTabs.contains(tab.id), model: model,
-                            preview: preview
+                            preview: preview, showVideoThumbnails: showVideoThumbnails
                         )
                         .transition(.move(edge: .top).combined(with: .opacity))
                     }
@@ -69,6 +76,9 @@ struct SidebarTabList: View {
             }
         }
         .animation(Motion.standard(reduceMotion), value: model.closed.isEmpty)
+        .task(id: previewCoverURLs) {
+            await preview.preloadCovers(urls: previewCoverURLs)
+        }
     }
 }
 
@@ -79,6 +89,7 @@ private struct SidebarTabRow: View {
     let unseen: Bool
     @ObservedObject var model: AppModel
     let preview: TabHoverPreview
+    let showVideoThumbnails: Bool
     @State private var hovered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -93,7 +104,7 @@ private struct SidebarTabRow: View {
     var body: some View {
         Button {
             preview.dismiss()
-            model.activate(tab.id, autoplay: true)
+            model.selectTab(tab.id)
         } label: {
             HStack(spacing: 9) {
                 cover
@@ -178,7 +189,7 @@ private struct SidebarTabRow: View {
         } else if space {
             AvatarView(url: tab.video.avatar).frame(width: 22, height: 22)
                 .frame(width: 38, height: 22)
-        } else {
+        } else if showVideoThumbnails {
             videoCover
         }
     }

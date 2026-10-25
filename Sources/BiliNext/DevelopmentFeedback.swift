@@ -108,6 +108,15 @@ import SwiftUI
             if let mpv = pageModel.mpv {
                 values["mpv.loaded"] = String(mpv.loaded)
                 values["mpv.failure"] = mpv.failure ?? ""
+                values["mpv.prematureEnd"] = String(mpv.prematureEnd)
+                if let cache = mpv.cacheSnapshot {
+                    values["mpv.cache.eof"] = String(cache.eof)
+                    values["mpv.cache.end"] = cache.end.map { String($0) } ?? "unavailable"
+                    values["mpv.cache.videoEnd"] =
+                        cache.videoEnd.map { String($0) } ?? "unavailable"
+                    values["mpv.cache.audioEnd"] =
+                        cache.audioEnd.map { String($0) } ?? "unavailable"
+                }
                 values["mpv.context"] = mpv.diagnosticContext?.summary ?? ""
                 for property in [
                     "time-pos", "duration", "volume", "speed", "video-params/w", "video-params/h",
