@@ -99,29 +99,40 @@ extension AppModel {
     }
 
     func triple() {
-        guard let video = writableVideo(allowEpisodes: false), let aid = video.aid else { return }
+        guard let video = writableVideo(allowEpisodes: false), let aid = video.aid,
+            let userID = profile?.id
+        else { return }
         let before = relation
         write(video) {
-            let result = try await self.api.tripleVideo(aid: aid)
+            let result = try await self.api.tripleVideo(aid: aid, expectedUserID: userID)
             return { self.applyTriple(result, before: before) }
         }
     }
 
     private func applyTriple(_ result: VideoRelation, before: VideoRelation) {
         relation.liked = before.liked || result.liked
-        relation.coins = max(before.coins, result.coins)
+        relation.coins = min(2, before.coins + result.coins)
         relation.favorited = before.favorited || result.favorited
         adjustStats { stats in
             if result.liked && !before.liked { stats.likes = stats.likes.map { $0 + 1 } }
-            if result.coins > before.coins {
-                stats.coins = stats.coins.map { $0 + result.coins - before.coins }
+            if relation.coins > before.coins {
+                stats.coins = stats.coins.map { $0 + relation.coins - before.coins }
             }
             if result.favorited && !before.favorited {
                 stats.favorites = stats.favorites.map { $0 + 1 }
             }
         }
-        tripleCount += 1
-        toast = "三连成功"
+        let missing = [
+            relation.liked ? nil : "点赞未成功",
+            relation.coins > 0 ? nil : "投币未成功",
+            relation.favorited ? nil : "收藏未成功",
+        ].compactMap { $0 }
+        if missing.isEmpty {
+            tripleCount += 1
+            toast = "三连成功"
+        } else {
+            toast = "三连未全部完成：" + missing.joined(separator: "、")
+        }
     }
 
     /// Runs one write. Starting it discards any read still in flight; the returned update

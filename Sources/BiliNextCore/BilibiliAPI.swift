@@ -3,6 +3,8 @@ import Security
 
 public enum CredentialStorage: Sendable {
     case keychain
+    /// Anonymous clients and fixtures must never read or clear the user's login.
+    case ephemeral
     #if DEBUG
         case developmentFile
     #endif
@@ -27,16 +29,17 @@ public actor BilibiliAPI {
     }
     private var signingKey: SigningKey?
     private let credentialStorage: CredentialStorage
-    public init(restoreSession: Bool = true, credentialStorage: CredentialStorage = .keychain) {
+    public init(restoreSession: Bool = true, credentialStorage: CredentialStorage? = nil) {
         self.init(
             restoreSession: restoreSession, credentialStorage: credentialStorage,
             sessionConfiguration: .ephemeral)
     }
     init(
-        restoreSession: Bool, credentialStorage: CredentialStorage = .keychain,
+        restoreSession: Bool, credentialStorage: CredentialStorage? = nil,
         sessionConfiguration: URLSessionConfiguration
     ) {
-        self.credentialStorage = credentialStorage
+        let storage = credentialStorage ?? (restoreSession ? .keychain : .ephemeral)
+        self.credentialStorage = storage
         let config = sessionConfiguration.copy() as! URLSessionConfiguration
         config.timeoutIntervalForRequest = 20
         config.httpAdditionalHeaders = [
@@ -46,8 +49,9 @@ public actor BilibiliAPI {
         session = URLSession(configuration: config)
         var saved: Data?
         if restoreSession {
-            switch credentialStorage {
+            switch storage {
             case .keychain: saved = Self.readCredential()
+            case .ephemeral: break
             #if DEBUG
                 case .developmentFile:
                     saved = try? DevelopmentSessionStore.current.read()
@@ -108,6 +112,7 @@ public actor BilibiliAPI {
         return result as? Data
     }
     private func saveCredential() throws {
+        if case .ephemeral = credentialStorage { return }
         let records = (cookieJar.cookies ?? []).filter {
             $0.domain == "bilibili.com" || $0.domain.hasSuffix(".bilibili.com")
         }.map(CookieRecord.init)
@@ -132,6 +137,11 @@ public actor BilibiliAPI {
         }
     }
     public func logout() throws {
+        if case .ephemeral = credentialStorage {
+            for cookie in cookieJar.cookies ?? [] { cookieJar.deleteCookie(cookie) }
+            signingKey = nil
+            return
+        }
         #if DEBUG
             if case .developmentFile = credentialStorage {
                 try DevelopmentSessionStore.current.clear()
@@ -399,18 +409,21 @@ public actor BilibiliAPI {
             "/x/web-interface/popular", params: ["pn": "\(page)", "ps": "20"])
         return (d["list"] as? [[String: Any]] ?? []).compactMap(video)
     }
-    /// Acquires the public buvid3 browser identifier that search and space pages expect.
+    /// Acquires the server-issued browser identifier used by web reads and interactions.
     func ensureBrowserIdentifier() async throws {
-        guard !(cookieJar.cookies ?? []).contains(where: { $0.name == "buvid3" }) else { return }
+        guard
+            !(cookieJar.cookies ?? []).contains(where: {
+                $0.name == "buvid3" && !$0.value.isEmpty
+            })
+        else { return }
         let identifiers = try await request("/x/frontend/finger/spi")
-        if let id = identifiers["b_3"] as? String,
+        guard let id = identifiers["b_3"] as? String, !id.isEmpty,
             let c = HTTPCookie(properties: [
                 .name: "buvid3", .value: id, .domain: ".bilibili.com", .path: "/",
                 .secure: "TRUE",
             ])
-        {
-            cookieJar.setCookie(c)
-        }
+        else { throw APIError(code: -1, message: "无法准备 B 站浏览器标识，请稍后重试") }
+        cookieJar.setCookie(c)
     }
     public func search(_ keyword: String, page: Int = 1, order: String = "totalrank") async throws
         -> [Video]

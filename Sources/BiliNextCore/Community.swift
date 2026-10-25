@@ -279,14 +279,18 @@ extension BilibiliAPI {
         VideoRelation(
             try await request("/x/web-interface/archive/relation", params: ["bvid": bvid]))
     }
-    /// 一键三连: like, two coins where allowed, and favorite to the default folder.
-    public func tripleVideo(aid: Int64) async throws -> VideoRelation {
+    /// The coin count is newly added coins, not the viewer's total for the video.
+    public func tripleVideo(aid: Int64, expectedUserID: Int64? = nil) async throws -> VideoRelation
+    {
+        guard aid > 0 else { throw APIError(code: -1, message: "视频参数无效") }
+        try await ensureBrowserIdentifier()
         let data = try await request(
-            "/x/web-interface/archive/like/triple", form: ["aid": String(aid)])
+            "/x/web-interface/archive/like/triple", form: ["aid": String(aid)],
+            expectedUserID: expectedUserID)
         return VideoRelation(
             liked: data["like"] as? Bool ?? false,
-            coins: (data["multiply"] as? NSNumber)?.intValue
-                ?? (data["coin"] as? Bool == true ? 1 : 0),
+            coins: data["coin"] as? Bool == true
+                ? max(0, min(2, (data["multiply"] as? NSNumber)?.intValue ?? 1)) : 0,
             favorited: data["fav"] as? Bool ?? false)
     }
     public func likeVideo(bvid: String, liked: Bool) async throws {
