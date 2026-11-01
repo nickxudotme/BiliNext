@@ -16,6 +16,8 @@ struct BrowsePageRequest: Sendable {
     var page: Int
     var offset: String?
     var reloadFolders: Bool
+    var searchDuration = 0
+    var searchDays = 0
 
     var usesCursor: Bool {
         destination == .dynamic || (destination == .history && libraryKeyword.isEmpty)
@@ -28,7 +30,7 @@ struct BrowsePageRequest: Sendable {
     var cacheKey: String {
         switch destination {
         case .favorites: "收藏:\(folderID):\(libraryKeyword):\(favoriteOrder)"
-        case .search: "搜索:\(keyword):\(searchOrder)"
+        case .search: "搜索:\(keyword):\(searchOrder):\(searchDuration):\(searchDays)"
         case .home: "首页:\(homeSection)"
         case .history: "历史:\(libraryKeyword)"
         case .dynamic, .watchLater: destination.rawValue
@@ -140,6 +142,7 @@ extension AppModel {
             open(Video(bvid: bvid, title: bvid))
             return
         }
+        services.searchHistory.remember(keyword)
         open(Video(bvid: SearchResultsTab.id(keyword), title: "搜索：" + keyword))
     }
 
@@ -204,6 +207,8 @@ extension AppModel {
             libraryKeyword: libraryKeyword, favoriteOrder: favoriteOrder, searchOrder: searchOrder,
             memberID: profile?.id, folderID: folderID, page: 1, offset: more ? offset : nil,
             reloadFolders: !more)
+        request.searchDuration = searchDuration
+        request.searchDays = searchDays
         if more {
             if let context = browseContext {
                 request = context
@@ -390,7 +395,8 @@ extension AppModel {
             return BrowsePageResult(videos: feed.videos, next: feed.next)
         case .search:
             let videos = try await api.search(
-                request.keyword, page: request.page, order: request.searchOrder)
+                request.keyword, page: request.page, order: request.searchOrder,
+                options: SearchOptions(duration: request.searchDuration, days: request.searchDays))
             return BrowsePageResult(
                 videos: videos, next: videos.isEmpty ? nil : String(request.page + 1))
         case .home:

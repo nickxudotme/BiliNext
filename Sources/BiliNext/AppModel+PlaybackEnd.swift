@@ -23,6 +23,15 @@ enum PlaybackEndAction: String, CaseIterable {
 extension AppModel {
     /// Moves on when the current media ends, following 设置 · 播完后.
     func playbackEnded() {
+        if isLocalMedia {
+            playbackIntent = false
+            if Preferences.endAction == .loop {
+                seek(0)
+                playbackIntent = true
+                startBufferedPlayback()
+            }
+            return
+        }
         guard liveSession == nil, !officialCore, let detail else { return }
         // EOF pauses the engine. Clear the old intent too, so the visible play button
         // resumes on its first click when there is no next item. Continuing sets it again.

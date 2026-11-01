@@ -43,6 +43,10 @@ extension AppModel {
         }
         guard tabs.contains(where: { $0.id == id }) else { return }
         tabLoadStarted = true
+        if tabs.first(where: { $0.id == id })?.localMedia != nil {
+            activateLocalMedia(id, force: force, autoplay: autoplay)
+            return
+        }
         if let keyword = SearchResultsTab.keyword(id) {
             menu = .search
             selected = nil
@@ -276,7 +280,7 @@ extension AppModel {
         }
     }
 
-    private func ensureMPV() throws -> MPVPlayer {
+    func ensureMPV() throws -> MPVPlayer {
         if let mpv { return mpv }
         let core = try services.playerFactory()
         core.isForeground = playbackTabActive
@@ -285,6 +289,7 @@ extension AppModel {
         core.onUpdate = { [weak self, weak core] time, duration, playing, buffering in
             guard let self, let core, !self.officialCore else { return }
             if let failure = core.failure {
+                if self.isLocalMedia { self.playerError = failure }
                 self.playbackRecovery?.failed(
                     code: core.failureCode, message: failure, refreshFirst: core.prematureEnd)
                 let recovering = self.playbackRecovery?.recovering == true
@@ -330,6 +335,7 @@ extension AppModel {
     }
 
     func cancelPlaybackRecovery() {
+        mpv?.refreshDurationProbeSources = nil
         awaitingMPVLoad = false
         playbackRecovery?.cancel()
         playbackRecovery = nil
@@ -347,19 +353,20 @@ extension AppModel {
         let cid = pageID
         let episodeID = detail?.video.episodeID
         let session = UUID()
+        let fetch: (PlaybackRecovery.Options) async throws -> Playback = { [weak self] options in
+            guard let self, self.recoveryGeneration == request, self.videoGeneration == video,
+                self.mediaID == id, self.pageID == cid, let id, let cid, !self.officialCore
+            else { throw CancellationError() }
+            return try await self.api.playback(
+                bvid: id, cid: cid, quality: requestedQuality,
+                episodeID: episodeID, preferDASH: options.preferDASH,
+                allowAV1: options.allowAV1, allowHEVC: options.allowHEVC,
+                codecs: Preferences.codecOrder, losslessAudio: Preferences.losslessAudio
+            ).preferringMirror(Preferences.mirrorHost)
+        }
         let recovery = PlaybackRecovery(
             playback: source,
-            fetch: { [weak self] options in
-                guard let self, self.recoveryGeneration == request, self.videoGeneration == video,
-                    self.mediaID == id, self.pageID == cid, let id, let cid, !self.officialCore
-                else { throw CancellationError() }
-                return try await self.api.playback(
-                    bvid: id, cid: cid, quality: requestedQuality,
-                    episodeID: episodeID, preferDASH: options.preferDASH,
-                    allowAV1: options.allowAV1, allowHEVC: options.allowHEVC,
-                    codecs: Preferences.codecOrder, losslessAudio: Preferences.losslessAudio
-                ).preferringMirror(Preferences.mirrorHost)
-            },
+            fetch: fetch,
             load: { [weak self, weak core] candidate, attempt, phase in
                 guard let self, let core, self.recoveryGeneration == request,
                     self.videoGeneration == video, self.mediaID == id, self.pageID == cid,
@@ -372,6 +379,20 @@ extension AppModel {
                 self.awaitingMPVLoad = true
                 self.startup?.mark(
                     "mpv load", "\(phase) #\(attempt) \(candidate.playback.quality)")
+                core.refreshDurationProbeSources = {
+                    let codec = candidate.playback.videoStream?.codec ?? ""
+                    let fresh = try await fetch(
+                        PlaybackRecovery.Options(
+                            allowAV1: codec.hasPrefix("av01."),
+                            allowHEVC: codec.hasPrefix("hev1.") || codec.hasPrefix("hvc1.")))
+                    guard fresh.qualityID == candidate.playback.qualityID,
+                        fresh.videoStream?.codec == candidate.playback.videoStream?.codec,
+                        fresh.audioStream?.codec == candidate.playback.audioStream?.codec,
+                        let video = fresh.videoStream?.urls.first,
+                        let audio = fresh.audioStream?.urls.first
+                    else { throw MPVError(message: "无法确认独立音视频流时长") }
+                    return (video, audio)
+                }
                 core.speed = self.playbackRate
                 try core.load(
                     candidate.playback, position: self.recoveryPosition,
@@ -550,7 +571,7 @@ extension AppModel {
         if mpv == nil && playing { player.rate = Float(value) }
     }
     func updateDanmaku() {
-        guard !officialCore else { return }
+        guard !officialCore, !isLocalMedia else { return }
         danmaku.update(time: time, duration: duration, api: api)
     }
     func isPlaying(_ id: String) -> Bool {

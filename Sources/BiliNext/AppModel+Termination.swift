@@ -2,11 +2,14 @@ import Foundation
 
 extension AppModel {
     func prepareForTermination(timeout: TimeInterval = 2) async {
+        downloads.pauseAll()
         cancelAllTabPreloads()
         saveSession()
         let instances = Array(playbackInstances.values) + [self]
         for instance in instances {
-            if !instance.officialCore, let id = instance.mediaID, let cid = instance.pageID {
+            if !instance.isLocalMedia, !instance.officialCore, let id = instance.mediaID,
+                let cid = instance.pageID
+            {
                 let position: Double
                 if let mpv = instance.mpv {
                     position =

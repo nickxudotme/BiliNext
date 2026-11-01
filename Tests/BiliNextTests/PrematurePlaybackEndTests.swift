@@ -60,8 +60,11 @@ func networkPreloadContinuesBeyondItsInitialVideoBuffer() async throws {
 }
 
 @MainActor
-@Test(arguments: [false, true], [false, true])
-func truncatedDASHTrackRefreshesAndKeepsIntent(autoplay: Bool, truncatedAudio: Bool) async throws {
+@Test(arguments: [false, true], [(false, false), (false, true), (true, false), (true, true)])
+func truncatedDASHTrackRefreshesAndKeepsIntent(
+    autoplay: Bool, scenario: (truncatedAudio: Bool, failedEvidence: Bool)
+) async throws {
+    let (truncatedAudio, failedEvidence) = scenario
     let fixture = try truncatedFixture()
     defer { try? FileManager.default.removeItem(at: fixture.folder) }
     let audio = fixture.folder.appendingPathComponent("audio.m4a")
@@ -88,7 +91,18 @@ func truncatedDASHTrackRefreshesAndKeepsIntent(autoplay: Bool, truncatedAudio: B
                 initialization: 0...1, index: 2...3))
     }
     let fresh = source(fixture.full, audio: audio)
-    let core = try MPVPlayer(videoOutput: "null")
+    var probes = 0
+    var evidenceRefreshes = 0
+    let core = try MPVPlayer(
+        videoOutput: "null",
+        sourceDuration: { url in
+            probes += 1
+            return failedEvidence && probes == 1 ? nil : await MediaSourceDuration.load(url)
+        })
+    core.refreshDurationProbeSources = {
+        evidenceRefreshes += 1
+        return (fixture.full, audio)
+    }
     core.muted = true
     core.isForeground = false
     core.speed = 2
@@ -131,6 +145,7 @@ func truncatedDASHTrackRefreshesAndKeepsIntent(autoplay: Bool, truncatedAudio: B
     for _ in 0..<100 where gate == nil { try await Task.sleep(for: .milliseconds(30)) }
     let resume = try #require(gate)
     #expect(core.prematureEnd && core.flag("pause"))
+    #expect(evidenceRefreshes == (failedEvidence ? 1 : 0))
     if truncatedAudio {
         #expect((core.cacheSnapshot?.audioEnd ?? 0) < 10)
         #expect((core.cacheSnapshot?.videoEnd ?? 0) > 19)
@@ -256,6 +271,146 @@ func completeShortTracksDoNotTriggerRecovery(track: String) async throws {
         try await Task.sleep(for: .milliseconds(50))
     }
     #expect(core.ended && core.failure == nil && !core.prematureEnd)
+}
+
+@MainActor
+@Test(arguments: [false, true])
+func failedDurationProbeRefreshesEvidenceWithoutMisclassifyingShortTracks(completeShort: Bool)
+    async throws
+{
+    let fixture = try durationEvidenceFixture(completeShort: completeShort)
+    defer { try? FileManager.default.removeItem(at: fixture.folder) }
+    var probes: [URL] = []
+    var refreshes = 0
+    let core = try MPVPlayer(
+        videoOutput: "null",
+        sourceDuration: { url in
+            probes.append(url)
+            return url == fixture.video ? nil : await MediaSourceDuration.load(url)
+        })
+    core.muted = true
+    core.refreshDurationProbeSources = {
+        refreshes += 1
+        return (fixture.evidence, fixture.audio)
+    }
+    defer { core.stop() }
+    try core.load(fixture.source, position: 0, autoplay: false)
+    for _ in 0..<150
+    where core.durationProbeAttempts < 2
+        || core.sourceDurationSummary.contains("pending=true")
+    {
+        try await Task.sleep(for: .milliseconds(30))
+    }
+    #expect(refreshes == 1 && probes == [fixture.video, fixture.evidence])
+    #expect(core.prematureEnd == !completeShort)
+    #expect((core.failure != nil) == !completeShort)
+    #expect(core.flag("pause") && !core.ended)
+}
+
+@MainActor
+@Test(arguments: [false, true])
+func unknownDurationEvidenceIsBoundedAndDoesNotInventTruncation(refreshFails: Bool) async throws {
+    let fixture = try durationEvidenceFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.folder) }
+    var probes = 0
+    var refreshes = 0
+    let core = try MPVPlayer(
+        videoOutput: "null",
+        sourceDuration: { _ in
+            probes += 1
+            return nil
+        })
+    core.muted = true
+    core.refreshDurationProbeSources = {
+        refreshes += 1
+        if refreshFails { throw MPVError(message: "offline") }
+        return (fixture.evidence, fixture.audio)
+    }
+    defer { core.stop() }
+    try core.load(fixture.source, position: 0, autoplay: false)
+    for _ in 0..<150 where probes < 3 || core.sourceDurationSummary.contains("pending=true") {
+        try await Task.sleep(for: .milliseconds(30))
+    }
+    try await Task.sleep(for: .milliseconds(300))
+    #expect(probes == 3 && refreshes == 1)
+    #expect(core.failure == nil && !core.prematureEnd)
+    #expect(core.sourceDurationSummary.contains("pending=false"))
+}
+
+@MainActor
+@Test(arguments: [false, true])
+func replacedOrStoppedSourceRejectsLateDurationEvidence(stop: Bool) async throws {
+    let fixture = try durationEvidenceFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.folder) }
+    var gate: CheckedContinuation<(video: URL, audio: URL?), Error>?
+    var probes = 0
+    let core = try MPVPlayer(
+        videoOutput: "null",
+        sourceDuration: { _ in
+            probes += 1
+            return probes == 1 ? nil : 20
+        })
+    core.muted = true
+    core.refreshDurationProbeSources = {
+        try await withCheckedThrowingContinuation { gate = $0 }
+    }
+    defer { core.stop() }
+    try core.load(fixture.source, position: 0, autoplay: false)
+    for _ in 0..<100 where gate == nil {
+        try await Task.sleep(for: .milliseconds(30))
+    }
+    let pending = try #require(gate)
+    if stop {
+        core.stop()
+    } else {
+        try core.load(
+            Playback(
+                url: fixture.evidence, quality: "test", qualityID: 80, qualities: [],
+                videoStream: nil, audioStream: nil), position: 0, autoplay: false)
+    }
+    gate = nil
+    pending.resume(returning: (fixture.evidence, fixture.audio))
+    try await Task.sleep(for: .milliseconds(500))
+    #expect(probes == 1 && core.durationProbeAttempts == 0)
+    #expect(core.failure == nil && !core.prematureEnd)
+    #expect(core.sourceDurationSummary.contains("video=unknown"))
+}
+
+private func durationEvidenceFixture(completeShort: Bool = false) throws -> (
+    folder: URL, source: Playback, video: URL, evidence: URL, audio: URL
+) {
+    let fixture = try truncatedFixture()
+    let short = fixture.folder.appendingPathComponent("complete-short.mp4")
+    let encoder = Process()
+    encoder.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/ffmpeg")
+    encoder.arguments = [
+        "-v", "error", "-i", fixture.full.path, "-t", "6", "-c", "copy",
+        "-movflags", "+faststart", short.path,
+    ]
+    try encoder.run()
+    encoder.waitUntilExit()
+    try #require(encoder.terminationStatus == 0)
+    let video = completeShort ? short : fixture.short
+    let audio = fixture.folder.appendingPathComponent("audio.m4a")
+    let audioEncoder = Process()
+    audioEncoder.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/ffmpeg")
+    audioEncoder.arguments = [
+        "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "20",
+        "-c:a", "aac", "-movflags", "+faststart", audio.path,
+    ]
+    try audioEncoder.run()
+    audioEncoder.waitUntilExit()
+    try #require(audioEncoder.terminationStatus == 0)
+    let source = Playback(
+        url: video, quality: "test", qualityID: 80, qualities: [],
+        videoStream: PlaybackStream(
+            urls: [video], codec: "avc1", bandwidth: 100000, initialization: 0...1, index: 2...3),
+        audioStream: PlaybackStream(
+            urls: [audio], codec: "mp4a", bandwidth: 64000,
+            initialization: 0...1, index: 2...3))
+    let evidence = fixture.folder.appendingPathComponent("refreshed.mp4")
+    try FileManager.default.copyItem(at: completeShort ? short : fixture.full, to: evidence)
+    return (fixture.folder, source, video, evidence, audio)
 }
 
 private func truncatedFixture() throws -> (folder: URL, full: URL, short: URL) {

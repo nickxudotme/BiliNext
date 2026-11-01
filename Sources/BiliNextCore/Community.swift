@@ -283,6 +283,9 @@ extension BilibiliAPI {
     public func tripleVideo(aid: Int64, expectedUserID: Int64? = nil) async throws -> VideoRelation
     {
         guard aid > 0 else { throw APIError(code: -1, message: "视频参数无效") }
+        if let credential = try authorizedClient(expectedUserID: expectedUserID) {
+            return try await clientTriple(aid: aid, credential: credential)
+        }
         try await ensureBrowserIdentifier()
         let data = try await request(
             "/x/web-interface/archive/like/triple", form: ["aid": String(aid)],
@@ -297,11 +300,51 @@ extension BilibiliAPI {
         _ = try await request(
             "/x/web-interface/archive/like", form: ["bvid": bvid, "like": liked ? "1" : "2"])
     }
-    public func coinVideo(bvid: String, count: Int) async throws {
+    @discardableResult public func coinVideo(bvid: String, count: Int) async throws -> Int? {
         guard (1...2).contains(count) else { throw APIError(code: -1, message: "投币数量无效") }
+        if let credential = try authorizedClient() {
+            let generation = authenticationGeneration
+            let detail = try await request("/x/web-interface/view", params: ["bvid": bvid])
+            guard generation == authenticationGeneration, let aid = detail["aid"] as? NSNumber
+            else { throw CancellationError() }
+            let before = try await request(
+                "/x/web-interface/archive/relation", params: ["aid": aid.stringValue],
+                expectedUserID: credential.accountID)
+            guard generation == authenticationGeneration, let previous = before["coin"] as? Int
+            else { throw CancellationError() }
+            guard previous + count <= 2 else {
+                throw APIError(code: -1, message: "当前投币数已变化，请刷新互动状态")
+            }
+            let root = try await clientRequest(
+                "/x/v2/view/coin/add",
+                form: [
+                    "aid": aid.stringValue, "multiply": String(count), "select_like": "0",
+                    "access_key": credential.accessToken,
+                ], writing: true)
+            guard root["code"] as? Int == 0 else {
+                throw APIError(
+                    code: root["code"] as? Int ?? -1, message: root["message"] as? String ?? "投币未成功"
+                )
+            }
+            for delay in [0, 250, 500, 1000, 2000] {
+                do {
+                    try await Task.sleep(for: .milliseconds(delay))
+                    guard generation == authenticationGeneration else { throw CancellationError() }
+                    let relation = try await request(
+                        "/x/web-interface/archive/relation", params: ["aid": aid.stringValue],
+                        expectedUserID: credential.accountID)
+                    guard generation == authenticationGeneration else { throw CancellationError() }
+                    if let coins = relation["coin"] as? Int, coins >= previous + count {
+                        return coins
+                    }
+                } catch is CancellationError { throw CancellationError() } catch {}
+            }
+            throw APIError(code: -90001, message: "投币已提交，服务器状态尚未确认，请刷新互动状态")
+        }
         _ = try await request(
             "/x/web-interface/coin/add",
             form: ["bvid": bvid, "multiply": String(count), "select_like": "0"])
+        return nil
     }
     public func related(bvid: String) async throws -> [Video] {
         // This endpoint returns an array in data; requestArray retains the common HTTP checks.

@@ -33,6 +33,12 @@ final class MPVPlayer {
     private var durationProbe: Task<Void, Never>?
     private var probedTracks = Set<SourceTrack>()
     private var sourceGeneration = UUID()
+    private let loadSourceDuration: @MainActor (URL) async -> Double?
+    var refreshDurationProbeSources: (() async throws -> (video: URL, audio: URL?))?
+    private(set) var durationProbeAttempts = 0
+    var sourceDurationSummary: String {
+        "pending=\(durationProbe != nil) attempts=\(durationProbeAttempts) video=\(trackDurations[.video].map(String.init(describing:)) ?? "unknown") audio=\(trackDurations[.audio].map(String.init(describing:)) ?? "unknown")"
+    }
     struct CacheSnapshot {
         let eof: Bool
         let end: Double?
@@ -119,7 +125,13 @@ final class MPVPlayer {
             set("speed", String(speed))
         }
     }
-    init(videoOutput: String = "libmpv") throws {
+    init(
+        videoOutput: String = "libmpv",
+        sourceDuration: @escaping @MainActor (URL) async -> Double? = {
+            await MediaSourceDuration.load($0)
+        }
+    ) throws {
+        loadSourceDuration = sourceDuration
         guard let core = mpv_create() else { throw MPVError(message: "无法创建 mpv 播放器") }
         handle = core
         let options = [
@@ -205,6 +217,13 @@ final class MPVPlayer {
             autoplay: autoplay, bufferPolicy: .onDemand, diagnostics: diagnostics)
     }
 
+    func loadFile(_ url: URL, position: Double = 0, autoplay: Bool = true) throws {
+        guard url.isFileURL else { throw MPVError(message: "离线播放需要本地文件") }
+        try loadSource(
+            url, audio: nil, position: position, autoplay: autoplay, bufferPolicy: .onDemand,
+            diagnostics: nil)
+    }
+
     func loadLive(_ url: URL, autoplay: Bool) throws {
         set("referrer", "https://live.bilibili.com/")
         try loadSource(
@@ -265,6 +284,7 @@ final class MPVPlayer {
     }
 
     func stop() {
+        refreshDurationProbeSources = nil
         resetDurationProbe()
         waitingForStart = true
         loadCommandID = 0
@@ -416,20 +436,58 @@ final class MPVPlayer {
         guard !sources.isEmpty else { return }
         probedTracks.formUnion(sources.keys)
         let request = sourceGeneration
+        let probe = loadSourceDuration
+        let refresh = refreshDurationProbeSources
         durationProbe = Task { [weak self] in
-            let durations = await withTaskGroup(of: (SourceTrack, Double?).self) { group in
-                for (track, url) in sources {
-                    group.addTask { (track, await MediaSourceDuration.load(url)) }
+            var pending = sources
+            var durations: [SourceTrack: Double] = [:]
+            // Unknown is not evidence of a short track. A sleeping Mac can lose
+            // the connection and its signed URL, so retry evidence with fresh
+            // addresses before deciding whether this is a legitimate short track.
+            for attempt in 1...3 {
+                if attempt > 1 {
+                    do { try await Task.sleep(for: .seconds(1)) } catch { return }
                 }
-                var result: [SourceTrack: Double] = [:]
-                for await (track, length) in group {
-                    if let length { result[track] = length }
+                if attempt == 2, let refresh {
+                    do {
+                        let fresh = try await refresh()
+                        for track in pending.keys {
+                            pending[track] = track == .video ? fresh.video : fresh.audio
+                        }
+                    } catch is CancellationError {
+                        break
+                    } catch {
+                        // A transient API failure still permits a bounded retry
+                        // of the original source; don't turn it into a media EOF.
+                    }
                 }
-                return result
+                guard !Task.isCancelled, self?.sourceGeneration == request else {
+                    return
+                }
+                self?.durationProbeAttempts = attempt
+                let result = await withTaskGroup(of: (SourceTrack, Double?).self) { group in
+                    for (track, url) in pending {
+                        group.addTask { (track, await probe(url)) }
+                    }
+                    var result: [SourceTrack: Double] = [:]
+                    for await (track, length) in group {
+                        if let length, length.isFinite, length > 0 { result[track] = length }
+                    }
+                    return result
+                }
+                durations.merge(result) { _, new in new }
+                pending = pending.filter { durations[$0.key] == nil }
+                if pending.isEmpty { break }
             }
             guard let self, !Task.isCancelled, self.sourceGeneration == request else { return }
             self.trackDurations.merge(durations) { _, new in new }
             self.durationProbe = nil
+            Self.logger.notice(
+                "Source duration evidence: \(self.sourceDurationSummary, privacy: .public)")
+            #if DEBUG
+                DevelopmentFeedback.record(
+                    "playback.sourceDuration", fields: ["evidence": self.sourceDurationSummary])
+            #endif
             self.update()
         }
     }
@@ -438,6 +496,7 @@ final class MPVPlayer {
         sourceGeneration = UUID()
         durationProbe?.cancel()
         durationProbe = nil
+        durationProbeAttempts = 0
         probedTracks = []
         trackSources = [:]
         trackDurations = [:]
