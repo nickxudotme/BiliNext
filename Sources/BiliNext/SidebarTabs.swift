@@ -167,22 +167,14 @@ private struct SidebarTabRow: View {
             Button("关闭下方标签") { model.closeOtherTabs(keeping: tab.id, onlyBelow: true) }
                 .disabled(model.tabs.last?.id == tab.id)
             Divider()
-            if let source = tab.localMedia {
-                Button("在 Finder 显示") {
-                    if let url = try? source.resolve() {
-                        NSWorkspace.shared.activateFileViewerSelecting([url])
-                    }
-                }
-            } else {
-                Button("复制链接") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(
-                        LiveSession.roomID(tab.id).map { "https://live.bilibili.com/\($0)" }
-                            ?? MemberSpace.mid(tab.id).map { "https://space.bilibili.com/\($0)" }
-                            ?? SearchResultsTab.url(tab.id)
-                            ?? "https://www.bilibili.com/video/\(tab.id)",
-                        forType: .string)
-                }
+            Button("复制链接") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(
+                    LiveSession.roomID(tab.id).map { "https://live.bilibili.com/\($0)" }
+                        ?? MemberSpace.mid(tab.id).map { "https://space.bilibili.com/\($0)" }
+                        ?? SearchResultsTab.url(tab.id)
+                        ?? "https://www.bilibili.com/video/\(tab.id)",
+                    forType: .string)
             }
         }
     }
@@ -190,10 +182,7 @@ private struct SidebarTabRow: View {
     /// A small 16:9 cover keeps tabs recognisable; progress and live state sit on its edge.
     /// A space tab shows the uploader's round avatar in the same footprint.
     @ViewBuilder private var cover: some View {
-        if tab.localMedia != nil {
-            Image(systemName: "film").font(GlassTheme.iconFont).foregroundStyle(.secondary).frame(
-                width: 38, height: 24)
-        } else if search {
+        if search {
             Image(systemName: "magnifyingglass")
                 .font(GlassTheme.iconFont).foregroundStyle(.secondary)
                 .frame(width: 38, height: 24)

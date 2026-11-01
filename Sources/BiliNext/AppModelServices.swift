@@ -8,8 +8,6 @@ final class AppModelServices {
     let account = AppAccountState()
     let api: BilibiliAPI
     let sessionStore: SessionStore
-    lazy var commentVideoResolver = CommentVideoResolver(api: api)
-    lazy var searchHistory = SearchHistoryStore(defaults: subtitlePreferences)
     let downloads: DownloadManager
     let hoverPreview: HoverPreview
     lazy var playbackPrefetch = PlaybackPrefetch(api: api)

@@ -13,7 +13,6 @@ struct BiliNextApp: App {
     var body: some Scene {
         Window("BiliNext", id: "main") {
             ShellView(model: model)
-                .modifier(FeatureGuideLaunch())
                 .onChange(of: appearance, initial: true) { _, value in
                     (AppAppearance(rawValue: value) ?? .system).apply()
                 }
@@ -37,7 +36,6 @@ struct BiliNextApp: App {
         .defaultSize(width: 1220, height: 780)
         .windowStyle(.hiddenTitleBar)
         .commands {
-            GuideCommands()
             CommandGroup(replacing: .appInfo) {
                 Button("关于 BiliNext") {
                     NSApp.orderFrontStandardAboutPanel(options: [.credits: AppBuildInfo.credits])
@@ -47,7 +45,6 @@ struct BiliNextApp: App {
                 DevelopmentFeedbackCommands()
             #endif
             CommandGroup(after: .newItem) {
-                Button("打开本地视频…") { model.chooseLocalMedia() }.keyboardShortcut("o")
                 Button("下载管理") { model.downloadsPresented = true }.keyboardShortcut("j")
                 Button("搜索视频") { model.navigate(.search) }.keyboardShortcut("l")
                 Button("关闭视频标签") { if let id = model.selected { model.close(id) } }
@@ -85,8 +82,6 @@ struct BiliNextApp: App {
                 .keyboardShortcut("s", modifiers: [.control, .command])
             }
         }
-        Window("使用指南与更新说明", id: "guide") { FeatureGuide() }
-            .defaultSize(width: 620, height: 640)
         Settings {
             SettingsView().tint(GlassTheme.accent)
         }

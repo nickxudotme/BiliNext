@@ -38,7 +38,6 @@ struct PlaybackView: View {
     var windowPinned = false
     var isActive = true
     var onExitCommand: () -> Void = {}
-    @State private var showsInspector = false
     @State private var panel = PlaybackPanel.initial
     @State private var visitedPanels: Set<PlaybackPanel> = [PlaybackPanel.initial]
     @State private var playerWidth: CGFloat = 0
@@ -92,11 +91,6 @@ struct PlaybackView: View {
                 .accessibilityHidden(!detailsVisible)
                 .clipped()
         }
-        .overlay(alignment: .topLeading) {
-            if showsInspector && isActive && !model.officialCore {
-                PlaybackInspector(model: model) { showsInspector = false }.padding(18)
-            }
-        }
         // The playback page is a dark screening room lit by the video's own cover.
         .background { PlaybackAmbience(cover: model.detail?.video.cover ?? currentCover) }
         .environment(\.colorScheme, .dark)
@@ -134,21 +128,7 @@ struct PlaybackView: View {
             idleTask?.cancel()
             NSCursor.setHiddenUntilMouseMoves(false)
         }
-        // Interaction dialogs live here so shortcuts work in theater mode too.
-        .alert(
-            "哔哩哔哩拒绝了这次三连", isPresented: tripleRejectionPresented,
-            presenting: model.tripleRejectedVideo
-        ) { video in
-            Button("在网页中打开视频") {
-                let url = URL(string: "https://www.bilibili.com/video/")!
-                    .appending(path: video.bvid)
-                NSWorkspace.shared.open(url)
-            }
-            Button("关闭", role: .cancel) {}
-        } message: { _ in
-            Text("B 站返回了账号异常（-403）。你可以在网页中确认账号状态并手动完成三连。本次操作不会自动重试。")
-        }
-        .onChange(of: model.accountGeneration) { _, _ in model.tripleRejectedVideo = nil }
+        // Coin and favorite live here so shortcuts work in theater mode too.
         .confirmationDialog("向这部视频投币", isPresented: $model.coinDialogPresented) {
             Button("投 1 枚硬币") { model.coin(1) }
             if model.relation.coins == 0 { Button("投 2 枚硬币") { model.coin(2) } }
@@ -166,47 +146,11 @@ struct PlaybackView: View {
 
     private var detailsVisible: Bool { !model.theater && !miniPlayer }
 
-    private var tripleRejectionPresented: Binding<Bool> {
-        Binding(
-            get: {
-                isActive && model.profile != nil && model.tripleRejectedVideo != nil
-                    && model.tripleRejectedVideo?.bvid == model.detail?.video.bvid
-            },
-            set: { if !$0 { model.tripleRejectedVideo = nil } })
-    }
-
     private var currentCover: URL? {
         model.tabs.first(where: { $0.id == model.selected })?.video.cover
     }
 
-    @ViewBuilder private var detailsPanel: some View {
-        if let source = model.localMedia {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack {
-                    Label("本地视频", systemImage: "film").font(.headline)
-                    Spacer()
-                    playbackOptions
-                }
-                Text(model.tabs.first?.video.title ?? source.url.lastPathComponent).font(
-                    GlassTheme.sectionTitleFont
-                ).textSelection(.enabled)
-                Text(source.url.lastPathComponent).font(.caption).foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                Button("在 Finder 显示") {
-                    if let url = try? source.resolve() {
-                        NSWorkspace.shared.activateFileViewerSelecting([url])
-                    }
-                }.buttonStyle(.glass)
-                Button("重新选择文件…") { model.chooseLocalMedia(replacing: model.selected) }.buttonStyle(
-                    .glass)
-                Spacer()
-            }.padding(20)
-        } else {
-            onlineDetailsPanel
-        }
-    }
-
-    private var onlineDetailsPanel: some View {
+    private var detailsPanel: some View {
         VStack(spacing: 0) {
             GlassEffectContainer(spacing: 6) {
                 HStack(spacing: 8) {
@@ -230,10 +174,7 @@ struct PlaybackView: View {
                                     isVisible: detailsVisible && panel == .comments
                                 )
                                 .id(model.selected)
-                            case .transcript:
-                                TranscriptView(
-                                    model: model,
-                                    isActive: isActive && detailsVisible && panel == .transcript)
+                            case .transcript: TranscriptView(model: model)
                             case .danmaku: DanmakuListView(model: model)
                             }
                         }
@@ -273,12 +214,8 @@ struct PlaybackView: View {
     private var playbackOptions: some View {
         Menu {
             Button("返回浏览") { model.navigate(model.menu) }
-            if !model.isLocalMedia {
-                Button(model.officialCore ? "使用原播放器" : "使用本机官方核心") { model.switchPlayer() }
-                    .disabled(model.pageID == nil)
-            }
-            Button("播放信息") { showsInspector.toggle() }
-                .disabled(model.mpv == nil || model.officialCore)
+            Button(model.officialCore ? "使用原播放器" : "使用本机官方核心") { model.switchPlayer() }
+                .disabled(model.pageID == nil)
             Button("复制播放诊断") {
                 if let mpv = model.mpv {
                     NSPasteboard.general.clearContents()
@@ -286,7 +223,7 @@ struct PlaybackView: View {
                     model.toast = "播放诊断已复制"
                 }
             }.disabled(model.mpv == nil || model.officialCore)
-            if !model.isLocalMedia, let id = model.selected,
+            if let id = model.selected,
                 let url = URL(string: "https://www.bilibili.com/video/\(id)")
             {
                 Link("在浏览器打开", destination: url)

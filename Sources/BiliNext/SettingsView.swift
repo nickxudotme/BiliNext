@@ -57,8 +57,6 @@ struct SettingsView: View {
     @AppStorage(Preferences.defaultRate) private var defaultRate = 1.0
     @AppStorage(Preferences.seekStep) private var seekStep = 5.0
     @AppStorage(Preferences.holdRate) private var holdRate = 2.0
-    @AppStorage("danmaku.personAvoidance") private var personAvoidance = false
-    @AppStorage("playback.probeCDN") private var probeCDN = true
 
     var body: some View {
         TabView {
@@ -151,18 +149,12 @@ struct SettingsView: View {
                     Text("播完后")
                     Text("连播时先播下一个分 P，再播合集中的下一集。")
                 }
-                Toggle("自动试读选择播放线路", isOn: $probeCDN)
-                Text("开播前有限试读候选 CDN；不可用时继续沿用原有播放恢复。不会触发自动播放。")
-                    .font(.caption).foregroundStyle(.secondary)
-                Toggle("弹幕避开人物", isOn: $personAvoidance)
-                Text("在本机低频识别人像，仅影响弹幕。开启会增加处理开销；暂停或切到后台标签时停止。")
-                    .font(.caption).foregroundStyle(.secondary)
                 Picker(selection: $cdnMirror) {
                     Text("按 B 站分配").tag("auto")
                     ForEach(CDNPreference.mirrors, id: \.id) { Text($0.title).tag($0.id) }
                 } label: {
                     Text("CDN 镜像")
-                    Text("所选镜像优先参与加载；开启自动试读时可选择更快的备用线路，不可用时由播放器恢复。")
+                    Text("视频从固定的官方镜像开始加载，该镜像不可用时自动换回 B 站分配的地址。固定镜像的域名常驻缓存，开播不必等待 DNS。")
                 }
                 Picker(selection: $preferredCodec) {
                     Text("AV1").tag("av1")

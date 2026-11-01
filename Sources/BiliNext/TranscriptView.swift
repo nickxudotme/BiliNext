@@ -4,12 +4,10 @@ import SwiftUI
 
 struct TranscriptView: View {
     @ObservedObject var model: AppModel
-    private let clock: PlaybackClock
-    let isActive: Bool
-    init(model: AppModel, isActive: Bool = true) {
+    @ObservedObject private var clock: PlaybackClock
+    init(model: AppModel) {
         self.model = model
         self.clock = model.playbackClock
-        self.isActive = isActive
     }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -18,16 +16,21 @@ struct TranscriptView: View {
     @State private var paragraphs = false
     @State private var following = true
     @State private var searchIndex = 0
-    @State private var index = TranscriptIndex()
-    @State private var activeIDs = Set<Int>()
-    private var groups: [[Cue]] { index.groups }
-    private var matches: [Int] { index.matches }
-    private var activeGroup: Int? { index.activeGroup(for: activeIDs) }
-
-    private func updateIndex() {
-        index.update(cues: model.cues, paragraphs: paragraphs, query: query)
-        let next = index.activeIDs(at: clock.time)
-        if next != self.activeIDs { self.activeIDs = next }
+    private var activeIDs: Set<Int> { Set(model.cues.filter { $0.contains(model.time) }.map(\.id)) }
+    private var groups: [[Cue]] {
+        paragraphs ? Cue.paragraphs(model.cues) : model.cues.map { [$0] }
+    }
+    private var matches: [Int] {
+        groups.compactMap { group in
+            guard let id = group.first?.id, !query.isEmpty,
+                group.map(\.text).joined().localizedCaseInsensitiveContains(query)
+            else { return nil }
+            return id
+        }
+    }
+    private var activeGroup: Int? {
+        let ids = activeIDs
+        return groups.first(where: { group in group.contains { ids.contains($0.id) } })?.first?.id
     }
     var body: some View {
         let groups = self.groups
@@ -101,7 +104,58 @@ struct TranscriptView: View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 8) {
                             ForEach(groups, id: \.first!.id) { group in
-                                transcriptRow(group, activeIDs: activeIDs, matchIDs: matchIDs)
+                                if let first = group.first {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        HStack(spacing: 8) {
+                                            Button {
+                                                model.seek(first.start)
+                                            } label: {
+                                                Text(timestamp(first.start))
+                                                    .font(GlassTheme.metadataFont.monospacedDigit())
+                                                    .foregroundStyle(.secondary)
+                                                    .frame(minHeight: GlassTheme.iconControlSize)
+                                                    .contentShape(Rectangle())
+                                            }
+                                            .buttonStyle(InteractionButtonStyle(kind: .row))
+                                            Spacer(minLength: 0)
+                                            if group.contains(where: { activeIDs.contains($0.id) })
+                                            {
+                                                Label("正在播放", systemImage: "waveform")
+                                                    .foregroundStyle(GlassTheme.accent)
+                                            } else if matchIDs.contains(first.id) {
+                                                Label("匹配", systemImage: "magnifyingglass")
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                        }.font(GlassTheme.captionFont)
+                                        Text(
+                                            group.map(\.text).joined(
+                                                separator: paragraphs ? " " : "")
+                                        )
+                                        .font(GlassTheme.readingFont).lineSpacing(5).textSelection(
+                                            .enabled)
+                                    }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(
+                                            group.contains { activeIDs.contains($0.id) }
+                                                ? GlassTheme.accent.opacity(0.1)
+                                                : matchIDs.contains(first.id)
+                                                    ? Color.yellow.opacity(0.12) : .clear,
+                                            in: RoundedRectangle(cornerRadius: 8)
+                                        )
+                                        .overlay {
+                                            RoundedRectangle(cornerRadius: GlassTheme.rowRadius)
+                                                .strokeBorder(
+                                                    .primary.opacity(
+                                                        contrast == .increased
+                                                            && (group.contains {
+                                                                activeIDs.contains($0.id)
+                                                            } || matchIDs.contains(first.id))
+                                                            ? 0.4 : 0), lineWidth: 1
+                                                )
+                                                .allowsHitTesting(false)
+                                        }
+                                        .id(first.id)
+                                        .contextMenu { Button("复制带时间的引用") { copy(group) } }
+                                }
                             }
                         }
                     }
@@ -116,83 +170,22 @@ struct TranscriptView: View {
                         }
                     }
                     .onChange(of: query) { _, _ in
-                        updateIndex()
                         searchIndex = 0
                         following = false
                         if let id = matches.first { proxy.scrollTo(id, anchor: .center) }
                     }
                     .onChange(of: paragraphs) { _, _ in
-                        updateIndex()
                         searchIndex = 0
                         if let id = activeGroup { proxy.scrollTo(id, anchor: .center) }
                     }
                 }
             }
         }.padding(16)
-            .onChange(of: model.cues, initial: true) { _, _ in updateIndex() }
-            .onChange(of: query) { _, _ in updateIndex() }
-            .onChange(of: paragraphs) { _, _ in updateIndex() }
-            .onChange(of: isActive) { _, active in if active { updateIndex() } }
-            .onReceive(clock.$time) { time in
-                guard isActive else { return }
-                let next = index.activeIDs(at: time)
-                if next != self.activeIDs { self.activeIDs = next }
-            }
             .onChange(of: model.pageID) { _, _ in
                 query = ""
                 following = true
                 searchIndex = 0
             }
-    }
-    private func transcriptRow(_ group: [Cue], activeIDs: Set<Int>, matchIDs: Set<Int>) -> some View
-    {
-        let first = group[0]
-        let playing = group.contains { activeIDs.contains($0.id) }
-        let matched = matchIDs.contains(first.id)
-        let text = group.map(\.text).joined(separator: paragraphs ? " " : "")
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Button {
-                    model.seek(first.start)
-                } label: {
-                    Text(timestamp(first.start))
-                        .font(GlassTheme.metadataFont.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .frame(minHeight: GlassTheme.iconControlSize)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(InteractionButtonStyle(kind: .row))
-                Spacer(minLength: 0)
-                if playing {
-                    Label("正在播放", systemImage: "waveform")
-                        .foregroundStyle(GlassTheme.accent)
-                } else if matched {
-                    Label("匹配", systemImage: "magnifyingglass")
-                        .foregroundStyle(.secondary)
-                }
-            }.font(GlassTheme.captionFont)
-            Text(text)
-                .font(GlassTheme.readingFont).lineSpacing(5).textSelection(
-                    .enabled)
-        }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                playing
-                    ? GlassTheme.accent.opacity(0.1)
-                    : matched
-                        ? Color.yellow.opacity(0.12) : .clear,
-                in: RoundedRectangle(cornerRadius: 8)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: GlassTheme.rowRadius)
-                    .strokeBorder(
-                        .primary.opacity(
-                            contrast == .increased && (playing || matched)
-                                ? 0.4 : 0), lineWidth: 1
-                    )
-                    .allowsHitTesting(false)
-            }
-            .id(first.id)
-            .contextMenu { Button("复制带时间的引用") { copy(group) } }
     }
     private func moveMatch(_ delta: Int, proxy: ScrollViewProxy) {
         guard !matches.isEmpty else { return }

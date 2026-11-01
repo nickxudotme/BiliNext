@@ -1,13 +1,8 @@
 import Foundation
-import SwiftUI
 import Testing
 
 @testable import BiliNext
 @testable import BiliNextCore
-
-#if DEBUG
-    import SwiftFeedback
-#endif
 
 @MainActor
 @Suite(.serialized)
@@ -39,40 +34,6 @@ struct VideoTripleTests {
         #expect(fixture.requests[0].url?.path == "/x/web-interface/archive/like/triple")
         #expect(fixture.model.toast?.contains("-403") == true)
         #expect(fixture.model.relation == VideoRelation() && fixture.model.tripleCount == 0)
-        #expect(fixture.model.tripleRejectedVideo?.bvid == "BV1111111111")
-    }
-
-    @Test func otherFailuresDoNotOfferTheAccountRejectionRecovery() async throws {
-        let fixture = VideoTripleFixture(code: -111)
-        defer { fixture.close() }
-        fixture.model.triple()
-        try await fixture.waitForWrite()
-        #expect(fixture.model.tripleRejectedVideo == nil)
-        #expect(fixture.model.toast?.contains("-111") == true)
-        #expect(fixture.requests.count == 1)
-    }
-
-    @Test func lateTripleResultsDoNotAffectAnotherVideoOrAccount() async throws {
-        for code in [-403, 0] {
-            for changeAccount in [false, true] {
-                let fixture = VideoTripleFixture(code: code) { model in
-                    if changeAccount {
-                        model.accountGeneration = UUID()
-                        model.profile = UserProfile(id: 43, name: "另一个离线账号")
-                    } else {
-                        model.relationVideo = "BV2222222222"
-                    }
-                }
-                defer { fixture.close() }
-                fixture.model.triple()
-                try await fixture.waitForWrite()
-                #expect(fixture.model.tripleRejectedVideo == nil)
-                #expect(fixture.model.toast == nil)
-                #expect(fixture.model.relation == VideoRelation())
-                #expect(fixture.model.tripleCount == 0)
-                #expect(fixture.requests.count == 1)
-            }
-        }
     }
 
     @Test func unsuccessfulCoinFlagDoesNotApplyMultiplyOrClaimFullSuccess() async throws {
@@ -132,61 +93,6 @@ struct VideoTripleTests {
         #expect(after.isEmpty)
         #expect(fixture.requests.map { $0.url!.path } == ["/x/passport-login/web/qrcode/poll"])
     }
-
-    #if DEBUG
-        @Test func tripleFeedbackContainsOnlyCookiePresenceAndTheRejectionCode() async throws {
-            let fixture = VideoTripleFixture(code: -403)
-            defer { fixture.close() }
-            fixture.model.triple()
-            try await fixture.waitForWrite()
-            let events = FeedbackRecorder.shared.snapshot().filter {
-                $0.name == "interaction.triple"
-            }
-            let requested = try #require(events.last { $0.fields["phase"] == "requested" })
-            #expect(requested.fields["hasBrowserIdentifierBeforePreparation"] == "true")
-            #expect(requested.fields["hasSession"] == "true")
-            #expect(requested.fields["hasCSRF"] == "true")
-            #expect(events.last?.fields["apiCode"] == "-403")
-            let fields = String(describing: requested.fields)
-            #expect(!fields.contains("fixture-session"))
-            #expect(!fields.contains("fixture-csrf"))
-            #expect(!fields.contains("fixture-browser"))
-        }
-    #endif
-
-    @Test(.enabled(if: ProcessInfo.processInfo.environment["BILINEXT_TRIPLE_UI_TEST"] == "1"))
-    func rejectedTripleOffersRecoveryInANativeWindow() async throws {
-        let fixture = VideoTripleFixture(code: -403)
-        defer { fixture.close() }
-        _ = NSApplication.shared
-        let window = NSWindow(
-            contentRect: NSRect(x: 100, y: 100, width: 1000, height: 700),
-            styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: PlaybackView(model: fixture.model))
-        window.makeKeyAndOrderFront(nil)
-        defer { window.close() }
-        fixture.model.triple()
-        try await fixture.waitForWrite()
-        for _ in 0..<100 where window.attachedSheet == nil {
-            try await Task.sleep(for: .milliseconds(20))
-        }
-        let sheet = try #require(window.attachedSheet)
-        func buttons(in view: NSView) -> [NSButton] {
-            (view as? NSButton).map { [$0] } ?? view.subviews.flatMap { buttons(in: $0) }
-        }
-        let actions = buttons(in: try #require(sheet.contentView))
-        #expect(actions.contains { $0.title == "在网页中打开视频" })
-        let close = try #require(actions.first { $0.title == "关闭" })
-        close.performClick(nil)
-        for _ in 0..<100 where fixture.model.tripleRejectedVideo != nil {
-            try await Task.sleep(for: .milliseconds(20))
-        }
-        #expect(fixture.model.tripleRejectedVideo == nil)
-        #expect(
-            fixture.requests.filter { $0.url?.path == "/x/web-interface/archive/like/triple" }
-                .count == 1)
-    }
 }
 
 @MainActor
@@ -198,8 +104,7 @@ private final class VideoTripleFixture {
 
     init(
         browserIdentifier: Bool = true, coin: Bool = true, multiply: Int = 2,
-        code: Int = 0, identifierCode: Int = 0, switchAccount: Bool = false,
-        beforeWriteResponse: ((AppModel) -> Void)? = nil
+        code: Int = 0, identifierCode: Int = 0, switchAccount: Bool = false
     ) {
         directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let config = URLSessionConfiguration.ephemeral
@@ -241,7 +146,6 @@ private final class VideoTripleFixture {
                 } else if request.url?.path == "/x/passport-login/web/qrcode/poll" {
                     connection.respond(code: 0, data: ["code": 0])
                 } else {
-                    beforeWriteResponse?(self.model)
                     let hasBrowser =
                         browserIdentifier
                         || (request.value(forHTTPHeaderField: "Cookie") ?? "").contains("buvid3=")

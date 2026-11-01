@@ -9,7 +9,6 @@ struct LoginView: View {
     @State private var status = "正在生成二维码…"
     @State private var retry = UUID()
     @State private var failed = false
-    @State private var webLogin = false
     var body: some View {
         VStack(spacing: 20) {
             HStack {
@@ -38,9 +37,6 @@ struct LoginView: View {
                 Button("刷新二维码") { retry = UUID() }.buttonStyle(.glass).controlSize(.large)
                     .font(GlassTheme.labelFont)
             }
-            Toggle("兼容网页登录", isOn: $webLogin).onChange(of: webLogin) { _, _ in retry = UUID() }
-            Text(webLogin ? "兼容模式只保存网页登录；客户端投币授权需要关闭此选项重新扫码。" : "同一次扫码授权浏览、投币和三连；取消不会替换已有登录。")
-                .font(.caption).foregroundStyle(.secondary)
             Text(model.credentialNotice).font(GlassTheme.metadataFont).foregroundStyle(.secondary)
         }.padding(GlassTheme.contentInset).frame(width: 380)
             .background { DetailSurface() }
@@ -51,7 +47,7 @@ struct LoginView: View {
         image = nil
         status = "正在生成二维码…"
         do {
-            let code = try await (webLogin ? model.api.loginCode() : model.api.clientLoginCode())
+            let code = try await model.api.loginCode()
             guard !Task.isCancelled else { return }
             let filter = CIFilter.qrCodeGenerator()
             filter.message = Data(code.url.utf8)
@@ -63,9 +59,7 @@ struct LoginView: View {
             status = "等待扫码"
             for _ in 0..<90 {
                 try await Task.sleep(for: .seconds(2))
-                let result =
-                    try await
-                    (webLogin ? model.api.pollLogin(code.key) : model.api.pollClientLogin(code.key))
+                let result = try await model.api.pollLogin(code.key)
                 try Task.checkCancellation()
                 switch result {
                 case .waiting: status = "等待扫码"

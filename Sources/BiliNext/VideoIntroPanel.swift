@@ -15,7 +15,7 @@ struct VideoIntroPanel: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 0) {
                     Color.clear.frame(height: 0).id("top")
                     if let detail = model.detail {
                         content(detail)
@@ -105,20 +105,16 @@ struct VideoIntroPanel: View {
         }
         .padding(.horizontal, 20)
         if !detail.extras.related.isEmpty {
-            // Keep rows as direct lazy children; an eager section wrapper would still
-            // lay out every recommendation and start all thumbnail tasks offscreen.
             VStack(alignment: .leading, spacing: 0) {
-                Divider().opacity(0.6).padding(.bottom, 16)
-                GroupHeader(title: "相关推荐", detail: nil)
-            }
-            .padding(.horizontal, 20).padding(.top, 18)
-            ForEach(detail.extras.related) { related in
-                RelatedVideoRow(video: related) {
-                    model.open(related, background: NSEvent.modifierFlags.contains(.command))
+                Divider().opacity(0.6).padding(.horizontal, 20).padding(.bottom, 16)
+                GroupHeader(title: "相关推荐", detail: nil).padding(.horizontal, 20)
+                ForEach(detail.extras.related) { related in
+                    RelatedVideoRow(video: related) {
+                        model.open(related, background: NSEvent.modifierFlags.contains(.command))
+                    }
                 }
-                .id(related.bvid)
             }
-            Color.clear.frame(height: 16)
+            .padding(.top, 18).padding(.bottom, 16)
         }
     }
 
