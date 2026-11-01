@@ -12,7 +12,9 @@ public enum CredentialStorage: Sendable {
 
 // A separate ephemeral cookie jar keeps the app session separate from browsers.
 public actor BilibiliAPI {
-    private let session: URLSession
+    let session: URLSession
+    var clientAuthorization: ClientAuthorization?
+    var authenticationGeneration = UUID()
     public func officialPlayerCookies() -> [HTTPCookie] {
         (cookieJar.cookies ?? []).filter {
             $0.domain == "bilibili.com" || $0.domain.hasSuffix(".bilibili.com")
@@ -63,11 +65,19 @@ public actor BilibiliAPI {
             #endif
             }
         }
-        if let data = saved,
-            let records = try? JSONDecoder().decode([CookieRecord].self, from: data)
-        {
+        if let data = saved {
+            let envelope = try? JSONDecoder().decode(StoredCredential.self, from: data)
+            let records =
+                envelope?.cookies ?? (try? JSONDecoder().decode([CookieRecord].self, from: data))
+                ?? []
             for record in records { if let cookie = record.cookie { cookieJar.setCookie(cookie) } }
+            let id = Int64(records.first { $0.name == "DedeUserID" }?.value ?? "")
+            if envelope?.client?.accountID == id { clientAuthorization = envelope?.client }
         }
+    }
+    private struct StoredCredential: Codable {
+        let cookies: [CookieRecord]
+        let client: ClientAuthorization?
     }
     private struct CookieRecord: Codable {
         var name: String
@@ -116,7 +126,8 @@ public actor BilibiliAPI {
         let records = (cookieJar.cookies ?? []).filter {
             $0.domain == "bilibili.com" || $0.domain.hasSuffix(".bilibili.com")
         }.map(CookieRecord.init)
-        let data = try JSONEncoder().encode(records)
+        let data = try JSONEncoder().encode(
+            StoredCredential(cookies: records, client: clientAuthorization))
         #if DEBUG
             if case .developmentFile = credentialStorage {
                 try DevelopmentSessionStore.current.write(data)
@@ -136,9 +147,56 @@ public actor BilibiliAPI {
             throw APIError(code: Int(result), message: "无法将登录状态保存到钥匙串")
         }
     }
+    func installClientLogin(_ data: [String: Any]) throws {
+        guard let info = data["cookie_info"] as? [String: Any],
+            let entries = info["cookies"] as? [[String: Any]]
+        else {
+            throw APIError(code: -1, message: "登录信息不完整，保留原登录")
+        }
+        let allowed: Set<String> = [
+            "SESSDATA", "bili_jct", "DedeUserID", "DedeUserID__ckMd5", "sid",
+        ]
+        var values: [String: String] = [:]
+        for entry in entries {
+            guard let name = entry["name"] as? String, allowed.contains(name) else { continue }
+            guard let value = entry["value"] as? String, !value.isEmpty, value.utf8.count <= 8192,
+                !value.contains(where: { $0.isNewline || $0 == ";" }),
+                values[name] == nil || values[name] == value
+            else { throw APIError(code: -1, message: "登录信息无效，保留原登录") }
+            values[name] = value
+        }
+        guard let id = values["DedeUserID"].flatMap(Int64.init), values["SESSDATA"] != nil,
+            values["bili_jct"] != nil
+        else {
+            throw APIError(code: -1, message: "登录信息不完整，保留原登录")
+        }
+        let credential = try ClientAuthorization.parse(data, accountID: id)
+        let oldCookies = cookieJar.cookies ?? []
+        let oldAuthorization = clientAuthorization
+        for cookie in oldCookies { cookieJar.deleteCookie(cookie) }
+        for (name, value) in values {
+            if let cookie = HTTPCookie(properties: [
+                .name: name, .value: value, .domain: ".bilibili.com", .path: "/", .secure: "TRUE",
+            ]) {
+                cookieJar.setCookie(cookie)
+            }
+        }
+        clientAuthorization = credential
+        do { try saveCredential() } catch {
+            for cookie in cookieJar.cookies ?? [] { cookieJar.deleteCookie(cookie) }
+            for cookie in oldCookies { cookieJar.setCookie(cookie) }
+            clientAuthorization = oldAuthorization
+            throw error
+        }
+        authenticationGeneration = UUID()
+        signingKey = nil
+    }
+
     public func logout() throws {
         if case .ephemeral = credentialStorage {
             for cookie in cookieJar.cookies ?? [] { cookieJar.deleteCookie(cookie) }
+            clientAuthorization = nil
+            authenticationGeneration = UUID()
             signingKey = nil
             return
         }
@@ -146,6 +204,8 @@ public actor BilibiliAPI {
             if case .developmentFile = credentialStorage {
                 try DevelopmentSessionStore.current.clear()
                 for cookie in cookieJar.cookies ?? [] { cookieJar.deleteCookie(cookie) }
+                clientAuthorization = nil
+                authenticationGeneration = UUID()
                 signingKey = nil
                 return
             }
@@ -155,6 +215,9 @@ public actor BilibiliAPI {
             throw APIError(code: Int(status), message: "无法清除钥匙串登录状态")
         }
         for cookie in cookieJar.cookies ?? [] { cookieJar.deleteCookie(cookie) }
+        clientAuthorization = nil
+        authenticationGeneration = UUID()
+        signingKey = nil
     }
     func request(
         _ path: String, params: [String: String] = [:], passport: Bool = false,
@@ -362,7 +425,11 @@ public actor BilibiliAPI {
                     }
                 }
             }
+            let id = Int64(cookieJar.cookies?.first { $0.name == "DedeUserID" }?.value ?? "")
+            if clientAuthorization?.accountID != id { clientAuthorization = nil }
             try saveCredential()
+            authenticationGeneration = UUID()
+            signingKey = nil
             return .success
         default:
             throw APIError(code: (d["code"] as? NSNumber)?.intValue ?? -1, message: "登录状态异常，请刷新二维码")
@@ -425,7 +492,10 @@ public actor BilibiliAPI {
         else { throw APIError(code: -1, message: "无法准备 B 站浏览器标识，请稍后重试") }
         cookieJar.setCookie(c)
     }
-    public func search(_ keyword: String, page: Int = 1, order: String = "totalrank") async throws
+    public func search(
+        _ keyword: String, page: Int = 1, order: String = "totalrank",
+        options: SearchOptions = SearchOptions()
+    ) async throws
         -> [Video]
     {
         // Acquire the public browser identifier before search; this does not
@@ -435,7 +505,7 @@ public actor BilibiliAPI {
             "/x/web-interface/wbi/search/type",
             params: [
                 "search_type": "video", "keyword": keyword, "page": "\(page)", "order": order,
-            ], signed: true)
+            ].merging(options.parameters()) { _, new in new }, signed: true)
         return (d["result"] as? [[String: Any]] ?? []).compactMap(video)
     }
     public func feed(offset: String? = nil) async throws -> Feed {

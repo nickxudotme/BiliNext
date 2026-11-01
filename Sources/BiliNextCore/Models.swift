@@ -165,6 +165,7 @@ public struct VideoStats: Equatable, Sendable {
 
 /// The signed-in account's like, coin and favorite state for one video.
 public struct VideoRelation: Equatable, Sendable {
+    public var coinsAreTotal = false
     public var liked: Bool
     public var coins: Int
     public var favorited: Bool

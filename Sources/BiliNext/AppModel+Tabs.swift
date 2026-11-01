@@ -223,6 +223,12 @@ extension AppModel {
                 snapshot[index].position = instance.tabs[localIndex].position
             }
             if let video = instance.detail?.video { snapshot[index].video = video }
+            if snapshot[index].localMedia != nil, instance.duration > 0 {
+                let video = snapshot[index].video
+                snapshot[index].video = Video(
+                    bvid: video.bvid, title: video.title, author: "本地视频",
+                    duration: instance.duration)
+            }
             snapshot[index].cid = instance.pageID ?? snapshot[index].cid
             let seconds =
                 instance.officialCore

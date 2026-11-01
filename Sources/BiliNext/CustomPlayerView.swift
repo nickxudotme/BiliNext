@@ -95,13 +95,20 @@ struct CustomPlayerView: View {
             } else {
                 VideoSurface(player: model.player)
             }
-            DanmakuCanvas(
-                player: model.player, mpv: model.mpv, model: danmaku, time: model.time,
-                playing: model.playing,
-                opacity: opacity, fontSize: fontSize, area: area, speed: dmSpeed, blocked: blocked,
-                rolling: rolling, fixed: fixed
-            )
-            .allowsHitTesting(false)
+            if !model.isLocalMedia {
+                DanmakuCanvas(
+                    player: model.player, mpv: model.mpv, model: danmaku, time: model.time,
+                    playing: model.playing,
+                    opacity: opacity, fontSize: fontSize, area: area, speed: dmSpeed,
+                    blocked: blocked,
+                    rolling: rolling, fixed: fixed
+                )
+                .modifier(
+                    PersonAvoidanceMask(
+                        player: model.mpv, active: isActive && model.playing && danmaku.enabled)
+                )
+                .allowsHitTesting(false)
+            }
             if smartSubtitles.visible {
                 VStack {
                     Spacer()
@@ -145,6 +152,10 @@ struct CustomPlayerView: View {
                     Text(error).font(GlassTheme.bodyFont).multilineTextAlignment(.center)
                         .frame(maxWidth: 420)
                     Button("重新加载") { model.refresh() }.buttonStyle(.glass).controlSize(.large)
+                    if model.isLocalMedia {
+                        Button("重新选择文件…") { model.chooseLocalMedia(replacing: model.selected) }
+                            .buttonStyle(.glass)
+                    }
                 }
                 .padding(24).foregroundStyle(.white).frame(
                     maxWidth: .infinity, maxHeight: .infinity
@@ -419,35 +430,37 @@ struct CustomPlayerView: View {
                         }
                     }
                 }
-                Button {
-                    danmaku.enabled.toggle()
-                } label: {
-                    Image(systemName: danmaku.enabled ? "text.bubble.fill" : "text.bubble")
-                        .foregroundStyle(danmaku.enabled ? GlassTheme.accent : .white)
-                        .contentTransition(.symbolEffect(.replace))
-                        .iconControlFrame()
-                }.help(danmaku.enabled ? "关闭弹幕 · D" : "开启弹幕 · D").accessibilityLabel("弹幕开关")
-                if !miniPlayer && (!compact || availableWidth > 480) {
+                if !model.isLocalMedia {
                     Button {
-                        smartSubtitles.setVisible(!smartSubtitles.visible)
+                        danmaku.enabled.toggle()
                     } label: {
-                        Image(
-                            systemName: smartSubtitles.visible
-                                ? "captions.bubble.fill" : "captions.bubble"
-                        )
-                        .foregroundStyle(smartSubtitles.visible ? GlassTheme.accent : .white)
-                        .contentTransition(.symbolEffect(.replace))
-                        .iconControlFrame()
-                    }.help("画面字幕").accessibilityLabel(
-                        smartSubtitles.visible ? "隐藏画面软字幕" : "显示画面软字幕")
-                }
-                if !miniPlayer {
-                    Button {
-                        settings.toggle()
-                    } label: {
-                        Image(systemName: "slider.horizontal.3").iconControlFrame()
-                    }.help("字幕与弹幕设置").accessibilityLabel("字幕与弹幕设置")
-                        .popover(isPresented: $settings, arrowEdge: .top) { settingsPanel }
+                        Image(systemName: danmaku.enabled ? "text.bubble.fill" : "text.bubble")
+                            .foregroundStyle(danmaku.enabled ? GlassTheme.accent : .white)
+                            .contentTransition(.symbolEffect(.replace))
+                            .iconControlFrame()
+                    }.help(danmaku.enabled ? "关闭弹幕 · D" : "开启弹幕 · D").accessibilityLabel("弹幕开关")
+                    if !miniPlayer && (!compact || availableWidth > 480) {
+                        Button {
+                            smartSubtitles.setVisible(!smartSubtitles.visible)
+                        } label: {
+                            Image(
+                                systemName: smartSubtitles.visible
+                                    ? "captions.bubble.fill" : "captions.bubble"
+                            )
+                            .foregroundStyle(smartSubtitles.visible ? GlassTheme.accent : .white)
+                            .contentTransition(.symbolEffect(.replace))
+                            .iconControlFrame()
+                        }.help("画面字幕").accessibilityLabel(
+                            smartSubtitles.visible ? "隐藏画面软字幕" : "显示画面软字幕")
+                    }
+                    if !miniPlayer {
+                        Button {
+                            settings.toggle()
+                        } label: {
+                            Image(systemName: "slider.horizontal.3").iconControlFrame()
+                        }.help("字幕与弹幕设置").accessibilityLabel("字幕与弹幕设置")
+                            .popover(isPresented: $settings, arrowEdge: .top) { settingsPanel }
+                    }
                 }
                 Button {
                     model.toggleWindowPin()

@@ -16,3 +16,31 @@ Homebrew 分发版动态链接用户通过 Homebrew 安装的 libmpv，不在 Bi
 ## 本机官方播放器
 
 可选官方播放器代码从用户本机已安装的哔哩哔哩客户端只读加载，不包含在 BiliNext 的源码或发行包中，其权利属于原权利人。
+
+## Bilibili NEXT 参考实现
+
+本轮客户端授权、下载恢复与交互改进参考了 [wzk112/Bilibili-NEXT](https://github.com/wzk112/Bilibili-NEXT/tree/3b7582c42c0695e5f8da1255d506f3802e2ed417) 的公开实现与协议说明，按 BiliNext 的 libmpv、共享账号和标签生命周期重新实现。参考版本采用 MIT 许可证，保留其声明如下：
+
+```text
+MIT License
+
+Copyright (c) 2026 Bilibili NEXT contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

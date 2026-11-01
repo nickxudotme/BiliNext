@@ -69,16 +69,37 @@ struct VideoActionBar: View {
             }
             .help("加入稍后再看").accessibilityLabel("加入稍后再看")
             .disabled(model.libraryBusy.contains(video.id))
-            Button {
-                if let cid = model.pageID {
-                    model.downloads.start(
-                        video: video, cid: cid, quality: model.qualityID, api: model.api)
-                    model.downloadsPresented = true
+            Menu {
+                Button("缓存到应用") {
+                    if let cid = model.pageID {
+                        model.downloads.start(
+                            video: video, cid: cid, quality: model.qualityID, api: model.api,
+                            cached: true)
+                        model.downloadsPresented = true
+                    }
+                }
+                Button("下载到文件夹…") {
+                    guard let cid = model.pageID else { return }
+                    let quality = model.qualityID
+                    let panel = NSOpenPanel()
+                    panel.canChooseFiles = false
+                    panel.canChooseDirectories = true
+                    panel.canCreateDirectories = true
+                    panel.allowsMultipleSelection = false
+                    panel.prompt = "下载到这里"
+                    panel.begin { response in
+                        guard response == .OK, let directory = panel.url else { return }
+                        model.downloads.start(
+                            video: video, cid: cid, quality: quality, api: model.api,
+                            directory: directory)
+                        model.downloadsPresented = true
+                    }
                 }
             } label: {
                 VideoActionLabel(title: "缓存", systemImage: "arrow.down.circle")
             }
-            .help("缓存当前分 P").accessibilityLabel("缓存当前分 P").disabled(model.pageID == nil)
+            .menuStyle(.borderlessButton).menuIndicator(.hidden)
+            .help("缓存或下载当前分 P").accessibilityLabel("缓存或下载当前分 P").disabled(model.pageID == nil)
             Button {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(

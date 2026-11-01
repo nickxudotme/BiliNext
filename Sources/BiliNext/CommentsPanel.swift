@@ -35,9 +35,17 @@ private struct CommentPanelContent: View {
                 model: model, isActive: isActive && routes.isEmpty,
                 firstPageOnly: !isVisible, push: push
             )
+            .environment(
+                \.commentImagePlaybackActive,
+                isActive && isVisible && routes.isEmpty && viewer == nil
+            )
             .opacity(routes.isEmpty ? 1 : 0).allowsHitTesting(routes.isEmpty)
             ForEach(Array(routes.enumerated()), id: \.element) { index, route in
                 routePage(route, active: isActive && index == routes.count - 1)
+                    .environment(
+                        \.commentImagePlaybackActive,
+                        isActive && isVisible && index == routes.count - 1 && viewer == nil
+                    )
                     .opacity(index == routes.count - 1 ? 1 : 0)
                     .allowsHitTesting(index == routes.count - 1)
                     .zIndex(Double(index + 1))
@@ -47,6 +55,7 @@ private struct CommentPanelContent: View {
         .clipped()
         .environment(\.openURL, OpenURLAction(handler: open))
         .environment(\.videoDuration, model.duration)
+        .environment(\.commentVideoResolver, model.services.commentVideoResolver)
         .environment(\.commentInteractions, interactions)
         .environment(\.openMemberSpace) { comment in
             model.openSpace(
@@ -56,7 +65,10 @@ private struct CommentPanelContent: View {
         .environment(\.showCommentPictures) { pictures, index in
             viewer = PictureViewerState(pictures: pictures, index: index)
         }
-        .sheet(item: $viewer) { state in PictureViewer(state: state) }
+        .sheet(item: $viewer) { state in
+            PictureViewer(state: state)
+                .environment(\.commentImagePlaybackActive, isActive && isVisible)
+        }
         .onChange(of: model.detail?.video.bvid) { _, _ in routes = [] }
         // Likes already sent keep going when the panel hides, so a background tab still
         // records them; a new video or account rebuilds the panel instead.
@@ -718,6 +730,7 @@ struct CommentRow: View {
             VStack(alignment: .leading, spacing: 6) {
                 CommentIdentity(comment: comment, uploaderID: uploaderID)
                 CollapsibleCommentText(comment: comment)
+                CommentVideoCards(text: comment.text)
                 if !comment.pictures.isEmpty { CommentPictures(pictures: comment.pictures) }
                 footer
                 if showsReplies, !comment.replies.isEmpty || comment.replyCount > 0 {
@@ -1106,7 +1119,7 @@ private struct CommentPictures: View {
         Button {
             show(pictures, index)
         } label: {
-            ThumbnailView(url: picture.url, pixels: 480) {
+            CommentImageView(url: picture.url, pixels: 480, defersLoadingUntilVisible: true) {
                 Rectangle().fill(.primary.opacity(0.06))
             }
             .frame(width: size.width, height: size.height)
@@ -1131,10 +1144,11 @@ private struct PictureViewer: View {
     var body: some View {
         ZStack {
             Color.black
-            ThumbnailView(url: state.pictures[state.index].url, pixels: 2400) {
+            CommentImageView(
+                url: state.pictures[state.index].url, pixels: 2400, contentMode: .fit
+            ) {
                 ProgressView().tint(.white)
             }
-            .scaledToFit()
             .id(state.index)
             HStack {
                 arrow("chevron.left", disabled: state.index == 0) { state.index -= 1 }

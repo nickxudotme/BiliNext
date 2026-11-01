@@ -56,7 +56,9 @@ struct BrowseToolbar: View {
     @ViewBuilder private var trailing: some View {
         switch model.menu {
         case .search:
-            if let page { SearchPageField(page: page) }
+            SearchEntryField(api: model.api, history: model.services.searchHistory) {
+                model.search($0)
+            }
         case .favorites:
             if let page { LibraryFilter(page: page) }
             if model.profile != nil {
@@ -73,9 +75,13 @@ struct BrowseToolbar: View {
             if let page, page.profile != nil {
                 FollowedLivesButton(lives: page.followedLives, page: page)
             }
-            ToolbarSearchField { model.search($0) }
+            SearchEntryField(api: model.api, history: model.services.searchHistory) {
+                model.search($0)
+            }
         case .home, .watchLater:
-            ToolbarSearchField { model.search($0) }
+            SearchEntryField(api: model.api, history: model.services.searchHistory) {
+                model.search($0)
+            }
         }
     }
 
