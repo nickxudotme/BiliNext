@@ -11,7 +11,6 @@ extension AppModel {
         let generation = UUID()
         relationGeneration = generation
         if relationVideo != bvid {
-            tripleRejectedVideo = nil
             relationVideo = bvid
             relation = VideoRelation()
             relationLoaded = false
@@ -56,9 +55,9 @@ extension AppModel {
     func coin(_ count: Int) {
         guard let video = writableVideo(allowEpisodes: false) else { return }
         write(video) {
-            let total = try await self.api.coinVideo(bvid: video.bvid, count: count)
+            try await self.api.coinVideo(bvid: video.bvid, count: count)
             return {
-                self.relation.coins = total ?? min(2, self.relation.coins + count)
+                self.relation.coins += count
                 self.adjustStats { $0.coins = $0.coins.map { $0 + count } }
                 self.toast = "已投 \(count) 枚硬币"
             }
@@ -104,53 +103,15 @@ extension AppModel {
             let userID = profile?.id
         else { return }
         let before = relation
-        tripleRejectedVideo = nil
-        let onFailure: (Error) -> Void = { error in
-            #if DEBUG
-                DevelopmentFeedback.record(
-                    "interaction.triple",
-                    fields: [
-                        "phase": "failed", "videoID": video.bvid,
-                        "apiCode": (error as? APIError).map { String($0.code) }
-                            ?? "unavailable",
-                    ])
-            #endif
-            if (error as? APIError)?.code == -403 {
-                self.tripleRejectedVideo = video
-            }
-        }
-        write(video, onFailure: onFailure) {
-            #if DEBUG
-                let cookies = await self.api.officialPlayerCookies()
-                DevelopmentFeedback.record(
-                    "interaction.triple",
-                    fields: [
-                        "phase": "requested", "videoID": video.bvid,
-                        "hasBrowserIdentifierBeforePreparation": String(
-                            cookies.contains { $0.name == "buvid3" && !$0.value.isEmpty }),
-                        "hasSession": String(
-                            cookies.contains { $0.name == "SESSDATA" && !$0.value.isEmpty }),
-                        "hasCSRF": String(
-                            cookies.contains { $0.name == "bili_jct" && !$0.value.isEmpty }),
-                    ])
-            #endif
+        write(video) {
             let result = try await self.api.tripleVideo(aid: aid, expectedUserID: userID)
             return { self.applyTriple(result, before: before) }
         }
     }
 
     private func applyTriple(_ result: VideoRelation, before: VideoRelation) {
-        #if DEBUG
-            DevelopmentFeedback.record(
-                "interaction.triple",
-                fields: [
-                    "phase": "received", "videoID": relationVideo ?? "",
-                    "liked": String(result.liked), "addedCoins": String(result.coins),
-                    "favorited": String(result.favorited),
-                ])
-        #endif
         relation.liked = before.liked || result.liked
-        relation.coins = result.coinsAreTotal ? result.coins : min(2, before.coins + result.coins)
+        relation.coins = min(2, before.coins + result.coins)
         relation.favorited = before.favorited || result.favorited
         adjustStats { stats in
             if result.liked && !before.liked { stats.likes = stats.likes.map { $0 + 1 } }
@@ -177,10 +138,8 @@ extension AppModel {
     /// Runs one write. Starting it discards any read still in flight; the returned update
     /// is applied only while the same video is still open.
     private func write(
-        _ video: Video, onFailure: ((Error) -> Void)? = nil,
-        _ perform: @escaping () async throws -> (@MainActor () -> Void)
+        _ video: Video, _ perform: @escaping () async throws -> (@MainActor () -> Void)
     ) {
-        let account = accountGeneration
         relationGeneration = UUID()
         relationReading = false
         interactionBusy = true
@@ -188,12 +147,9 @@ extension AppModel {
             defer { interactionBusy = false }
             do {
                 let apply = try await perform()
-                if account == accountGeneration, relationVideo == video.bvid { apply() }
+                if relationVideo == video.bvid { apply() }
             } catch {
-                guard account == accountGeneration, relationVideo == video.bvid else { return }
                 toast = error.localizedDescription
-                if (error as? APIError)?.code == -90001 { relationLoaded = false }
-                onFailure?(error)
             }
         }
     }

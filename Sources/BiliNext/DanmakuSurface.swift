@@ -101,13 +101,13 @@ struct DanmakuSurface: NSViewRepresentable {
         view.layer?.isHidden = !enabled
         view.running = playing
         view.enabled = enabled
+        view.displayLink?.isPaused = !playing
         view.render(
             time: mpv?.time
                 ?? (player.currentItem?.status == .readyToPlay
                     ? player.currentTime().seconds : time))
     }
     static func dismantleNSView(_ view: Surface, coordinator: ()) {
-        view.stopClock()
         view.displayLink?.invalidate()
         view.displayLink = nil
     }
@@ -126,60 +126,6 @@ struct DanmakuSurface: NSViewRepresentable {
         var running = false
         var enabled = true
         var displayLink: CADisplayLink?
-        private var wakeTask: Task<Void, Never>?
-        private var wakeTime: Double?
-        private var visibilityObserver: NSObjectProtocol?
-
-        func stopClock() {
-            displayLink?.isPaused = true
-            wakeTask?.cancel()
-            wakeTask = nil
-            wakeTime = nil
-        }
-
-        private func schedule(time: Double) {
-            guard running, enabled, !isHiddenOrHasHiddenAncestor,
-                let window, window.isVisible, window.occlusionState.contains(.visible),
-                mpv?.flag("paused-for-cache") != true,
-                player == nil || player?.timeControlStatus == .playing
-            else {
-                stopClock()
-                return
-            }
-            if liveClock != nil || !labels.isEmpty {
-                wakeTask?.cancel()
-                wakeTask = nil
-                wakeTime = nil
-                displayLink?.isPaused = false
-                return
-            }
-            displayLink?.isPaused = true
-            let index = lowerBound(time + 0.001)
-            guard items.indices.contains(index) else {
-                stopClock()
-                return
-            }
-            let next = items[index].comment.time
-            guard wakeTime != next else { return }
-            wakeTask?.cancel()
-            wakeTime = next
-            let delay = max(
-                0.01, min(60, (next - time) / max(0.1, mpv?.speed ?? Double(player?.rate ?? 1))))
-            wakeTask = Task { [weak self] in
-                do { try await Task.sleep(for: .seconds(delay)) } catch { return }
-                guard let self else { return }
-                self.wakeTime = nil
-                self.wakeTask = nil
-                self.tick()
-            }
-        }
-
-        deinit {
-            wakeTask?.cancel()
-            if let visibilityObserver {
-                NotificationCenter.default.removeObserver(visibilityObserver)
-            }
-        }
         private var lastTime = Double.nan
         private var lastHost = 0.0
         private var lastRate: Float = -1
@@ -205,22 +151,6 @@ struct DanmakuSurface: NSViewRepresentable {
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            stopClock()
-            if let visibilityObserver {
-                NotificationCenter.default.removeObserver(visibilityObserver)
-            }
-            visibilityObserver = nil
-            if let window {
-                visibilityObserver = NotificationCenter.default.addObserver(
-                    forName: NSWindow.didChangeOcclusionStateNotification, object: window,
-                    queue: .main
-                ) { [weak self] _ in
-                    MainActor.assumeIsolated {
-                        self?.lastTime = .nan
-                        self?.tick()
-                    }
-                }
-            }
             displayLink?.invalidate()
             displayLink = nil
             if window != nil {
@@ -230,7 +160,7 @@ struct DanmakuSurface: NSViewRepresentable {
                 link.preferredFrameRateRange = CAFrameRateRange(
                     minimum: 15, maximum: 30, preferred: 30)
                 link.add(to: .main, forMode: .common)
-                link.isPaused = true
+                link.isPaused = !running
                 displayLink = link
             }
         }
@@ -291,15 +221,9 @@ struct DanmakuSurface: NSViewRepresentable {
             return result
         }
         func render(time: Double) {
-            guard time.isFinite, enabled else {
-                stopClock()
-                return
-            }
-            defer { schedule(time: time) }
+            guard time.isFinite, enabled else { return }
             let host = hostClock()
-            let advancing =
-                running && mpv?.flag("paused-for-cache") != true
-                && (player == nil || player?.timeControlStatus == .playing)
+            let advancing = running && (player == nil || player?.timeControlStatus == .playing)
             let rate: Float = advancing ? Float(mpv?.speed ?? Double(player?.rate ?? 1)) : 0
             let scale = window?.backingScaleFactor ?? 2
             let expected = lastTime + (host - lastHost) * Double(lastRate)
@@ -307,7 +231,6 @@ struct DanmakuSurface: NSViewRepresentable {
                 !lastTime.isFinite || abs(time - expected) > 0.15
                 || rate != lastRate || bounds.size != lastSize || scale != lastScale
             if resync {
-                stopClock()
                 lastTime = time
                 lastHost = host
             }

@@ -109,7 +109,6 @@ import SwiftUI
                 values["mpv.loaded"] = String(mpv.loaded)
                 values["mpv.failure"] = mpv.failure ?? ""
                 values["mpv.prematureEnd"] = String(mpv.prematureEnd)
-                values["mpv.sourceDuration"] = mpv.sourceDurationSummary
                 if let cache = mpv.cacheSnapshot {
                     values["mpv.cache.eof"] = String(cache.eof)
                     values["mpv.cache.end"] = cache.end.map { String($0) } ?? "unavailable"
@@ -126,10 +125,7 @@ import SwiftUI
                 ] {
                     values["mpv." + property] = String(mpv.number(property))
                 }
-                for property in [
-                    "pause", "paused-for-cache", "eof-reached", "mute", "seeking",
-                    "demuxer-cache-idle",
-                ] {
+                for property in ["pause", "paused-for-cache", "eof-reached", "mute"] {
                     values["mpv." + property] = String(mpv.flag(property))
                 }
             }

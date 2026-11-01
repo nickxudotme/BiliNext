@@ -102,8 +102,6 @@ final class AppModel: ObservableObject {
     @Published var timelineRefresh = 0
     @Published var catalogRefresh = 0
     @Published var searchOrder = "totalrank"
-    @Published var searchDuration = 0
-    @Published var searchDays = 0
     @Published var libraryQuery = ""
     @Published var favoriteOrder = "mtime"
     @Published var videos: [Video] = []
@@ -180,8 +178,6 @@ final class AppModel: ObservableObject {
     @Published var favoritePresented = false
     /// Bumped after 一键三连 succeeds so the three action icons bounce together.
     @Published var tripleCount = 0
-    /// A rejected triple keeps its original video available for manual recovery on the website.
-    @Published var tripleRejectedVideo: Video?
     var qualityTask: Task<Void, Never>?
     var qualitySwitchState: (position: Double, resume: Bool)?
     var playbackIntent = false
@@ -264,9 +260,7 @@ final class AppModel: ObservableObject {
     }
 
     func updatePlayback(time: Double, duration: Double, playing: Bool, buffering: Bool? = nil) {
-        if !isLocalMedia, !officialCore, profile != nil, let mediaID, let pageID,
-            detail?.video.episodeID == nil
-        {
+        if !officialCore, profile != nil, let mediaID, let pageID, detail?.video.episodeID == nil {
             watchHistoryReporter.update(
                 bvid: mediaID, cid: pageID, position: time,
                 playing: playing, buffering: buffering ?? self.buffering)
@@ -278,8 +272,7 @@ final class AppModel: ObservableObject {
         smartSubtitles.sample(
             player: mpv, cues: cues,
             time: time,
-            active: !isLocalMedia && secondaryTrackID.isEmpty && playbackTabActive && !officialCore
-                && playing
+            active: secondaryTrackID.isEmpty && playbackTabActive && !officialCore && playing
                 && !(buffering ?? self.buffering))
         self.time = time
         let length = duration.isFinite ? max(0, duration) : 0

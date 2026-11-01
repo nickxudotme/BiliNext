@@ -58,13 +58,6 @@ final class NowPlaying {
                 duration: 0, elapsed: 0, rate: session.playing ? 1 : 0, playing: session.playing,
                 live: true, hasPreviousPage: false, hasNextPage: false)
         }
-        if page.isLocalMedia {
-            return Item(
-                title: page.tabs.first?.video.title ?? "本地视频", artist: "本地视频",
-                duration: page.duration, elapsed: page.time,
-                rate: page.playing ? page.playbackRate : 0, playing: page.playing, live: false,
-                hasPreviousPage: false, hasNextPage: false)
-        }
         guard let detail = page.detail else { return nil }
         let pages = detail.pages
         let index = pages.firstIndex { $0.cid == page.pageID }

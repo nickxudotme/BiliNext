@@ -118,19 +118,7 @@ private func browsingVideo(_ number: Int) -> Video {
     #expect(requests.map(\.page) == [1, 2, 3, 4, 5])
     #expect(requests.allSatisfy { $0.keyword == "已提交关键词" && $0.searchOrder == "totalrank" })
     #expect(model.videos.count == 5 && model.browseRevision == 1)
-    #expect(model.cachedLists["搜索:已提交关键词:totalrank:0:0"]?.count == 5)
-    model.query = "已提交关键词"
-    model.searchDuration = 2
-    model.searchDays = 7
-    model.refresh()
-    await model.browseTask?.value
-    #expect(
-        requests.suffix(3).allSatisfy {
-            $0.searchDuration == 2 && $0.searchDays == 7 && $0.searchOrder == "pubdate"
-        })
-    #expect(model.cachedLists["搜索:已提交关键词:pubdate:2:7"]?.count == 3)
-    #expect(model.cachedLists["搜索:已提交关键词:totalrank:0:0"]?.count == 5)
-
+    #expect(model.cachedLists["搜索:已提交关键词:totalrank"]?.count == 5)
 }
 
 @MainActor

@@ -40,17 +40,12 @@ final class PlaybackPrefetch {
     private var speculative = 0
 
     init(api: BilibiliAPI) {
-        let selector = CDNSelector()
         fetch = { key in
-            let playback = try await api.playback(
+            try await api.playback(
                 bvid: key.bvid, cid: key.cid, quality: key.quality, codecs: key.codecs,
                 losslessAudio: key.losslessAudio
             )
             .preferringMirror(Preferences.mirrorHost)
-            guard UserDefaults.standard.object(forKey: "playback.probeCDN") as? Bool ?? true else {
-                return playback
-            }
-            return await selector.select(playback)
         }
     }
 

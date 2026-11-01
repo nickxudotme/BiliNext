@@ -5,27 +5,20 @@ struct SessionTab: Identifiable, Codable, Equatable {
     var id: String { video.bvid }
     var video: Video
     var cid: Int64?
-    var localMedia: LocalMedia? = nil
     var position: Double = 0
     /// The videos this tab moved through in place, for 后退 and 前进. Like a browser tab's
     /// history it is saved with the tab, survives restarts and returns with ⇧⌘T.
     var trail = TabTrail()
 
-    init(
-        video: Video, cid: Int64? = nil, position: Double = 0, trail: TabTrail = TabTrail(),
-        localMedia: LocalMedia? = nil
-    ) {
+    init(video: Video, cid: Int64? = nil, position: Double = 0, trail: TabTrail = TabTrail()) {
         self.video = video
         self.cid = cid
         self.position = position
         self.trail = trail
-        self.localMedia = localMedia
     }
 
     init(_ entry: TabHistoryEntry, trail: TabTrail) {
-        self.init(
-            video: entry.video, cid: entry.cid, position: entry.position, trail: trail,
-            localMedia: entry.localMedia)
+        self.init(video: entry.video, cid: entry.cid, position: entry.position, trail: trail)
     }
 
     // Sessions written before tab history existed have no trail.
@@ -33,7 +26,6 @@ struct SessionTab: Identifiable, Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         video = try container.decode(Video.self, forKey: .video)
         cid = try container.decodeIfPresent(Int64.self, forKey: .cid)
-        localMedia = try container.decodeIfPresent(LocalMedia.self, forKey: .localMedia)
         position = try container.decodeIfPresent(Double.self, forKey: .position) ?? 0
         trail = try container.decodeIfPresent(TabTrail.self, forKey: .trail) ?? TabTrail()
     }
@@ -43,13 +35,11 @@ struct SessionTab: Identifiable, Codable, Equatable {
 struct TabHistoryEntry: Codable, Equatable {
     var video: Video
     var cid: Int64?
-    var localMedia: LocalMedia? = nil
     var position: Double
 
     init(_ tab: SessionTab) {
         video = tab.video
         cid = tab.cid
-        localMedia = tab.localMedia
         position = tab.position
     }
 }
