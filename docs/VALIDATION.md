@@ -557,3 +557,78 @@ BILINEXT_EXIT_HISTORY_TEST=1 BILINEXT_EXIT_BVID=BV15Ypq6REjB BILINEXT_EXIT_MINIM
 - 宿主默认离线测试 292 通过、19 可选跳过；反馈包 38 通过；严格格式、diff、Release 构建、0.1.6 签名 Debug 打包及 deep/strict codesign 均通过。新增滚动突发只停止一次预览、空闲复位和取消定时不提前发布的回归。
 - 最新签名包实机验证首页滚动至约 0.289、空间页滚动至约 0.252，可见后续卡片；恢复视频保留约 5:48 的进度，暂停正常。关闭验收新开的空间标签后返回原视频并保持暂停。未执行点赞、投币、收藏或登录注销等账户操作。
 - 发布沿用三段版本标签 v0.1.6、GitHub Actions 构建 ZIP 和 Homebrew tap 更新，发布后另核对远端标签、包校验值及 tap 内容。
+
+
+## 2026-11-22 纯色表面性能基线（本地）
+
+- 保留现有导航、页面和播放器构型；移除宿主 Sources/BiliNext 中显式 Liquid Glass、Material、NSVisualEffectView 背景，以及播放器封面模糊和空间页头像模糊。工具栏、侧栏浮层、详情面板与控制条改为纯色，缩小抽屉与标签预览阴影。历史 Glass 命名暂留以减少调用点改动。
+- 开始前备份工作区；原有播放时钟隔离、弹幕刷新、安全区及其测试保留。本轮未提交、推送或替换 /Applications/BiliNext.app。当前运行的是 build/BiliNext.app 本地签名 Debug 包。
+- swift test --no-parallel：BiliNextTests 253 项、BiliNextCoreTests 92 项通过；严格格式检查、git diff --check、签名打包和 deep/strict codesign 验证通过。源码扫描未发现宿主显式玻璃、Material、blur 或 NSVisualEffectView 调用；系统菜单和依赖包不在该扫描范围。
+- 静态 UI 审计仍报告既有提示；唯一 high 为 WatchHistoryOutbox 的持久队列条目 UUID 创建，不是视图身份。未将整个仓库审计标为零问题。
+- 新增无账号、播放器或网络依赖的 opt-in 纯色视图预览。浅色预览可读；深色离屏渲染未完整绘出示例面板正文，不能以该 PNG 判定深色视觉通过。实际签名应用的深色评论正文、详情切换和播放控制条均正常显示。
+- 实机检查了动态页、恢复的视频标签、评论页，以及将动态列表滚动条设到 0.4 后的卡片和置顶工具栏；分隔线与遮挡区域正常。CUA 的 scroll 操作两次报 noWindowsAvailable，重新绑定窗口后使用滚动条值完成位置检查；这不构成连续滚动流畅度验证。未主动开始播放或执行点赞、投币、收藏操作。
+- 未完成浅色实机、VoiceOver、辅助功能设置矩阵及持续播放回归；未测量修改前后的帧时间、GPU 或能耗。此版提供去除特效后的可运行比较基线，不宣称已经证实卡顿根因或量化性能收益。
+
+
+## 2026-11-22 全屏侧栏切换布局开销修正（本地）
+
+- 症状：纯色表面版本在全屏点击侧栏开关仍有卡顿。修复前 15 秒主线程采样中可见大量 NSWindow/NSHostingView 布局调用；ShellView 把侧栏动画传给了内容区 padding，PlaybackTabHost.layout 也会给隐藏页同步每个中间尺寸。
+- 修正：内容区的侧栏宽度变化取消插值，一次采用目标尺寸；侧栏覆盖层仍保留原有滑动。隐藏的 PlaybackTabHost 不再给内部 NSHostingView 传递尺寸变化，激活前同步到最新 bounds，保留原有 host、面板、滚动及播放器状态。未改播放/解码策略。
+- 回归证据：新增 inactivePlaybackHostDefersResizingUntilActivation，模拟侧栏的 11 个中间宽度；修复前 11 次断言失败，修复后全部通过，并验证激活前尺寸同步、host 身份保持和前台继续响应尺寸变化。测试使用临时 SessionStore 和 restoreSession:false API，不访问真实凭据或账号。
+- 离线验证：swift test --no-parallel 通过 254 项 BiliNextTests 和 92 项 BiliNextCoreTests；严格格式、git diff --check、签名 Debug 构建与 deep/strict codesign 验证通过。保留先前安全区、播放时钟、弹幕和纯色表面修改。
+- 实机验证：启动本地 build/BiliNext.app，恢复原视频 3:15；通过系统绿色窗口按钮进入全屏，重复按钮隐藏及 Ctrl-Cmd-S 固定/隐藏；切到后台视频后布局正确，再切回原视频仍暂停在 3:15。亦检查了普通窗口的同一路径。未执行真实播放、点赞、投币、收藏操作；关闭/撤销关闭与字幕跳转本轮未重复实机验证。
+- 采样：/tmp/bilinext-sidebar-before.sample.txt、/tmp/bilinext-sidebar-fullscreen-after.sample.txt。后者仍能看到布局调用但所占采样减少；重启后访问过的详情面板不同，且采样包含 AX 自动化开销，因此不换算为速度提升百分比或帧率，不宣称所有掉帧已消除。
+- 状态：DONE_WITH_CONCERNS。已修复并验证可复现的后台页面尺寸传播问题，交互/状态回归通过；尚无连续帧时间基准证明主观卡顿完全解决。当前运行本地修复版，原安装版未替换，未提交或推送。
+
+
+## 2026-11-22 侧栏原生容器实验未通过体验验收（已撤回）
+
+- 用户复测上一版后仍报告卡顿；本轮尝试原生宿主容器过渡、缩小侧栏状态观察范围、窗口样式幂等更新。实验版本离线测试通过，但用户实机明确反馈“基本没有改善”，不将其记为性能修复。
+- 已撤回本轮实验源文件、临时显示回调探针及相应实验测试；ShellView、AppModel、PlaybackTabHost、GlassTheme 与实验前快照逐字节一致。保留此前纯色表面及隐藏播放页延迟尺寸同步修改。
+- 回调采样只能反映主线程收到回调的时间，不能证明合成器实际呈现帧率；跨越动作之前的间隔不作为点击延迟。校正后的单次样本首回调为动作后 4.6ms，不能据此宣称动画流畅。原始临时采样位于 /tmp/bilinext-sidebar-timing-calibrated.jsonl。
+- 录制限制：内置 SwiftFeedback 约每秒采一帧，不能用于短过渡逐帧分析；系统录屏入口启动失败，QuickTime 的“新建录屏”菜单处于禁用状态，本轮未取得有效过渡录像。未修改系统权限。
+- 恢复验证：优化 Debug 构建通过，重新打包播放器依赖并持久签名，deep/strict codesign 通过，git diff --check 通过；本地应用重新启动，原视频仍暂停在 3:15，并进入全屏。实验期间通过的 257+92 项测试属于已撤回版本，不算恢复版本的新测试结果。
+- 结论：UNRESOLVED。用户可感知卡顿未解决，尚未定位主因。未替换 /Applications 安装版，未提交或推送。
+
+
+## 2026-11-23 侧栏与内容区同步过渡（本地）
+
+- 根据本机 Arc 1.117.0 静态分析确认的侧栏/内容共同过渡结构及 0.08s 曲线参数，新增 SidebarTransitionHost：两个长期保留的 NSHostingView 先提交目标尺寸，再用同一开始时间、时长与曲线过渡 position/bounds/opacity。快速反向从 presentation 状态接续；窗口尺寸变化或减弱动态效果取消旧动画。模型几何始终等于最终状态，不使用可能过期的动画结束回调。未宣称复刻 Arc 的内部实现；静态分析没有证明其侧栏切换使用 locked/throttle 内容模式。
+- ShellPages 提取保留页面树，既有 PlaybackTabHost 后台尺寸延迟同步仍保留；浮动侧栏不挤压内容。未改播放器或账户模型。保留本轮前全部未提交修改，未替换 /Applications 安装版，未提交或推送。
+- 离线：完整 swift test --no-parallel 通过 256 项 BiliNextTests、92 项 BiliNextCoreTests（合计 348）。新增两项原生宿主回归覆盖共享时间线、多个中间点边缘同步、连续切换、host 身份、无关布局更新不打断动画、浮动/窗口尺寸变化和减弱动态效果。严格格式与 diff 检查通过，签名 Debug 打包及 deep/strict codesign 通过。完整测试之后仅增加 SidebarLayout 性能标记，并重新构建签名应用。
+- 实机：运行 build/BiliNext.app，恢复原视频并暂停在 3:15；通过系统窗口按钮进入全屏，反复 Ctrl-Cmd-S 固定/隐藏侧栏，最终内容与侧栏布局正确、原进度保持。随后验证标签切换、关闭/撤销关闭：恢复标签后仍暂停在 3:15；结束时返回用户当前的首个视频，暂停位置 14:54 保留。未主动开始播放或执行账户写操作。字幕跳转和普通窗口完整回归本轮未完成；静态截图不作为逐帧同步证据。
+- 性能：Animation Hitches 实际录制成功，trace 位于 /tmp/bilinext-sidebar-sync-fullscreen.trace（约 20.79 秒，附加到本地 BiliNext，含自动化开关与 AX 观察）。导出的 hitches 表有 21 条，时长中位数 91.67ms、最大 216.66ms；potential-hangs 有 11 条，最长主线程停顿 392.92ms。没有同条件旧版对照，不换算提升百分比或 FPS；这些是本次录制指标，不是每次点击延迟。
+- 后续 10 秒 sample：/tmp/bilinext-sync-toggle.sample.txt。在 SidebarTransitionHost.updateNSView → applyGeometry 分支的 488 个采样中，414 落在 pages.layoutSubtreeIfNeeded，58 落在 sidebar.layoutSubtreeIfNeeded；WindowChrome.configure → setStyleMask 为 2 个。该采样指向过渡前同步布局成本，不能单凭采样证明全部 hitch 的唯一根因。Animation Hitches 模板的 os-signpost 导出为空，本轮没有获得逐次 SidebarLayout 区间耗时。
+- 最终增加性能标记后的两项宿主回归再次通过。用户实际复测反馈“同步和流畅度都有改善”，因此保留此版本作为新的本地基线。
+- 结论：同步机制与状态回归已落实，用户确认体验改善；全屏测量仍有 hitch，未宣称完全消除卡顿。后续优化应针对目标页面布局/提交成本取得分段证据，不能继续只调动画时长。
+
+
+## 2026-11-23 过渡前布局开销续查（本地）
+
+- 证据：上一轮同步布局分支中仍出现 NativeVideoGrid.setFrameSize、视频卡片创建等调用。ShellPages 的浏览、搜索、空间和直播页面只有 opacity 隐藏，没有 PlaybackTabHost 已有的尺寸隔离。
+- 保留修改：新增 RetainedPageHost，为上述非视频页面保留独立 NSHostingView，禁用固有尺寸查询；后台只更新外层 viewport，内部保持最后尺寸，激活时先补齐尺寸再显示。保留页面/滚动身份与原有 isActive 逻辑。PlaybackView 的 playerWidth 只用于指针区域判断，移入现有命令式 PlaybackPointerState，几何变化仍重新计算悬停区域，但不再仅因宽度变化发布整页状态。侧栏与内容的原有同步过渡、动画参数和播放器行为保留。
+- 离线新增 inactiveRetainedPageDefersViewportUntilActivation，验证连续 11 个窗口宽度变化、后台内容更新、激活前尺寸补齐和同一宿主身份。第一轮及详情隔离实验完整离线测试均为 257+92=349 项通过；格式、diff、签名包检查通过。以下实验结果不作为最终保留代码的额外性能保证。
+- 采样使用同一暂停视频的全屏状态，15 秒 Animation Hitches 记录内通过 Ctrl-Cmd-S 执行六次开关。/tmp/bilinext-layout-before.trace：10 条 hitch，中位 87.50ms、最大 216.67ms；8 条 potential-hang，最大 234.19ms。/tmp/bilinext-layout-after.trace（仅后台页隔离）：12 条 hitch，中位 75.00ms、最大 100.00ms；13 条 potential-hang，最大 145.00ms。第二轮增加详情宿主与宽度状态精简后的 /tmp/bilinext-layout-final.trace：14 条 hitch，中位 58.33ms、最大 133.33ms；14 条 potential-hang，最大 225.11ms。
+- 用户对第二轮复测明确反馈“基本相同”。这些短采样包含自动化、应用重启/缓存差异与系统负载，第一轮复测期间离线测试尚在收尾；第一轮侧栏起始状态与基线相反。不能把最大值下降换算为稳定收益。调用栈 /tmp/bilinext-layout-isolated.sample.txt 中不再出现 VideoGridCollectionView.setFrameSize，但主线程布局仍占明显开销。
+- 未保留的实验：独立右侧详情宿主没有获得用户或稳定性能证据支持，已撤回。另尝试取消 updateNSView 内强制子树布局、让系统正常提交并自动确定动画起始时间；/tmp/bilinext-layout-deferred.trace 有 13 条 hitch（中位 108.33ms、最大 133.33ms），9 条 potential-hang（最大 374.35ms），数据没有改善，已恢复上一版 SidebarTransitionHost。未把这项实验解释成 Arc 已验证机制。
+- 实机中间版本：多次重启恢复标签与暂停进度；后台搜索页在全屏切换侧栏后，前台滚动条仍为 0.4940744920993228；字幕按钮从暂停 14:58 跳到 0:03 后仍暂停，随后恢复 14:58 和简介面板。实际播放进度由用户复测从 14:54 变为 14:58，自动验证未主动播放或执行账户写操作。
+- 状态：剩余主观顿挫仍未解决。保留有回归证据的布局边界修正，撤回没有收益的结构实验；未提交、推送或替换 /Applications 安装版。
+- 最终保留版本重新完整测试 257+92=349 项通过，严格格式、git diff --check、deep/strict codesign 通过；SidebarTransitionHost 与本轮开始时逐字节一致。重新启动本地签名包，验证标签切换、关闭/撤销关闭后恢复 3:15，最后返回用户首个视频并暂停在 14:58。当前运行此保留版本。
+- 最终 /tmp/bilinext-layout-kept.trace：14 条 hitch，中位 108.33ms、最大 133.34ms；9 条 potential-hang，最大 299.40ms。它同样没有证明稳定性能收益，不能选择性地只引用最初较低的最大值。源码层面消除了后台网格随侧栏调整 viewport 的路径，但本轮整体体验/帧时间改善未通过验收。
+
+## 2026-11-23 Arc 对照续查与编译模式纠正（本地）
+
+- Arc 静态调用链补齐：contentSizeThrottleFlags 的 bit 0x8 来自 CombineLatest3 中第二项 `_isSidebarResizing`，不是 `_isSidebarAnimating`。viewWillLayout 会给真实内容 view 设置 frame；存在 lockedContentSize 分支不等于普通开关侧栏会冻结页面。证据见仓库外 `../arc-research-20261122/followup-20261123.md` 与对应指令摘录。尚未动态证明 Arc 普通过渡中各布局调用的次数/耗时，不能声称它只做 GPU transform 或完全不重排内容。
+- 查出此前实机比较的构建混杂：默认 build-app.sh 再次执行未带 `-O` 的 Debug 构建，覆盖之前单独构建的优化产物。旧运行包 UUID 为 `129E8830-81E3-32B5-A3ED-26148C6573AE`，构建记录只有 `-Onone`。旧包已保留在 `/tmp/bilinext-onone-baseline.app`。历史条目中的“优化 Debug”不能代表后续脚本打包产物一直保持优化。
+- 相同界面源码重新启用 `-O` 后，包 UUID 为 `27476897-554A-3215-ACD5-21AA7DC734CA`。SwiftDriver 记录保留 `-DDEBUG` 且最后传入 `-O`；SidebarTransitionHost 与 DevelopmentSessionStore 的 object 均有 `DW_AT_APPLE_optimized(true)`。已重新启动这个包并确认全屏原视频仍暂停在 14:58。这证明运行包模式改变，不证明掉帧根因已解决。
+- 打包脚本增加显式 `BILINEXT_OPTIMIZE_DEBUG=1`，构建与查询产物路径传递相同参数，Info.plist 记录配置和优化开关；默认行为仍是普通 Debug，Release 凭据路径未改。本轮未改界面 Swift 文件，保留用户认可的同步版本及此前后台尺寸隔离；未替换 /Applications、提交或推送。
+- 同轮 Animation Hitches 样本：Arc `/tmp/arc-sidebar-buttons-v2.trace`（15 秒，6 次按钮操作）8 条 hitch，中位 12.50ms、最大 58.33ms；未优化 BiliNext `/tmp/bilinext-sidebar-onone-buttons.trace`（20 秒，6 次按钮/快捷键操作）10 条，中位 87.50ms、最大 3174.98ms；优化 BiliNext `/tmp/bilinext-sidebar-optimized-buttons.trace`（20 秒，同样 6 次）1497 条，中位 8.33ms、最大 200.00ms。优化样本的大量 8.33ms 记录异常且仍有较长停顿，不能只取中位数宣称改善。Arc 内容与 BiliNext 的多标签视频内容也不是等负载。
+- 录制结束后 xctrace 仍持续以高 CPU/内存负载处理 trace，可能干扰用户复测；已等待其完全退出并提醒用户。初次 Arc 录制遇到 CUA 超时，没有有效动作序列，未列为对照。上述短录制混有自动化、启动缓存和采集负载，不能据此换算速度提升百分比、FPS 或点击响应时间。
+- 验证：新脚本 bash 语法检查、实际优化签名打包、包内配置/UUID 与 deep/strict codesign 均通过。`swift test --no-parallel -Xswiftc -O` 完整通过 257+92=349 项离线测试。编译、测试和 xctrace 全部退出后，又完成三组隐藏/恢复侧栏，原视频保持暂停在 14:58。
+- 后续轻量 15 秒、5ms 间隔 sample 位于 `/tmp/bilinext-optimized-sidebar.sample.txt`：SidebarTransitionHost.updateNSView 分支合计 54 个采样，50 个落在 pages.layoutSubtreeIfNeeded、4 个在 sidebar.layoutSubtreeIfNeeded；仍可见目标页面布局工作，同时存在 AX 查询开销。与此前采样间隔、操作覆盖不同，不能用 54 对 488 的数量差宣称提速。主观剩余卡顿仍待用户复测，不标记为已解决。
+
+## 2026-11-23 玻璃外观对照后按用户要求撤回
+
+- 临时恢复玻璃材质、壁纸背景与封面环境光，保留同步过渡和布局优化，构建并启动供用户查看。用户随后明确要求“还是回滚吧，不要液态玻璃”，本轮视觉实验全部撤回，不对玻璃版本作性能结论。
+- 从 `/tmp/bilinext-before-glass-20261123` 恢复 21 个本轮编辑文件；备份中的 Sources/Tests 文件与当前版本逐字节一致。侧栏同步、后台尺寸隔离、播放时钟与弹幕优化全部保留；设计文档也恢复纯色基线。
+- `BILINEXT_OPTIMIZE_DEBUG=1 bash scripts/build-app.sh` 重新构建成功，包内优化开关为 1，deep/strict codesign 和 diff 检查通过。新包 UUID 为 `4E0C1511-CFBA-3723-9C90-49962B298006`。应用已重启，实机确认当前播放界面恢复纯色。此前该源码基线的 349 项优化模式离线测试结果仍见上一条；回滚后未重复完整测试。

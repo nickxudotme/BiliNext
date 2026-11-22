@@ -19,7 +19,7 @@ struct LoginView: View {
                 } label: {
                     Image(systemName: "xmark").font(GlassTheme.labelFont).iconControlFrame()
                 }.buttonStyle(InteractionButtonStyle()).chromeSurface(
-                    in: Circle(), interactive: true
+                    in: Circle()
                 ).accessibilityLabel("关闭")
             }
             Text("使用哔哩哔哩手机客户端扫码确认").font(GlassTheme.bodyFont).foregroundStyle(.secondary)
@@ -34,7 +34,7 @@ struct LoginView: View {
             }.frame(width: 220, height: 220)
             Text(status).font(GlassTheme.bodyFont).multilineTextAlignment(.center)
             if failed {
-                Button("刷新二维码") { retry = UUID() }.buttonStyle(.glass).controlSize(.large)
+                Button("刷新二维码") { retry = UUID() }.buttonStyle(.bordered).controlSize(.large)
                     .font(GlassTheme.labelFont)
             }
             Text(model.credentialNotice).font(GlassTheme.metadataFont).foregroundStyle(.secondary)

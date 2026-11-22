@@ -43,7 +43,7 @@ struct BrowseView: View {
                 } description: {
                     Text("扫码登录，读取你在 B 站的内容。")
                 } actions: {
-                    Button("扫码登录") { model.loginPresented = true }.buttonStyle(.glassProminent)
+                    Button("扫码登录") { model.loginPresented = true }.buttonStyle(.borderedProminent)
                 }
                 .padding(.top, topInset)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -61,7 +61,7 @@ struct BrowseView: View {
                     Text(model.hasMore ? "这一批暂时没有视频，可以继续加载。" : emptyState.message)
                 } actions: {
                     if model.hasMore {
-                        Button("继续加载视频") { model.refresh(more: true) }.buttonStyle(.glass)
+                        Button("继续加载视频") { model.refresh(more: true) }.buttonStyle(.bordered)
                     }
                 }
                 .padding(.top, topInset)
@@ -72,7 +72,7 @@ struct BrowseView: View {
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .animation(Motion.standard(reduceMotion), value: model.videos.isEmpty)
-            // Notices float as glass just below the toolbar or above the bottom edge.
+            // Notices stay above content on an opaque surface, below the toolbar or at the bottom.
             .overlay(alignment: .top) {
                 if let error = model.browseError {
                     ErrorBanner(message: error) { model.retryBrowse() }
@@ -87,7 +87,7 @@ struct BrowseView: View {
                     HStack(spacing: 12) {
                         Text("已移除「\(removed.title)」").lineLimit(1).frame(maxWidth: 320)
                         Button("撤销") { model.changeWatchLater(removed) }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.bordered)
                             .disabled(model.libraryBusy.contains(removed.id))
                     }
                     .font(GlassTheme.labelFont)

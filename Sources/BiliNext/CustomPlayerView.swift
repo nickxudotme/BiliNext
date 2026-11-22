@@ -33,7 +33,7 @@ struct VideoSurface: NSViewRepresentable {
 
 struct CustomPlayerView: View {
     @ObservedObject var model: AppModel
-    @ObservedObject private var clock: PlaybackClock
+    private let clock: PlaybackClock
     init(
         model: AppModel, danmaku: DanmakuModel, isActive: Bool = true, miniPlayer: Bool = false,
         windowPinned: Bool = false, onControlsVisibility: @escaping (Bool) -> Void = { _ in }
@@ -95,19 +95,24 @@ struct CustomPlayerView: View {
             } else {
                 VideoSurface(player: model.player)
             }
-            DanmakuCanvas(
-                player: model.player, mpv: model.mpv, model: danmaku, time: model.time,
-                playing: model.playing,
-                opacity: opacity, fontSize: fontSize, area: area, speed: dmSpeed, blocked: blocked,
-                rolling: rolling, fixed: fixed
-            )
+            PlaybackClockView(clock: clock) { time in
+                DanmakuCanvas(
+                    player: model.player, mpv: model.mpv, model: danmaku, time: time,
+                    playing: isActive && model.playing && !model.buffering,
+                    opacity: opacity, fontSize: fontSize, area: area, speed: dmSpeed,
+                    blocked: blocked,
+                    rolling: rolling, fixed: fixed
+                )
+            }
             .allowsHitTesting(false)
             if smartSubtitles.visible {
                 VStack {
                     Spacer()
-                    SubtitleOverlay(
-                        primary: model.cues, secondary: model.secondaryCues, time: model.time
-                    )
+                    PlaybackClockView(clock: clock) { time in
+                        SubtitleOverlay(
+                            primary: model.cues, secondary: model.secondaryCues, time: time
+                        )
+                    }
                     .padding(.horizontal, 20)
                 }.padding(.bottom, controlsVisible ? 104 : 20).allowsHitTesting(false)
                     .animation(Motion.standard(reduceMotion), value: controlsVisible)
@@ -119,7 +124,7 @@ struct CustomPlayerView: View {
                         Button("保留") { smartSubtitles.resolveLanguage(keep: true) }
                         Button("隐藏") { smartSubtitles.resolveLanguage(keep: false) }
                     }.font(GlassTheme.labelFont).controlSize(.regular).padding(12).background(
-                        .regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+                        GlassTheme.playbackPanel, in: RoundedRectangle(cornerRadius: 10))
                     Spacer()
                 }.padding(16)
             }
@@ -144,7 +149,7 @@ struct CustomPlayerView: View {
                         .foregroundStyle(.orange)
                     Text(error).font(GlassTheme.bodyFont).multilineTextAlignment(.center)
                         .frame(maxWidth: 420)
-                    Button("重新加载") { model.refresh() }.buttonStyle(.glass).controlSize(.large)
+                    Button("重新加载") { model.refresh() }.buttonStyle(.bordered).controlSize(.large)
                 }
                 .padding(24).foregroundStyle(.white).frame(
                     maxWidth: .infinity, maxHeight: .infinity
@@ -154,17 +159,19 @@ struct CustomPlayerView: View {
             if controlsVisible {
                 VStack {
                     Spacer()
-                    controlsBar
+                    PlaybackClockView(clock: clock) { _ in controlsBar }
                         .developmentFeedbackTarget(
                             "player.controls", label: "播放器控制栏", isActive: isActive)
                 }.transition(.opacity)
             } else if model.duration > 0 {
                 // A hairline of progress stays visible while the controls are hidden.
-                GeometryReader { proxy in
-                    Rectangle().fill(GlassTheme.accent)
-                        .frame(
-                            width: proxy.size.width * min(1, max(0, model.time / model.duration)),
-                            height: 2)
+                PlaybackClockView(clock: clock) { time in
+                    GeometryReader { proxy in
+                        Rectangle().fill(GlassTheme.accent)
+                            .frame(
+                                width: proxy.size.width * min(1, max(0, time / model.duration)),
+                                height: 2)
+                    }
                 }
                 .frame(height: 2).frame(maxHeight: .infinity, alignment: .bottom)
                 .allowsHitTesting(false)
@@ -323,7 +330,6 @@ struct CustomPlayerView: View {
         }
         .onChange(of: controlsVisible) { _, value in onControlsVisibility(value) }
         .onChange(of: model.playing) { _, _ in revealControls() }
-        .onChange(of: model.time) { _, value in if !scrubbing { scrubTime = value } }
         .onChange(of: scrubTime) { _, value in
             if !scrubbing && model.duration > 0 && abs(value - model.time) > 1 { model.seek(value) }
         }

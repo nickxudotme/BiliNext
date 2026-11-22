@@ -102,10 +102,10 @@ struct DanmakuSurface: NSViewRepresentable {
         view.running = playing
         view.enabled = enabled
         view.displayLink?.isPaused = !playing
-        view.render(
-            time: mpv?.time
-                ?? (player.currentItem?.status == .readyToPlay
-                    ? player.currentTime().seconds : time))
+        // The playback poll already supplies time. Never synchronously lock mpv's core
+        // from a display-link callback or a SwiftUI transaction on the main thread.
+        view.synchronize(time: time)
+        view.render(time: time)
     }
     static func dismantleNSView(_ view: Surface, coordinator: ()) {
         view.displayLink?.invalidate()
@@ -126,6 +126,17 @@ struct DanmakuSurface: NSViewRepresentable {
         var running = false
         var enabled = true
         var displayLink: CADisplayLink?
+        private var playbackTime = 0.0
+        private var playbackHost = 0.0
+        func synchronize(time: Double) {
+            guard time.isFinite else { return }
+            playbackTime = time
+            playbackHost = hostClock()
+        }
+        var interpolatedTime: Double {
+            let rate = running ? (mpv?.speed ?? 1) : 0
+            return playbackTime + max(0, hostClock() - playbackHost) * rate
+        }
         private var lastTime = Double.nan
         private var lastHost = 0.0
         private var lastRate: Float = -1
@@ -167,8 +178,8 @@ struct DanmakuSurface: NSViewRepresentable {
         @objc private func tick() {
             if let liveClock {
                 render(time: liveClock())
-            } else if let mpv {
-                render(time: mpv.time)
+            } else if mpv != nil {
+                render(time: interpolatedTime)
             } else if let player {
                 render(time: player.currentTime().seconds)
             }

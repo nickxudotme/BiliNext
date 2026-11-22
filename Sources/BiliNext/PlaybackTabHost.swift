@@ -48,6 +48,9 @@ struct PlaybackTabHost: NSViewRepresentable {
             // The shell supplies the viewport; asking every retained page for its
             // intrinsic/minimum/maximum size traverses all its detail rows.
             content.sizingOptions = []
+            // ShellView already lays out the full-size window content. An embedded
+            // hosting root must not reserve the titlebar safe area a second time.
+            content.safeAreaRegions = []
             super.init(frame: .zero)
             addSubview(content)
             isHidden = !configuration.isActive
@@ -57,6 +60,13 @@ struct PlaybackTabHost: NSViewRepresentable {
 
         override func layout() {
             super.layout()
+            updateContentFrame()
+        }
+
+        private func updateContentFrame() {
+            // Retain the last viewport while hidden. Sidebar/window resizing
+            // must not reflow every background page and its video surface.
+            guard configuration.isActive else { return }
             if content.frame != bounds { content.frame = bounds }
         }
 
@@ -67,6 +77,9 @@ struct PlaybackTabHost: NSViewRepresentable {
             self.model = model
             self.configuration = configuration
             content.rootView = Self.page(model, configuration, onExitCommand)
+            // Catch up before unhiding, even if AppKit already laid out the
+            // outer host while this tab was inactive.
+            updateContentFrame()
             isHidden = !configuration.isActive
         }
 

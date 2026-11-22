@@ -125,7 +125,7 @@ struct MemberSpaceView: View {
         } description: {
             Text("按「最多播放」排序和搜索投稿需要登录。「最新发布」无需登录。")
         } actions: {
-            Button("扫码登录") { model.loginPresented = true }.buttonStyle(.glass)
+            Button("扫码登录") { model.loginPresented = true }.buttonStyle(.bordered)
             Button("看最新发布") { space.showLatest() }.buttonStyle(.plain)
                 .foregroundStyle(.secondary)
         }
@@ -200,17 +200,12 @@ private struct SpaceHeader: View {
         }
     }
 
-    /// The uploader's banner, or a wash of their avatar when they have none, fading into the
-    /// page so the header reads as one surface.
+    /// Keep the uploader's artwork; use a neutral background when no banner is available.
     private var banner: some View {
         ZStack {
             Color.primary.opacity(0.04)
             if let url = card?.banner {
                 ThumbnailView(url: url, pixels: 2000) { Color.clear }
-            } else if let avatar = card?.avatar {
-                ThumbnailView(url: avatar, pixels: 96) { Color.clear }
-                    .scaleEffect(1.8).blur(radius: 60, opaque: true).saturation(1.4)
-                    .opacity(0.6)
             }
         }
         .frame(height: Self.bannerHeight).frame(maxWidth: .infinity)
@@ -260,7 +255,7 @@ private struct SpaceHeader: View {
     }
 
     @ViewBuilder private var actions: some View {
-        GlassEffectContainer(spacing: 8) {
+        Group {
             HStack(spacing: 8) {
                 if let live = space.liveRoom, live.live {
                     capsule {
@@ -364,7 +359,7 @@ private struct SpaceHeader: View {
 
 // MARK: - Section bar
 
-/// The floating glass bar pinned above the grid.
+/// The opaque toolbar pinned above the grid.
 private struct SpaceSectionBar: View {
     @ObservedObject var space: MemberSpace
     var pinned = false
@@ -372,7 +367,7 @@ private struct SpaceSectionBar: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        GlassEffectContainer(spacing: 10) {
+        Group {
             HStack(spacing: 12) {
                 if space.openCollection != nil {
                     Button {
@@ -407,7 +402,7 @@ private struct SpaceSectionBar: View {
         .padding(.horizontal, GlassTheme.contentInset - 6)
         .frame(height: BrowseToolbar.height)
         .background(alignment: .top) {
-            SoftScrollEdge().frame(height: BrowseToolbar.height + 24).allowsHitTesting(false)
+            SoftScrollEdge().frame(height: BrowseToolbar.height).allowsHitTesting(false)
                 .opacity(pinned ? 1 : 0)
                 .animation(Motion.quick(reduceMotion), value: pinned)
         }

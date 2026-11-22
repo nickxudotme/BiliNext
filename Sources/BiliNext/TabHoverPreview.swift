@@ -144,7 +144,7 @@ struct TabPreviewCard: View {
         .padding(10)
         .frame(width: Self.width)
         .chromeSurface(in: RoundedRectangle(cornerRadius: GlassTheme.panelRadius))
-        .shadow(color: .black.opacity(0.18), radius: 18, y: 8)
+        .shadow(color: .black.opacity(0.14), radius: 4, y: 2)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }

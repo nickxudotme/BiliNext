@@ -40,7 +40,6 @@ struct PlaybackView: View {
     var onExitCommand: () -> Void = {}
     @State private var panel = PlaybackPanel.initial
     @State private var visitedPanels: Set<PlaybackPanel> = [PlaybackPanel.initial]
-    @State private var playerWidth: CGFloat = 0
     @State private var pointer = PlaybackPointerState()
     @State private var hoveringVideo = false
     @State private var hoveringDetails = false
@@ -57,7 +56,10 @@ struct PlaybackView: View {
                 .onGeometryChange(for: CGFloat.self) {
                     $0.size.width
                 } action: {
-                    playerWidth = $0
+                    pointer.playerWidth = $0
+                    let current = pointer.position
+                    pointer.position = nil
+                    trackPointer(current)
                 }
                 .overlay(alignment: .trailing) {
                     Button {
@@ -91,8 +93,7 @@ struct PlaybackView: View {
                 .accessibilityHidden(!detailsVisible)
                 .clipped()
         }
-        // The playback page is a dark screening room lit by the video's own cover.
-        .background { PlaybackAmbience(cover: model.detail?.video.cover ?? currentCover) }
+        .background { PlaybackAmbience() }
         .environment(\.colorScheme, .dark)
         .onExitCommand {
             // This page has its own hosting root; forward the shell command
@@ -146,13 +147,9 @@ struct PlaybackView: View {
 
     private var detailsVisible: Bool { !model.theater && !miniPlayer }
 
-    private var currentCover: URL? {
-        model.tabs.first(where: { $0.id == model.selected })?.video.cover
-    }
-
     private var detailsPanel: some View {
         VStack(spacing: 0) {
-            GlassEffectContainer(spacing: 6) {
+            Group {
                 HStack(spacing: 8) {
                     PlaybackPanelSwitcher(selection: $panel)
                     playbackOptions
@@ -237,7 +234,7 @@ struct PlaybackView: View {
         .menuStyle(.borderlessButton).menuIndicator(.hidden)
         .modifier(MenuHoverFeedback())
         .frame(width: 36, height: 36)
-        .chromeSurface(in: Circle(), interactive: true)
+        .chromeSurface(in: Circle())
         .help("播放选项").accessibilityLabel("播放选项")
     }
 
@@ -245,8 +242,8 @@ struct PlaybackView: View {
         guard isActive, next != pointer.position else { return }
         pointer.position = next
         let next = navigationOverlayVisible && (next?.x ?? 999) < 224 ? nil : next
-        let video = next.map { $0.x >= 0 && $0.x < playerWidth } ?? false
-        let details = next.map { $0.x >= playerWidth && !model.theater } ?? false
+        let video = next.map { $0.x >= 0 && $0.x < pointer.playerWidth } ?? false
+        let details = next.map { $0.x >= pointer.playerWidth && !model.theater } ?? false
         if hoveringVideo != video { hoveringVideo = video }
         if hoveringDetails != details { hoveringDetails = details }
         if idle { idle = false }
@@ -419,4 +416,7 @@ private struct DanmakuListView: View {
 /// movement would rebuild the player and retained panels at the mouse event rate.
 private final class PlaybackPointerState {
     var position: NSPoint?
+    // Width is only used for hit testing. Publishing it would invalidate the
+    // entire playback page immediately after every sidebar-induced layout.
+    var playerWidth: CGFloat = 0
 }

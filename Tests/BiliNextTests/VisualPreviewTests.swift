@@ -5,6 +5,70 @@ import Testing
 
 @testable import BiliNext
 
+/// Pure view fixtures: no account, session store, player or network is created.
+@MainActor
+@Test func visualPreviewSolidSurfaces() throws {
+    guard ProcessInfo.processInfo.environment["BILINEXT_RENDER_PREVIEW"] == "1" else { return }
+    let originalAppearance = NSApplication.shared.appearance
+    defer { NSApplication.shared.appearance = originalAppearance }
+    for dark in [false, true] {
+        NSApplication.shared.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        let view = VStack(alignment: .leading, spacing: 24) {
+            HStack {
+                SectionTabs(
+                    items: [("推荐", "推荐"), ("热门", "热门"), ("排行榜", "排行榜")],
+                    selection: "推荐", glass: true
+                ) { _ in }
+                Spacer()
+                Label("搜索视频", systemImage: "magnifyingglass")
+                    .font(GlassTheme.labelFont).padding(10).floatingGlass(in: Capsule())
+            }
+            .padding(16)
+            .background { SoftScrollEdge() }
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("侧栏与浮层").font(GlassTheme.sectionTitleFont)
+                    Label("动态", systemImage: "rectangle.stack")
+                        .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                        .background { NavigationSelection(selected: true) }
+                    Label("稍后再看", systemImage: "clock")
+                        .padding(10).chromeSurface(in: Capsule())
+                }
+                .padding(16).frame(width: 240)
+                .background { SidebarSurface(pinned: false) }
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("视频详情").font(GlassTheme.sheetTitleFont)
+                    Text("纯色面板保持正文清晰，控件不再采样背后的画面。")
+                        .font(GlassTheme.bodyFont)
+                    Text("12:46 · 1080P · 1×").font(GlassTheme.metadataFont)
+                        .foregroundStyle(.secondary)
+                    Divider()
+                    HStack {
+                        Image(systemName: "play.fill")
+                        Text("03:27 / 12:46").monospacedDigit()
+                        Spacer()
+                        Image(systemName: "speaker.wave.2.fill")
+                    }
+                    .font(GlassTheme.labelFont)
+                    .playerGlassBar(compact: true)
+                }
+                .padding(20).frame(maxWidth: .infinity)
+                .floatingGlassPanel().environment(\.colorScheme, .dark)
+            }
+            .padding(.horizontal, 16)
+            ErrorBanner(message: "暂时无法加载视频，请稍后重试。") {}
+                .padding(.horizontal, 16)
+        }
+        .padding(20).frame(width: 880)
+        .background(GlassTheme.canvas)
+        .environment(\.colorScheme, dark ? .dark : .light)
+        try renderPreview(
+            view,
+            name: "bilinext-solid-\(dark ? "dark" : "light")"
+        )
+    }
+}
+
 /// Opt-in offscreen renders for reviewing shared states without a signed app:
 /// `BILINEXT_RENDER_PREVIEW=1 swift test --filter VisualPreview` writes PNGs to the
 /// directory in `BILINEXT_RENDER_DIR` (default /tmp). Glass does not render offscreen.

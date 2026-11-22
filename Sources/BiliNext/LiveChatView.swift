@@ -64,7 +64,7 @@ struct LiveChatView: View {
                         Button("回到最新弹幕", systemImage: "arrow.down") {
                             following = true
                             proxy.scrollTo("latest", anchor: .bottom)
-                        }.buttonStyle(.glass).padding(12)
+                        }.buttonStyle(.bordered).padding(12)
                     }
                 }
             }

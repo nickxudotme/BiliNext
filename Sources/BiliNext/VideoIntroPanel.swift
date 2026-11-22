@@ -44,7 +44,7 @@ struct VideoIntroPanel: View {
                             .iconControlFrame(size: 40)
                     }
                     .buttonStyle(InteractionButtonStyle())
-                    .chromeSurface(in: Circle(), interactive: true)
+                    .chromeSurface(in: Circle())
                     .help("回到顶部").accessibilityLabel("回到顶部")
                     .padding(16)
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))

@@ -23,129 +23,97 @@ struct ShellView: View {
     @StateObject private var tabPreview = TabHoverPreview()
 
     var body: some View {
-        ZStack {
-            ForEach(model.browseInstances.keys.sorted(), id: \.self) { pageID in
-                if let instance = model.browseInstances[pageID] {
-                    let active =
-                        model.selected == nil && pageID == model.browsePageID(for: model.menu)
-                    BrowseView(model: instance, isActive: active, topInset: BrowseToolbar.height)
-                        .developmentFeedbackTarget(
-                            "browse.\(pageID)", label: "浏览页：\(pageID)", isActive: active
-                        )
-                        .id(ObjectIdentifier(instance))
-                        .opacity(active ? 1 : 0)
-                        .allowsHitTesting(active)
-                        .accessibilityHidden(!active)
-                }
+        SidebarTransitionHost(
+            configuration: .init(
+                pinned: pinned, revealed: revealed, edgeInset: cardGap,
+                sidebarWidth: drawerWidth, reduceMotion: reduceMotion),
+            pages: ShellPages(
+                model: model, navigationOverlayVisible: !pinned && revealed,
+                edgeToEdge: edgeToEdge, onExitCommand: exitPlayback
+            ).tint(GlassTheme.accent),
+            sidebar: sidebarPanel.tint(GlassTheme.accent)
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background { WindowBackdrop().ignoresSafeArea() }
+        .background(
+            WindowChrome(
+                pinned: model.windowPinned, miniPlayer: model.miniPlayer,
+                showsButtons: pinned || revealed
+            ) { fullScreen = $0 }
+        )
+        .onChange(of: fullScreen) { _, entered in
+            if entered && model.selected != nil {
+                pinnedBeforePlaybackFullscreen = pinned
+                revealTask?.cancel()
+                hideTask?.cancel()
+                pinned = false
+                revealed = false
+                pointerZone = -1
+            } else if !entered, let previous = pinnedBeforePlaybackFullscreen {
+                revealTask?.cancel()
+                hideTask?.cancel()
+                pinned = previous
+                revealed = false
+                pointerZone = -1
+                pinnedBeforePlaybackFullscreen = nil
             }
-            if model.selected == nil {
-                BrowseToolbar(model: model)
-                    .developmentFeedbackTarget("browse.toolbar", label: "浏览工具栏")
-                    .frame(maxHeight: .infinity, alignment: .top)
+        }
+        .background(
+            DrawerPointerTracker(externalWidth: drawerWidth) { point in updatePointer(point) }
+        )
+        .ignoresSafeArea(.container, edges: .top)
+        .onChange(of: model.selected) { _, selected in
+            // 小窗 only shows a video; closing the last one returns to the full window.
+            if selected == nil && model.miniPlayer { model.toggleMiniPlayer() }
+        }
+        .onChange(of: model.sidebarPinned) { _, _ in
+            // The menu shortcut toggles pinning without passing through the header button.
+            revealTask?.cancel()
+            hideTask?.cancel()
+            revealed = false
+            pointerZone = -1
+        }
+        .onExitCommand(perform: exitPlayback)
+        .onDisappear {
+            revealTask?.cancel()
+            hideTask?.cancel()
+        }
+        .overlay(alignment: .bottom) {
+            if let toast = model.toast {
+                // Over a video, stay above the floating control bar.
+                let overVideo = model.selected != nil && !model.miniPlayer
+                Text(toast).font(GlassTheme.labelFont)
+                    .padding(.horizontal, 18).padding(.vertical, 10)
+                    .chromeSurface(in: Capsule())
+                    .padding(.horizontal, 28).padding(.bottom, overVideo ? 108 : 28)
+                    .allowsHitTesting(false)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            ForEach(model.tabs) { tab in
-                if let instance = model.playbackInstances[tab.id] {
-                    if let keyword = SearchResultsTab.keyword(tab.id) {
-                        SearchResultsView(
-                            model: instance, keyword: keyword, isActive: model.selected == tab.id
-                        )
-                        .developmentFeedbackTarget(
-                            "search.\(tab.id)", label: "搜索结果", isActive: model.selected == tab.id
-                        )
-                        .opacity(model.selected == tab.id ? 1 : 0)
-                        .allowsHitTesting(model.selected == tab.id)
-                        .accessibilityHidden(model.selected != tab.id)
-                    } else if let space = instance.memberSpace {
-                        MemberSpaceView(
-                            space: space, model: instance, isActive: model.selected == tab.id
-                        )
-                        .developmentFeedbackTarget(
-                            "member.\(tab.id)", label: "UP 主空间", isActive: model.selected == tab.id
-                        )
-                        .opacity(model.selected == tab.id ? 1 : 0)
-                        .allowsHitTesting(model.selected == tab.id)
-                        .accessibilityHidden(model.selected != tab.id)
-                    } else if let session = instance.liveSession {
-                        LiveRoomView(session: session, isActive: model.selected == tab.id)
-                            .developmentFeedbackTarget(
-                                "live.\(tab.id)", label: "直播页", isActive: model.selected == tab.id
-                            )
-                            .opacity(model.selected == tab.id ? 1 : 0)
-                            .allowsHitTesting(model.selected == tab.id)
-                            .accessibilityHidden(model.selected != tab.id)
-                    } else {
-                        PlaybackTabHost(
-                            model: instance, navigationOverlayVisible: !pinned && revealed,
-                            miniPlayer: model.miniPlayer, windowPinned: model.windowPinned,
-                            isActive: model.selected == tab.id, onExitCommand: exitPlayback
-                        )
-                        .developmentFeedbackTarget(
-                            "playback.\(tab.id)", label: "播放页", isActive: model.selected == tab.id
-                        )
-                        .opacity(model.selected == tab.id ? 1 : 0)
-                        .allowsHitTesting(model.selected == tab.id)
-                        .accessibilityHidden(model.selected != tab.id)
-                    }
-                }
-            }
-        }.frame(maxWidth: .infinity, maxHeight: .infinity)
-            // Content is an inset card on the wallpaper-tinted backdrop, as in Arc.
-            // Fullscreen drops the inset so video and pages reach the screen edges.
-            .background(GlassTheme.canvas)
-            .clipShape(RoundedRectangle(cornerRadius: edgeToEdge ? 0 : GlassTheme.cardRadius))
-            .shadow(color: .black.opacity(edgeToEdge ? 0 : 0.18), radius: 1.5)
-            .padding(.leading, pinned ? drawerWidth : cardGap)
-            .padding([.top, .bottom, .trailing], cardGap)
-            .background { WindowBackdrop().ignoresSafeArea() }
-            .background(
-                WindowChrome(
-                    pinned: model.windowPinned, miniPlayer: model.miniPlayer,
-                    showsButtons: pinned || revealed
-                ) { fullScreen = $0 }
+        }
+        .animation(Motion.standard(reduceMotion), value: model.toast)
+        .overlay(alignment: .topTrailing) { PerformanceHUDOverlay() }
+        .sheet(isPresented: $model.downloadsPresented) {
+            DownloadsView(manager: model.downloads, model: model)
+        }
+        .sheet(isPresented: $model.loginPresented) { LoginView(model: model) }
+    }
+
+    private var sidebarPanel: some View {
+        sidebar.frame(width: drawerWidth)
+            .developmentFeedbackTarget(
+                "navigation.sidebar", label: "导航侧栏", isActive: pinned || revealed
             )
-            .onChange(of: fullScreen) { _, entered in
-                if entered && model.selected != nil {
-                    pinnedBeforePlaybackFullscreen = pinned
-                    revealTask?.cancel()
-                    hideTask?.cancel()
-                    pinned = false
-                    revealed = false
-                    pointerZone = -1
-                } else if !entered, let previous = pinnedBeforePlaybackFullscreen {
-                    revealTask?.cancel()
-                    hideTask?.cancel()
-                    pinned = previous
-                    revealed = false
-                    pointerZone = -1
-                    pinnedBeforePlaybackFullscreen = nil
-                }
-            }
-            .background(
-                DrawerPointerTracker(externalWidth: drawerWidth) { point in updatePointer(point) }
+            .background { SidebarSurface(pinned: pinned) }
+            .clipShape(RoundedRectangle(cornerRadius: pinned ? 0 : GlassTheme.panelRadius))
+            .shadow(
+                color: .black.opacity(pinned ? 0 : 0.16), radius: pinned ? 0 : 4, x: 2,
+                y: 2
             )
-            .overlay(alignment: .leading) {
-                // Keep one view identity through floating/pinned/hidden states.
-                // Pinning changes its geometry in place rather than replacing it.
-                sidebar.frame(width: drawerWidth)
-                    .developmentFeedbackTarget(
-                        "navigation.sidebar", label: "导航侧栏", isActive: pinned || revealed
-                    )
-                    // Animate the parent geometry as one group so child controls
-                    // travel with the panel instead of adopting its final layout.
-                    .geometryGroup()
-                    .background { SidebarSurface(pinned: pinned) }
-                    .clipShape(RoundedRectangle(cornerRadius: pinned ? 0 : GlassTheme.panelRadius))
-                    .shadow(
-                        color: .black.opacity(pinned ? 0 : 0.16), radius: pinned ? 0 : 16, x: 4,
-                        y: 4
-                    )
-                    .padding(.vertical, pinned ? 0 : 4)
-                    .padding(.leading, pinned ? 0 : 4)
-                    .offset(x: pinned || revealed ? 0 : -(drawerWidth + 40))
-                    .opacity(pinned || revealed ? 1 : 0)
-                    .allowsHitTesting(pinned || revealed)
-                    .accessibilityHidden(!pinned && !revealed)
-            }
+            .padding(.vertical, pinned ? 0 : 4)
+            .padding(.leading, pinned ? 0 : 4)
+            .allowsHitTesting(pinned || revealed)
+            .accessibilityHidden(!pinned && !revealed)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .overlayPreferenceValue(TabRowAnchorKey.self) { anchors in
                 GeometryReader { proxy in
                     if let id = tabPreview.tabID, !model.miniPlayer,
@@ -169,43 +137,8 @@ struct ShellView: View {
                 }
                 .animation(Motion.quick(reduceMotion), value: tabPreview.tabID)
             }
-            .animation(Motion.panel(reduceMotion), value: pinned)
-            .animation(Motion.panel(reduceMotion), value: revealed)
-            .ignoresSafeArea(.container, edges: .top)
-            .onChange(of: model.selected) { _, selected in
-                // 小窗 only shows a video; closing the last one returns to the full window.
-                if selected == nil && model.miniPlayer { model.toggleMiniPlayer() }
-            }
-            .onChange(of: model.sidebarPinned) { _, _ in
-                // The menu shortcut toggles pinning without passing through the header button.
-                revealTask?.cancel()
-                hideTask?.cancel()
-                revealed = false
-                pointerZone = -1
-            }
+
             .onExitCommand(perform: exitPlayback)
-            .onDisappear {
-                revealTask?.cancel()
-                hideTask?.cancel()
-            }
-            .overlay(alignment: .bottom) {
-                if let toast = model.toast {
-                    // Over a video, stay above the floating control bar.
-                    let overVideo = model.selected != nil && !model.miniPlayer
-                    Text(toast).font(GlassTheme.labelFont)
-                        .padding(.horizontal, 18).padding(.vertical, 10)
-                        .chromeSurface(in: Capsule())
-                        .padding(.horizontal, 28).padding(.bottom, overVideo ? 108 : 28)
-                        .allowsHitTesting(false)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-            }
-            .animation(Motion.standard(reduceMotion), value: model.toast)
-            .overlay(alignment: .topTrailing) { PerformanceHUDOverlay() }
-            .sheet(isPresented: $model.downloadsPresented) {
-                DownloadsView(manager: model.downloads, model: model)
-            }
-            .sheet(isPresented: $model.loginPresented) { LoginView(model: model) }
     }
 
     private func exitPlayback() {
@@ -345,7 +278,7 @@ struct ShellView: View {
                     .menuStyle(.borderlessButton).menuIndicator(.hidden)
                     .modifier(MenuHoverFeedback())
                     .frame(width: 28, height: 28)
-                    .chromeSurface(in: Circle(), interactive: true)
+                    .chromeSurface(in: Circle())
                     .help("账户选项").accessibilityLabel("账户选项")
                 } else {
                     Button("登录 B 站") { model.loginPresented = true }.buttonStyle(

@@ -86,3 +86,23 @@ import Testing
     #expect(surface.running)
     #expect(surface.items.map(\.id) == [first.id])
 }
+
+@MainActor
+@Test func danmakuClockInterpolatesWithoutQueryingPlayerAndResetsAfterSeek() {
+    let surface = DanmakuSurface.Surface(frame: .zero)
+    var host = 10.0
+    surface.hostClock = { host }
+    surface.running = true
+    surface.synchronize(time: 20)
+    host = 10.1
+    #expect(abs(surface.interpolatedTime - 20.1) < 0.0001)
+    surface.running = false
+    surface.synchronize(time: 20.1)
+    host = 12
+    #expect(surface.interpolatedTime == 20.1)
+    surface.synchronize(time: 5)
+    #expect(surface.interpolatedTime == 5)
+    surface.running = true
+    host = 12.2
+    #expect(abs(surface.interpolatedTime - 5.2) < 0.0001)
+}

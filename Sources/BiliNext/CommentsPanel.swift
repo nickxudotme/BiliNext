@@ -1154,7 +1154,7 @@ private struct PictureViewer: View {
                 Image(systemName: "xmark").font(GlassTheme.iconFont.weight(.semibold))
                     .iconControlFrame(size: 34)
             }
-            .buttonStyle(InteractionButtonStyle()).chromeSurface(in: Circle(), interactive: true)
+            .buttonStyle(InteractionButtonStyle()).chromeSurface(in: Circle())
             .keyboardShortcut(.cancelAction).padding(14)
         }
         .overlay(alignment: .bottom) {
@@ -1175,7 +1175,7 @@ private struct PictureViewer: View {
             Image(systemName: symbol).font(GlassTheme.largeIconFont.weight(.semibold))
                 .iconControlFrame(size: 44)
         }
-        .buttonStyle(InteractionButtonStyle()).chromeSurface(in: Circle(), interactive: true)
+        .buttonStyle(InteractionButtonStyle()).chromeSurface(in: Circle())
         .disabled(disabled).opacity(disabled ? 0 : 1)
     }
 }

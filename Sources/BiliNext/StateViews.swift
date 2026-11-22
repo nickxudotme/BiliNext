@@ -104,7 +104,7 @@ struct ErrorBanner: View {
                 .foregroundStyle(.orange)
             Text(message).font(GlassTheme.labelFont).lineLimit(2)
             Spacer(minLength: 12)
-            Button("重试", action: retry).buttonStyle(.glass).controlSize(.large)
+            Button("重试", action: retry).buttonStyle(.bordered).controlSize(.large)
                 .font(GlassTheme.labelFont)
         }
         .padding(.leading, 16).padding(.trailing, 10).padding(.vertical, 8)
@@ -129,7 +129,7 @@ struct SheetHeader<Accessory: View>: View {
             Text(title).font(GlassTheme.sheetTitleFont).lineLimit(1)
             accessory()
             Spacer(minLength: 12)
-            Button("完成") { dismiss() }.buttonStyle(.glass).controlSize(.large)
+            Button("完成") { dismiss() }.buttonStyle(.bordered).controlSize(.large)
                 .font(GlassTheme.labelFont).keyboardShortcut(.cancelAction)
         }
     }

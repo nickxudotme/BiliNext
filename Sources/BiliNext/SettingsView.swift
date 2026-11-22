@@ -98,8 +98,6 @@ struct SettingsView: View {
                         Text(theme.title).tag(theme.rawValue)
                     }
                 }
-                Text("减少透明度跟随 macOS 辅助功能设置。")
-                    .font(.caption).foregroundStyle(.secondary)
                 Toggle(isOn: $sidebarVideoThumbnails) {
                     Text("显示侧边栏视频缩略图")
                     Text("关闭后隐藏标签行中的视频封面，鼠标悬停时仍显示预览。")

@@ -180,16 +180,9 @@ struct WindowChrome: NSViewRepresentable {
     }
 }
 
-/// Wallpaper-tinted window backdrop; the pinned sidebar draws directly on it.
-struct WindowBackdrop: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .sidebar
-        view.blendingMode = .behindWindow
-        view.state = .followsWindowActiveState
-        return view
-    }
-    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+/// An opaque window backdrop; the pinned sidebar draws directly on it.
+struct WindowBackdrop: View {
+    var body: some View { GlassTheme.chrome }
 }
 
 // A window-wide observer remains present while the drawer is hidden. Local

@@ -19,6 +19,17 @@ case "$build_configuration" in
     debug|release) ;;
     *) printf '%s\n' 'BILINEXT_BUILD_CONFIGURATION must be debug or release.' >&2; exit 1 ;;
 esac
+# Keep DEBUG's development credentials while measuring an optimized UI. Pass
+# the same flags to both invocations so packaging cannot undo the chosen mode.
+optimize_debug="${BILINEXT_OPTIMIZE_DEBUG:-0}"
+case "$optimize_debug" in
+    0|1) ;;
+    *) printf '%s\n' 'BILINEXT_OPTIMIZE_DEBUG must be 0 or 1.' >&2; exit 1 ;;
+esac
+build_args=(build -c "$build_configuration")
+if [ "$build_configuration" = "debug" ] && [ "$optimize_debug" = "1" ]; then
+    build_args+=(-Xswiftc -O)
+fi
 version="${BILINEXT_VERSION:-0.1.0}"
 build_number="${BILINEXT_BUILD_NUMBER:-1}"
 if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || ! [[ "$build_number" =~ ^[0-9]+$ ]]; then
@@ -37,8 +48,8 @@ fi
 build_commit="$(git rev-parse HEAD 2>/dev/null || printf unknown)"
 build_dirty="clean"
 if [ -n "$(git status --porcelain 2>/dev/null)" ]; then build_dirty="dirty"; fi
-swift build -c "$build_configuration"
-bin_dir="$(swift build -c "$build_configuration" --show-bin-path)"
+swift "${build_args[@]}"
+bin_dir="$(swift "${build_args[@]}" --show-bin-path)"
 app_dir="$PWD/build/BiliNext.app"
 # Remove only the generated bundle so a previous embedded runtime cannot leak
 # into a Homebrew-dependent distribution build.
@@ -68,6 +79,8 @@ PLIST
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $build_number" "$app_dir/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :BiliNextGitCommit string $build_commit" "$app_dir/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :BiliNextGitDirty string $build_dirty" "$app_dir/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :BiliNextBuildConfiguration string $build_configuration" "$app_dir/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :BiliNextOptimizeDebug string $optimize_debug" "$app_dir/Contents/Info.plist"
 if [ "$build_configuration" = "debug" ]; then
     /usr/libexec/PlistBuddy -c "Add :FeedbackGitCommit string $build_commit" "$app_dir/Contents/Info.plist"
     /usr/libexec/PlistBuddy -c "Add :FeedbackGitDirty string $build_dirty" "$app_dir/Contents/Info.plist"

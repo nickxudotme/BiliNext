@@ -88,7 +88,7 @@ struct VideoCardView: View {
                     .disabled(model.libraryBusy.contains(video.id))
                     .help(inWatchLater ? "从稍后再看移除" : "稍后再看")
                     .accessibilityLabel(inWatchLater ? "从稍后再看移除" : "稍后再看")
-                    .chromeSurface(in: Circle(), interactive: true)
+                    .chromeSurface(in: Circle())
                     Menu {
                         Button("在后台标签打开") {
                             preview.stop()
@@ -104,7 +104,7 @@ struct VideoCardView: View {
                         Image(systemName: "ellipsis").font(GlassTheme.labelFont.weight(.semibold))
                             .frame(width: 30, height: 30)
                     }.menuStyle(.borderlessButton).menuIndicator(.hidden)
-                        .chromeSurface(in: Circle(), interactive: true)
+                        .chromeSurface(in: Circle())
                         .accessibilityLabel("视频选项")
                 }
                 // Controls over artwork read as light glyphs on dark glass in both appearances.

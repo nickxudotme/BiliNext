@@ -1,8 +1,8 @@
 import BiliNextCore
 import SwiftUI
 
-/// The browse card's floating toolbar. Content scrolls beneath it; its controls are Liquid Glass
-/// capsules over a soft, fading material edge. Each page's own controls (search, library
+/// The browse card's opaque toolbar. Content scrolls beneath a solid canvas, with compact
+/// outlined controls. Each page's own controls (search, library
 /// filter, followed lives) live here rather than in rows above the content.
 struct BrowseToolbar: View {
     @ObservedObject var model: AppModel
@@ -17,7 +17,7 @@ struct BrowseToolbar: View {
     private var page: AppModel? { model.loadedBrowseInstance(for: model.menu) }
 
     var body: some View {
-        GlassEffectContainer(spacing: 10) {
+        Group {
             HStack(spacing: 12) {
                 leading
                 // A first load shows skeleton cards; the spinner is for refreshing existing content.
@@ -31,7 +31,7 @@ struct BrowseToolbar: View {
         .padding(.horizontal, GlassTheme.contentInset - 6)
         .frame(height: Self.height)
         .background(alignment: .top) {
-            SoftScrollEdge().frame(height: Self.height + 30).allowsHitTesting(false)
+            SoftScrollEdge().frame(height: Self.height).allowsHitTesting(false)
         }
         .sheet(isPresented: $managingFavoriteFolders) {
             FavoriteFolderManagementView(model: model)
@@ -89,30 +89,15 @@ struct BrowseToolbar: View {
     }
 }
 
-/// macOS 26's soft scroll edge: a material that fades out downwards, so floating controls
-/// stay legible over whatever scrolls beneath them.
+/// A solid toolbar backing with a separator; no material sampling or gradient mask.
 struct SoftScrollEdge: View {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-
     var body: some View {
-        let fade = LinearGradient(
-            stops: [
-                .init(color: .black, location: 0), .init(color: .black, location: 0.45),
-                .init(color: .clear, location: 1),
-            ], startPoint: .top, endPoint: .bottom)
-        Group {
-            if reduceTransparency {
-                Rectangle().fill(GlassTheme.canvas)
-            } else {
-                Rectangle().fill(.regularMaterial)
-            }
-        }
-        .mask(fade)
+        GlassTheme.canvas.overlay(alignment: .bottom) { Divider() }
     }
 }
 
 /// A sliding segmented control whose raised selection matches the card language. Floating
-/// in a toolbar it sits on glass; inside a glass panel it uses a quiet fill instead.
+/// in a toolbar it sits on an opaque control surface; inside a panel it uses a quiet fill.
 struct SectionTabs: View {
     let items: [(id: String, title: String)]
     let selection: String
@@ -188,7 +173,7 @@ private struct SectionTabStyle: ButtonStyle {
 }
 
 extension View {
-    /// Floating toolbar glass, with an opaque fallback under Reduce Transparency.
+    /// Retains the existing capsule geometry while using an opaque control surface.
     func floatingGlass<S: Shape>(in shape: S, focused: Bool = false) -> some View {
         modifier(FloatingGlass(shape: shape, focused: focused))
     }
@@ -197,22 +182,22 @@ extension View {
 private struct FloatingGlass<S: Shape>: ViewModifier {
     let shape: S
     let focused: Bool
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
 
     func body(content: Content) -> some View {
-        Group {
-            if reduceTransparency {
-                content.background(GlassTheme.canvas, in: shape)
-                    .overlay { shape.stroke(.primary.opacity(0.14), lineWidth: 1) }
-            } else {
-                content.glassEffect(.regular.interactive(), in: shape)
+        content.background(GlassTheme.chrome, in: shape)
+            .overlay {
+                shape.stroke(.primary.opacity(contrast == .increased ? 0.35 : 0.14), lineWidth: 1)
+                    .allowsHitTesting(false)
             }
-        }
-        .overlay { shape.stroke(GlassTheme.accent.opacity(focused ? 0.8 : 0), lineWidth: 1) }
+            .overlay {
+                shape.stroke(GlassTheme.accent.opacity(focused ? 0.8 : 0), lineWidth: 1)
+                    .allowsHitTesting(false)
+            }
     }
 }
 
-/// A resting glass capsule that widens into a field when clicked, then hands the keyword to
+/// A resting capsule that widens into a field when clicked, then hands the keyword to
 /// the search page. It only becomes a text field on demand, so it never takes launch focus.
 struct ToolbarSearchField: View {
     let submit: (String) -> Void

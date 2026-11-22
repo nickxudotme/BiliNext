@@ -16,11 +16,13 @@ swift test --filter <testFunctionName>        # single test (Swift Testing @Test
 bash scripts/check-format.sh                  # strict swift-format lint (Xcode's bundled xcrun swift-format)
 xcrun swift-format format --in-place --recursive --configuration .swift-format Package.swift Sources Tests
 bash scripts/build-app.sh && open build/BiliNext.app   # signed Debug .app bundle
+BILINEXT_OPTIMIZE_DEBUG=1 bash scripts/build-app.sh    # optimized Debug for UI performance checks
 BILINEXT_BUILD_CONFIGURATION=release bash scripts/build-app.sh   # signed Release bundle
 ```
 
 - `build-app.sh` needs a persistent code-signing identity in `.signing-identity` (SHA-1 from `security find-identity -v -p codesigning`) or `BILINEXT_SIGNING_IDENTITY`; ad-hoc signing is refused for normal development builds. `scripts/build-release.sh` explicitly opts into ad-hoc Release distribution and relies on Homebrew mpv instead of bundling libraries. It copies libmpv + deps into the bundle via `scripts/bundle-mpv.py` (prefers IINA's `libmpv.2.dylib`, override with `BILINEXT_MPV_LIBRARY`; refuses Homebrew libs whose min OS > 26).
 - Do not use `swift run` / unsigned builds to validate Keychain or login persistence — the signing identity differs.
+- 侧栏等实机性能对比使用 `BILINEXT_OPTIMIZE_DEBUG=1`：保留 DEBUG 开发会话存储，同时启用 `-O`。默认 Debug 仍为 `-Onone`；单独先跑优化构建再执行默认打包会重建为未优化版本。包内 Info.plist 记录构建配置与该开关，对比时同时核对运行进程/二进制 UUID。重型 Instruments 录制结束后仍可能高负载写入，必须等工具退出再判断手感。
 - The full-repo strict format check passes; keep it green. Format-only changes go in separate commits.
 
 ### Opt-in integration tests
@@ -52,7 +54,7 @@ Targets (Package.swift):
 
 **Playback engines.** The main player is `MPVPlayer` (libmpv, separate DASH video/audio URLs loaded via mpv EDL with Referer/UA headers, VideoToolbox hwdec, rendered by `MPVVideoLayer`, a `CAOpenGLLayer` that draws libmpv render API frames on its own serial queue, off the main thread, hosted by `MPVSurface`). Hover previews use a muted AVPlayer. The older AVPlayer/DASH resource-loader classes (`DASH*.swift`, `MediaResourceLoader`) remain only for `DASHTests` and hover previews; `AppModel` no longer has an AVPlayer media-loading path, so playback changes go through MPV and `PlaybackRecovery` (which handles AV1/HEVC → H.264 and DASH → MP4 fallback). Optionally, "本机官方核心" (`OfficialClientPlayerView`) runs the nano player read from the locally installed official Bilibili app's `app.asar` inside a WKWebView — that code is never bundled. Live rooms (`LiveSession`, `LivePlaybackView`) reuse MPV and the tab lifecycle; live chat comes from `LiveDanmaku` (WSS with auth/heartbeat, zlib frames, strict size limits).
 
-**Design system.** `GlassTheme` holds the tokens (type scale, radii, `accent`/`canvas`/`raisedFill`, hover/press opacity) and `Motion` the three animation speeds; use them instead of literals. Pink marks state only. The shell is Arc-like: wallpaper backdrop, sidebar drawn on it, content in an inset card, shared `BrowseToolbar`. See docs/design/redesign-2026-10.md.
+**Design system.** `GlassTheme` holds the tokens (type scale, radii, `accent`/`canvas`/`raisedFill`, hover/press opacity) and `Motion` the three animation speeds; use them instead of literals. Pink marks state only. The existing shell geometry is retained with an opaque window background, inset content card and shared `BrowseToolbar`. Custom surfaces use solid fills, not Liquid Glass, Material or artwork blur; legacy glass helper names remain for now. See docs/design/language.md for the current performance-first baseline; redesign-2026-10.md is historical.
 
 **Overlays.** Danmaku (`DanmakuModel`/`DanmakuSurface`) uses cached text bitmaps and Core Animation layers, driven straight from mpv time. Subtitles support primary + secondary tracks on independent timelines. `SmartSubtitleModel` / `HardSubtitleRecognizer` use Vision OCR to detect burned-in subtitles and hide duplicate soft subs.
 

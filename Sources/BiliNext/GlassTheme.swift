@@ -1,7 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// Glass belongs to navigation and controls; artwork stays on a quiet, opaque canvas.
+/// Opaque surfaces keep navigation and content independent of backdrop rendering.
+/// The existing theme name is retained so this baseline does not churn every view.
 /// Pink marks state (selection, hover, progress, activated actions), never resting chrome.
 enum GlassTheme {
     static let contentInset: CGFloat = 28
@@ -41,6 +42,10 @@ enum GlassTheme {
                 : NSColor(srgbRed: 1.00, green: 0.40, blue: 0.60, alpha: 1)
         })
     static let canvas = Color(nsColor: .textBackgroundColor)
+    static let chrome = Color(nsColor: .windowBackgroundColor)
+    static let playbackBackground = Color(white: 0.07)
+    static let playbackPanel = Color(white: 0.12)
+    static let playbackControls = Color(white: 0.10)
     /// A raised selection inside the card: white in light appearance, a lifted grey in dark.
     static let raisedFill = Color(
         nsColor: NSColor(name: "BiliNextRaised") { appearance in
@@ -59,7 +64,8 @@ enum GlassTheme {
 /// cubic-bezier(0.25, 0.46, 0.45, 0.94) for the sidebar showing, hiding and floating.
 enum Motion {
     static let quick = Animation.easeOut(duration: 0.1)
-    static let panel = Animation.timingCurve(0.25, 0.46, 0.45, 0.94, duration: 0.08)
+    static let panelDuration = 0.08
+    static let panel = Animation.timingCurve(0.25, 0.46, 0.45, 0.94, duration: panelDuration)
     /// State changes and larger moves use native springs.
     static let standard = Animation.snappy(duration: 0.25)
     static let emphasized = Animation.smooth(duration: 0.4)
@@ -74,32 +80,21 @@ enum Motion {
 
 struct ChromeSurface<S: Shape>: ViewModifier {
     let shape: S
-    var interactive = false
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
 
     func body(content: Content) -> some View {
-        Group {
-            if reduceTransparency {
-                content.background(GlassTheme.canvas, in: shape)
-            } else {
-                content.glassEffect(interactive ? .regular.interactive() : .regular, in: shape)
-            }
-        }
-        .overlay {
-            if reduceTransparency || contrast == .increased {
+        content.background(GlassTheme.chrome, in: shape)
+            .overlay {
                 shape.stroke(.primary.opacity(contrast == .increased ? 0.35 : 0.14), lineWidth: 1)
                     .allowsHitTesting(false)
             }
-        }
     }
 }
 
 /// Pinned, the sidebar sits directly on the window backdrop. Revealed from the edge,
-/// it floats over content as a glass panel.
+/// it floats over content as an opaque panel.
 struct SidebarSurface: View {
     let pinned: Bool
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
@@ -107,18 +102,11 @@ struct SidebarSurface: View {
         if pinned {
             Color.clear
         } else {
-            Group {
-                if reduceTransparency {
-                    shape.fill(GlassTheme.canvas)
-                } else {
-                    Color.clear.glassEffect(
-                        .regular.tint(GlassTheme.canvas.opacity(0.45)), in: shape)
+            shape.fill(GlassTheme.chrome)
+                .overlay {
+                    shape.strokeBorder(
+                        .primary.opacity(contrast == .increased ? 0.30 : 0.08), lineWidth: 1)
                 }
-            }
-            .overlay {
-                shape.strokeBorder(
-                    .primary.opacity(contrast == .increased ? 0.30 : 0.08), lineWidth: 1)
-            }
         }
     }
 }
@@ -154,7 +142,7 @@ extension View {
         frame(width: size, height: size).contentShape(Rectangle())
     }
 
-    func chromeSurface<S: Shape>(in shape: S, interactive: Bool = false) -> some View {
-        modifier(ChromeSurface(shape: shape, interactive: interactive))
+    func chromeSurface<S: Shape>(in shape: S) -> some View {
+        modifier(ChromeSurface(shape: shape))
     }
 }
